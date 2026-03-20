@@ -8,6 +8,14 @@ const STATUS_CLASS = { occupied: 'occupied', vacant: 'vacant', overdue: 'overdue
 const STATUS_LABEL = { occupied: 'Occupied', vacant: 'Vacant', overdue: 'Overdue', maintenance: 'Maintenance' };
 
 export default function Dashboard({ stats, recentPayments, maintenanceItems, units, occupancyByFloor }) {
+  const upcomingEvents = [
+    { day: '20', mon: 'Mar', title: 'Rent due - A-102', meta: 'Brian Kimani - $950', type: 'rent', label: 'Rent' },
+    { day: '22', mon: 'Mar', title: 'Plumbing repair - D-401', meta: 'Contractor visit scheduled', type: 'repair', label: 'Repair' },
+    { day: '25', mon: 'Mar', title: 'Move-in - B-202', meta: 'New tenant onboarding', type: 'move', label: 'Move-in' },
+    { day: '31', mon: 'Mar', title: 'Lease renewal - C-302', meta: '12 months extension', type: 'move', label: 'Lease' },
+    { day: '1', mon: 'Apr', title: 'Rent due - all units', meta: `${stats.occupiedUnits} active tenants`, type: 'rent', label: 'Rent' },
+  ];
+
   return (
     <AppLayout title="Dashboard" subtitle="March 2026">
       <Head title="Dashboard" />
@@ -33,7 +41,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
         <div className="stat-card">
           <div className="stat-top">
             <div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
-            <span className="stat-delta up">↑ $800</span>
+            <span className="stat-delta down">↓ $800</span>
           </div>
           <div className="stat-value">{fmtK(stats.monthlyRevenue)}</div>
           <div className="stat-label">Revenue / Month</div>
@@ -49,114 +57,147 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
       </div>
 
       <div className="grid-2">
-        {/* Units table */}
         <div className="card">
           <div className="card-header">
             <div>
               <div className="card-title">All Units</div>
               <div className="card-sub">{stats.totalUnits} units · {stats.occupiedUnits} occupied · {stats.vacantUnits} vacant</div>
             </div>
-            <a href="/units" style={{fontSize:'12.5px',color:'var(--accent)',fontWeight:500,textDecoration:'none'}}>View all</a>
+            <button className="card-action" onClick={() => window.location.href='/units'}>View all</button>
           </div>
-          <table className="data-table">
-            <thead><tr><th>Unit</th><th>Tenant</th><th>Status</th><th>Rent</th></tr></thead>
-            <tbody>
-              {units.map(u => {
-                const lease = u.leases?.[0];
-                const tenant = lease?.tenant;
-                return (
-                  <tr key={u.id}>
-                    <td>
-                      <div style={{fontWeight:600}}>{u.unit_number}</div>
-                      <div style={{fontSize:'12px',color:'var(--text-muted)'}}>Floor {u.floor}</div>
-                    </td>
-                    <td>
-                      {tenant
-                        ? <div className="tenant-cell">
-                            <div className="t-avatar" style={{background:tenant.color,color:tenant.text_color}}>{tenant.initials}</div>
+          <div className="card-body">
+            <table className="units-table">
+              <thead>
+                <tr>
+                  <th>Unit</th>
+                  <th>Tenant</th>
+                  <th>Status</th>
+                  <th>Rent</th>
+                  <th>Due</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {units.slice(0, 7).map((u) => {
+                  const lease = u.leases?.[0];
+                  const tenant = lease?.tenant;
+                  const isOverdue = u.status === 'overdue';
+                  const isOccupied = u.status === 'occupied';
+                  return (
+                    <tr key={u.id}>
+                      <td>
+                        <div className="unit-id">{u.unit_number}</div>
+                        <div className="unit-floor">Floor {u.floor}</div>
+                      </td>
+                      <td>
+                        {tenant ? (
+                          <div className="tenant-cell">
+                            <div className="t-avatar" style={{ background: tenant.color, color: tenant.text_color }}>{tenant.initials}</div>
                             {tenant.name}
                           </div>
-                        : <span style={{color:'var(--text-muted)'}}>—</span>
-                      }
-                    </td>
-                    <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
-                    <td style={{fontWeight:600}}>${fmt(u.rent)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
+                      <td className="amount">${fmt(u.rent)}</td>
+                      <td className={`amount ${isOverdue ? 'due' : isOccupied ? 'paid' : ''}`}>{isOverdue ? `$${fmt(u.rent)}` : isOccupied ? 'Paid' : '—'}</td>
+                      <td><button className="action-dots">···</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Upcoming / Recent */}
-        <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          {/* Occupancy by floor */}
-          <div className="card">
-            <div className="card-header"><div className="card-title">Occupancy by Floor</div></div>
-            <div style={{padding:'16px 20px'}}>
-              {occupancyByFloor.map(f => {
-                const pct = f.total > 0 ? Math.round((f.occupied / f.total) * 100) : 0;
-                const color = pct === 100 ? 'var(--green)' : pct >= 75 ? 'var(--accent)' : 'var(--amber)';
-                return (
-                  <div className="bar-row" key={f.floor}>
-                    <span className="bar-label">Floor {f.floor}</span>
-                    <div className="bar-track"><div className="bar-fill" style={{width:`${pct}%`,background:color}}></div></div>
-                    <span className="bar-val">{pct}%</span>
-                  </div>
-                );
-              })}
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <div className="card-title">Upcoming</div>
+              <div className="card-sub">Payments, moves & repairs</div>
             </div>
+            <button className="card-action">Calendar</button>
           </div>
-
-          {/* Recent payments */}
-          <div className="card">
-            <div className="card-header">
-              <div className="card-title">Recent Payments</div>
-              <a href="/payments" style={{fontSize:'12.5px',color:'var(--accent)',fontWeight:500,textDecoration:'none'}}>All</a>
-            </div>
-            <div style={{padding:'4px 0'}}>
-              {recentPayments.map(p => (
-                <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 20px',borderBottom:'1px solid var(--border-subtle)'}}>
-                  <div style={{width:28,height:28,borderRadius:'50%',background:p.status==='paid'?'var(--green-dim)':'var(--red-dim)',color:p.status==='paid'?'var(--green)':'var(--red)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                    {p.status === 'paid'
-                      ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                      : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    }
-                  </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:500}}>{p.tenant?.name}</div>
-                    <div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>Unit {p.unit?.unit_number}</div>
-                  </div>
-                  <div style={{textAlign:'right'}}>
-                    <div style={{fontSize:13,fontWeight:600,color:p.status==='paid'?'var(--green)':'var(--red)'}}>{p.status==='paid'?'+':''}${fmt(p.amount)}</div>
-                    <div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{p.paid_date || 'Overdue'}</div>
-                  </div>
+          <div className="events-list">
+            {upcomingEvents.map((e) => (
+              <div className="event-item" key={`${e.day}-${e.title}`}>
+                <div className="event-date"><div className="event-day">{e.day}</div><div className="event-mon">{e.mon}</div></div>
+                <div>
+                  <div className="event-title">{e.title}</div>
+                  <div className="event-meta">{e.meta}</div>
                 </div>
-              ))}
-            </div>
+                <span className={`event-type ${e.type}`}>{e.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Maintenance */}
-      <div className="card">
-        <div className="card-header">
-          <div className="card-title">Open Maintenance</div>
-          <a href="/maintenance" style={{fontSize:'12.5px',color:'var(--accent)',fontWeight:500,textDecoration:'none'}}>All tickets</a>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">Occupancy by Floor</div>
+          </div>
+          <div className="floor-chart">
+            {occupancyByFloor.map((f) => {
+              const pct = f.total > 0 ? Math.round((f.occupied / f.total) * 100) : 0;
+              const fillClass = pct === 100 ? 'full' : pct <= 60 ? 'low' : '';
+              return (
+                <div className="floor-row" key={f.floor}>
+                  <span className="floor-label">Floor {f.floor}</span>
+                  <div className="floor-bar-bg"><div className={`floor-bar-fill ${fillClass}`} style={{ width: `${pct}%` }}></div></div>
+                  <span className="floor-pct">{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div style={{padding:'4px 0'}}>
-          {maintenanceItems.map(t => (
-            <div key={t.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 20px',borderBottom:'1px solid var(--border-subtle)'}}>
-              <div style={{width:34,height:34,borderRadius:9,background:'var(--bg-elevated)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>
-                {t.category === 'Plumbing' ? '🔧' : t.category === 'Electrical' ? '💡' : t.category === 'HVAC' ? '❄️' : t.category === 'Security' ? '🔒' : '🪛'}
+
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">Recent Payments</div>
+            <button className="card-action" onClick={() => window.location.href='/payments'}>All</button>
+          </div>
+          <div>
+            {recentPayments.slice(0, 4).map((p) => (
+              <div className="pay-item" key={p.id}>
+                <div className="pay-icon" style={{ background: p.status === 'paid' ? 'var(--green-dim)' : 'var(--red-dim)', color: p.status === 'paid' ? 'var(--green)' : 'var(--red)' }}>
+                  {p.status === 'paid'
+                    ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  }
+                </div>
+                <div className="pay-info">
+                  <div className="pay-name">{p.tenant?.name || 'Unknown Tenant'}</div>
+                  <div className="pay-unit">Unit {p.unit?.unit_number || '—'}</div>
+                </div>
+                <div>
+                  <div className="pay-amount" style={{ color: p.status === 'paid' ? 'var(--green)' : 'var(--red)' }}>{p.status === 'paid' ? '+' : ''}${fmt(p.amount)}</div>
+                  <div className="pay-date">{p.paid_date || 'Overdue'}</div>
+                </div>
               </div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:600}}>{t.title}</div>
-                <div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>Unit {t.unit_ref} · {t.category} · {t.reported_date}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">Maintenance</div>
+            <button className="card-action" onClick={() => window.location.href='/maintenance'}>All</button>
+          </div>
+          <div>
+            {maintenanceItems.slice(0, 4).map((t) => (
+              <div className="maint-item" key={t.id}>
+                <div className="maint-icon">{t.category === 'Plumbing' ? '🔧' : t.category === 'Electrical' ? '💡' : t.category === 'HVAC' ? '❄️' : t.category === 'Security' ? '🔒' : '🪛'}</div>
+                <div className="maint-info">
+                  <div className="maint-title">{t.title}</div>
+                  <div className="maint-meta">Reported {t.reported_date} · {t.category}</div>
+                </div>
+                <span className={`priority ${t.priority}`}>{t.priority === 'med' ? 'Med' : t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}</span>
               </div>
-              <span className={`priority ${t.priority}`}>{t.priority === 'med' ? 'Med' : t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </AppLayout>
