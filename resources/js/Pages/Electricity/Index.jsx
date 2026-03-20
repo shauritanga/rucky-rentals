@@ -43,24 +43,20 @@ export default function Electricity({ readings = [], outages = [], fuelLogs = []
 
     return (
         <AppLayout title="Electricity">
-            <div style={{ display: 'flex', flex: 1, overflow: 'hidden', height: '100%' }}>
-                {/* Sidebar */}
-                <aside style={{ width: 210, minWidth: 210, background: 'var(--bg-surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-                    {navItems.map((item, i) => (
+            <div className="acc-layout">
+                <aside className="acc-sidebar">
+                    {navItems.map((item) => (
                         <div key={item.id}>
-                            {item.section && <div style={{ padding: '12px 10px 4px', fontSize: 10, fontWeight: 600, letterSpacing: '.7px', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{item.section}</div>}
-                            <div
-                                onClick={() => setTab(item.id)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 8, margin: '0 4px 1px', cursor: 'pointer', color: tab === item.id ? 'var(--accent)' : 'var(--text-secondary)', background: tab === item.id ? 'var(--accent-dim)' : 'transparent', fontSize: 13, fontWeight: tab === item.id ? 500 : 450 }}
-                            >
-                                {item.icon}{item.label}
+                            {item.section && <div className="acc-nav-section">{item.section}</div>}
+                            <div className={`acc-nav-item ${tab === item.id ? 'active' : ''}`} onClick={() => setTab(item.id)}>
+                                {item.icon}
+                                {item.label}
                             </div>
                         </div>
                     ))}
                 </aside>
 
-                {/* Content */}
-                <main style={{ flex: 1, overflowY: 'auto', padding: 26 }}>
+                <main className="acc-content" style={{ overflowY: 'auto', padding: 26 }}>
                     {tab === 'dashboard' && <DashboardTab readings={readings} outages={outages} fuelLogs={fuelLogs} units={units} gridOn={gridOn} setGridOn={setGridOn} genRunning={genRunning} setGenRunning={setGenRunning} tariff={tariff} genRate={genRate} fuelPct={fuelPct} totalGridKwh={totalGridKwh} totalBill={totalBill} outageCount={outageCount} floors={floors} floorMax={floorMax} topConsumers={topConsumers} setTab={setTab} onAddReading={() => setShowReadingModal(true)} />}
                     {tab === 'grid' && <GridTab gridSettings={gridSettings} />}
                     {tab === 'generator' && <GeneratorTab fuelLogs={fuelLogs} genSettings={genSettings} fuelPct={fuelPct} onAddFuel={() => setShowFuelModal(true)} />}
