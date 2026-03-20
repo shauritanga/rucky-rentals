@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class Invoice extends Model
 {
     protected $fillable = [
-        'lease_id', 'number', 'date', 'due_date', 'status', 'notes',
+        'invoice_number', 'type', 'lease_id', 'tenant_name', 'tenant_email', 'unit_ref',
+        'issued_date', 'due_date', 'period', 'status', 'notes',
     ];
 
     public function lease() { return $this->belongsTo(Lease::class); }

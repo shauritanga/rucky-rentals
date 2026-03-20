@@ -45,28 +45,61 @@ function InvoiceDoc({ inv }) {
 export default function InvoicesIndex({ invoices, leases, tenants }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState('date-desc');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [invType, setInvType] = useState('invoice');
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
 
-  const { data, setData, post, processing, reset } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
+  const { data, setData, post, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
 
   const filtered = invoices.filter(inv => {
     const matchFilter = filter === 'all' || inv.status === filter;
     const q = search.toLowerCase();
     const matchSearch = !q || inv.tenant_name?.toLowerCase().includes(q) || inv.unit_ref?.toLowerCase().includes(q) || inv.invoice_number?.toLowerCase().includes(q);
     return matchFilter && matchSearch;
+  }).sort((a, b) => {
+    if (sort === 'date-desc') return String(b.invoice_number || '').localeCompare(String(a.invoice_number || ''));
+    if (sort === 'date-asc') return String(a.invoice_number || '').localeCompare(String(b.invoice_number || ''));
+    if (sort === 'due') return String(a.due_date || '').localeCompare(String(b.due_date || ''));
+    if (sort === 'amount-hi') return total(b) - total(a);
+    return 0;
   });
 
-  const counts = { all: invoices.length, proforma: invoices.filter(i=>i.status==='proforma').length, unpaid: invoices.filter(i=>i.status==='unpaid').length, paid: invoices.filter(i=>i.status==='paid').length, overdue: invoices.filter(i=>i.status==='overdue').length };
+  const counts = {
+    all: invoices.length,
+    proforma: invoices.filter(i=>i.status==='proforma').length,
+    unpaid: invoices.filter(i=>i.status==='unpaid' || i.status==='draft').length,
+    paid: invoices.filter(i=>i.status==='paid').length,
+    overdue: invoices.filter(i=>i.status==='overdue').length,
+  };
   const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
 
   const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
-  const submit = (e) => {
+  const submit = (e, action = 'send') => {
     e.preventDefault();
-    post('/invoices', { data: {...data, type: invType, items}, onSuccess: () => { reset(); setItems([{description:'',sub_description:'',quantity:1,unit_price:0}]); setShowModal(false); } });
+    if (!data.tenant_name?.trim()) return;
+    if (!data.issued_date) return;
+    if (!data.due_date && action !== 'draft') return;
+    const hasAmount = items.some((i) => Number(i.quantity) > 0 && Number(i.unit_price) > 0);
+    if (!hasAmount) return;
+
+    transform((form) => ({
+      ...form,
+      type: invType,
+      items,
+      ...(action === 'draft' ? { status: 'draft' } : {}),
+    }));
+
+    post('/invoices', {
+      preserveScroll: true,
+      onSuccess: () => {
+        reset();
+        setItems([{description:'',sub_description:'',quantity:1,unit_price:0}]);
+        setShowModal(false);
+      },
+    });
   };
 
   const addItem = () => setItems([...items, {description:'',sub_description:'',quantity:1,unit_price:0}]);
@@ -99,6 +132,12 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" placeholder="Search invoices…" value={search} onChange={e=>setSearch(e.target.value)} />
           </div>
+          <select className="form-input form-select" value={sort} onChange={e=>setSort(e.target.value)} style={{width:130,padding:'6px 28px 6px 10px',fontSize:'12.5px'}}>
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
+            <option value="due">Due Date</option>
+            <option value="amount-hi">Amount ↓</option>
+          </select>
           <button className="btn-primary" onClick={()=>setShowModal(true)}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New Invoice
@@ -155,7 +194,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
         <div className="modal" style={{width:520,maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
           <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">New Invoice</div><button className="modal-close" onClick={()=>setShowModal(false)}>✕</button></div>
-          <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
+          <form onSubmit={(e)=>submit(e, 'send')} style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
             <div className="modal-body" style={{overflowY:'auto',flex:1}}>
               <div style={{marginBottom:18}}>
                 <label className="form-label" style={{marginBottom:8,display:'block'}}>Invoice Type *</label>
@@ -197,6 +236,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
             </div>
             <div className="modal-footer" style={{flexShrink:0}}>
               <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>
+              <button type="button" className="btn-secondary" onClick={(e)=>submit(e, 'draft')} disabled={processing}>Save as Draft</button>
               <button type="submit" className="btn-primary" disabled={processing}>Issue Invoice</button>
             </div>
           </form>

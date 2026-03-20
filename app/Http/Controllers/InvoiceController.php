@@ -24,6 +24,7 @@ class InvoiceController extends Controller
     {
         $data = $request->validate([
             'type'         => 'required|in:invoice,proforma',
+            'status'       => 'nullable|in:draft',
             'lease_id'     => 'nullable|exists:leases,id',
             'tenant_name'  => 'required|string',
             'tenant_email' => 'nullable|email',
@@ -40,10 +41,14 @@ class InvoiceController extends Controller
 
         $count = Invoice::count() + 1;
         $prefix = $data['type'] === 'proforma' ? 'PF' : 'INV';
+        $status = ($data['status'] ?? null) === 'draft'
+            ? 'draft'
+            : ($data['type'] === 'proforma' ? 'proforma' : 'unpaid');
+
         $invoice = Invoice::create([
             ...$data,
             'invoice_number' => $prefix . '-' . str_pad($count, 4, '0', STR_PAD_LEFT),
-            'status'         => $data['type'] === 'proforma' ? 'proforma' : 'unpaid',
+            'status'         => $status,
         ]);
 
         foreach ($data['items'] as $item) {
