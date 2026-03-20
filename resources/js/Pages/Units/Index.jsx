@@ -6,6 +6,16 @@ const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', 
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
 const fmt = (n) => Number(n).toLocaleString();
 const SQM_PER_SQFT = 0.09290304;
+const COMMERCIAL_UNIT_TYPES = [
+  'Office Suite',
+  'Retail Shop',
+  'Showroom',
+  'Warehouse',
+  'Restaurant Space',
+  'Clinic Space',
+  'Salon Space',
+  'Kiosk',
+];
 
 const unitCurrency = (unit) => (unit?.currency === 'TZS' ? 'TZS' : 'USD');
 const unitSizeSqm = (unit) => {
@@ -59,7 +69,7 @@ export default function UnitsIndex({ units }) {
   const [showModal, setShowModal] = useState(false);
 
   const { data, setData, post, processing, reset } = useForm({
-    unit_number:'', floor:'1', type:'Studio', size_sqm:'', rate_per_sqm:'', currency:'USD', status:'vacant', notes:''
+    unit_number:'', floor:'1', type:'Office Suite', size_sqm:'', rate_per_sqm:'', currency:'USD', status:'vacant', notes:''
   });
 
   const sizeSqmInput = Number(data.size_sqm) || 0;
@@ -215,7 +225,7 @@ export default function UnitsIndex({ units }) {
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
         <div className="modal">
           <div className="modal-header">
-            <div className="modal-title">Add New Unit</div>
+            <div className="modal-title">Add New Commercial Unit</div>
             <button className="modal-close" onClick={()=>setShowModal(false)}>✕</button>
           </div>
           <form onSubmit={submit}>
@@ -225,7 +235,7 @@ export default function UnitsIndex({ units }) {
                 <div className="form-group"><label className="form-label">Floor</label><select className="form-input form-select" value={data.floor} onChange={e=>setData('floor',e.target.value)} required>{[1,2,3,4,5,6].map(f=><option key={f} value={f}>Floor {f}</option>)}</select></div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Type</label><select className="form-input form-select" value={data.type} onChange={e=>setData('type',e.target.value)}>{['Studio','1 Bed','2 Bed','3 Bed','Penthouse'].map(t=><option key={t}>{t}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Commercial Unit Type</label><select className="form-input form-select" value={data.type} onChange={e=>setData('type',e.target.value)}>{COMMERCIAL_UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
                 <div className="form-group"><label className="form-label">Size (m²)</label><input className="form-input" type="number" step="0.01" min="0" value={data.size_sqm} onChange={e=>setData('size_sqm',e.target.value)} placeholder="60" required /></div>
               </div>
               <div className="form-row">

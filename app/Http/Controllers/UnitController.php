@@ -7,11 +7,22 @@ use App\Models\Tenant;
 use App\Models\Lease;
 use App\Support\MockRentalData;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class UnitController extends Controller
 {
     private const SQM_PER_SQFT = 0.09290304;
+    private const COMMERCIAL_UNIT_TYPES = [
+        'Office Suite',
+        'Retail Shop',
+        'Showroom',
+        'Warehouse',
+        'Restaurant Space',
+        'Clinic Space',
+        'Salon Space',
+        'Kiosk',
+    ];
 
     public function index()
     {
@@ -28,7 +39,7 @@ class UnitController extends Controller
         $data = $request->validate([
             'unit_number' => 'required|string|unique:units',
             'floor'       => 'required|integer',
-            'type'        => 'required|string',
+            'type'        => ['required', 'string', Rule::in(self::COMMERCIAL_UNIT_TYPES)],
             'size_sqm'    => 'required|numeric|min:0.1',
             'rate_per_sqm' => 'required|numeric|min:0',
             'currency'    => 'required|in:TZS,USD',
