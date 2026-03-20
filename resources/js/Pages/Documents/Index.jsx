@@ -1,0 +1,174 @@
+import { useState } from 'react';
+import AppLayout from '@/Layouts/AppLayout';
+import { Head, useForm, router } from '@inertiajs/react';
+
+const fmt = (n) => Number(n).toLocaleString();
+const EXT_ICON = { pdf:'📕', word:'📘', img:'🖼️', other:'📁' };
+const TAG_LABELS = { lease:'Lease Agreements', id:'Identity Documents', notice:'Notices & Letters', other:'Building & Compliance' };
+
+export default function DocumentsIndex({ documents, units }) {
+  const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState('grid');
+  const [selected, setSelected] = useState(null);
+  const [showUpload, setShowUpload] = useState(false);
+
+  const { data, setData, post, processing, reset } = useForm({ file: null, tag:'lease', unit_ref:'', description:'' });
+
+  const filtered = documents.filter(d => {
+    const matchFilter = filter === 'all' || d.tag === filter;
+    const q = search.toLowerCase();
+    const matchSearch = !q || d.name.toLowerCase().includes(q) || (d.unit_ref||'').toLowerCase().includes(q);
+    return matchFilter && matchSearch;
+  });
+
+  const counts = { all: documents.length, lease: documents.filter(d=>d.tag==='lease').length, id: documents.filter(d=>d.tag==='id').length, notice: documents.filter(d=>d.tag==='notice').length, other: documents.filter(d=>d.tag==='other').length };
+
+  const submit = (e) => { e.preventDefault(); post('/documents', { forceFormData: true, onSuccess: () => { reset(); setShowUpload(false); } }); };
+
+  return (
+    <AppLayout title="Documents" subtitle={`${documents.length} files`}>
+      <Head title="Documents" />
+
+      <div className="tn-stats-row">
+        <div className="tn-stat"><div className="tn-stat-value">{counts.all}</div><div className="tn-stat-label">Total Files</div></div>
+        <div className="tn-stat-divider"></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{counts.lease}</div><div className="tn-stat-label">Lease Agreements</div></div>
+        <div className="tn-stat-divider"></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{counts.id}</div><div className="tn-stat-label">ID Documents</div></div>
+        <div className="tn-stat-divider"></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--amber)'}}>{counts.notice}</div><div className="tn-stat-label">Notices</div></div>
+        <div className="tn-stat-divider"></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--text-secondary)'}}>{counts.other}</div><div className="tn-stat-label">Other Files</div></div>
+      </div>
+
+      <div className="toolbar">
+        <div className="filters">
+          {[['all','All'],['lease','Leases'],['id','ID Documents'],['notice','Notices'],['other','Other']].map(([f,l])=>(
+            <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>setFilter(f)}>{l} <span className="pill-count">{counts[f]||0}</span></button>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <div className="search-box" style={{width:190}}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" placeholder="Search documents…" value={search} onChange={e=>setSearch(e.target.value)} />
+          </div>
+          <div className="view-toggle">
+            <button className={`vt-btn ${view==='grid'?'active':''}`} onClick={()=>setView('grid')} title="Grid"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></button>
+            <button className={`vt-btn ${view==='list'?'active':''}`} onClick={()=>setView('list')} title="List"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+          </div>
+          <button className="btn-primary" onClick={()=>setShowUpload(true)}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+            Upload
+          </button>
+        </div>
+      </div>
+
+      {view === 'grid'
+        ? <div className="docs-grid">
+            {filtered.map(d => (
+              <div className="doc-card" key={d.id} onClick={()=>setSelected(d)}>
+                <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
+                  <div className={`doc-icon ${d.file_type}`}>{EXT_ICON[d.file_type]||'📁'}</div>
+                  <div style={{flex:1,minWidth:0,paddingRight:20}}>
+                    <div style={{fontSize:13,fontWeight:600,lineHeight:1.35,wordBreak:'break-word'}}>{d.name}</div>
+                    <div style={{fontSize:'11.5px',color:'var(--text-muted)',marginTop:3}}>{d.unit_ref&&d.unit_ref!=='—'?`Unit ${d.unit_ref} · `:''}{d.file_size}</div>
+                  </div>
+                </div>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid var(--border-subtle)'}}>
+                  <span className={`doc-tag ${d.tag}`}>{d.tag.charAt(0).toUpperCase()+d.tag.slice(1)}</span>
+                  <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{d.created_at?.slice(0,10)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        : <div className="card">
+            <table className="data-table">
+              <thead><tr><th style={{width:36}}></th><th>Name</th><th>Type</th><th>Unit</th><th>Size</th><th>Date Added</th><th></th></tr></thead>
+              <tbody>
+                {filtered.map(d => (
+                  <tr key={d.id} onClick={()=>setSelected(d)}>
+                    <td style={{paddingLeft:20}}><div className={`doc-icon ${d.file_type}`} style={{width:30,height:30,borderRadius:7,fontSize:14}}>{EXT_ICON[d.file_type]||'📁'}</div></td>
+                    <td><div style={{fontWeight:600,fontSize:'13.5px'}}>{d.name}</div></td>
+                    <td><span className={`doc-tag ${d.tag}`}>{d.tag}</span></td>
+                    <td style={{color:'var(--text-secondary)',fontWeight:500}}>{d.unit_ref&&d.unit_ref!=='—'?d.unit_ref:'—'}</td>
+                    <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{d.file_size}</td>
+                    <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{d.created_at?.slice(0,10)}</td>
+                    <td><button className="action-dots" onClick={e=>{e.stopPropagation();router.delete(`/documents/${d.id}`);}}>···</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+      }
+
+      {/* Document Drawer */}
+      <div className={`drawer-overlay ${selected?'open':''}`} onClick={e=>e.target===e.currentTarget&&setSelected(null)}>
+        <div className="drawer">
+          {selected && <>
+            <div className="drawer-header">
+              <div style={{display:'flex',alignItems:'center',gap:14}}>
+                <div className={`doc-icon ${selected.file_type}`} style={{width:48,height:48,borderRadius:12,fontSize:22}}>{EXT_ICON[selected.file_type]||'📁'}</div>
+                <div><div style={{fontSize:15,fontWeight:600,letterSpacing:'-.2px',lineHeight:1.35}}>{selected.name}</div><div style={{fontSize:12,color:'var(--text-muted)',marginTop:4}}>{selected.file_type?.toUpperCase()} · {selected.file_size}</div></div>
+              </div>
+              <button className="drawer-close" onClick={()=>setSelected(null)}>✕</button>
+            </div>
+            <div className="drawer-body">
+              <div className="drawer-section">
+                <div className="drawer-section-title">Preview</div>
+                <div style={{background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:10,padding:'32px 20px',textAlign:'center',marginBottom:10}}>
+                  <div style={{fontSize:52,marginBottom:10}}>{EXT_ICON[selected.file_type]||'📁'}</div>
+                  <div style={{fontSize:12,color:'var(--text-muted)'}}>No preview available — open file to view</div>
+                </div>
+              </div>
+              <div className="drawer-section">
+                <div className="drawer-section-title">File Details</div>
+                <div className="kv-grid">
+                  <div className="kv"><div className="kv-label">File Type</div><div className="kv-value">{selected.file_type?.toUpperCase()}</div></div>
+                  <div className="kv"><div className="kv-label">File Size</div><div className="kv-value">{selected.file_size}</div></div>
+                  <div className="kv"><div className="kv-label">Category</div><div className="kv-value accent">{TAG_LABELS[selected.tag]||selected.tag}</div></div>
+                  <div className="kv"><div className="kv-label">Date Added</div><div className="kv-value">{selected.created_at?.slice(0,10)}</div></div>
+                  <div className="kv"><div className="kv-label">Uploaded By</div><div className="kv-value" style={{fontSize:12}}>{selected.uploaded_by}</div></div>
+                  {selected.unit_ref && <div className="kv"><div className="kv-label">Linked Unit</div><div className="kv-value accent">{selected.unit_ref}</div></div>}
+                </div>
+              </div>
+            </div>
+            <div className="drawer-footer">
+              <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>setSelected(null)}>Download</button>
+              <button className="btn-secondary" onClick={()=>setSelected(null)}>Rename</button>
+              <button className="btn-danger" onClick={()=>{router.delete(`/documents/${selected.id}`);setSelected(null);}}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+              </button>
+            </div>
+          </>}
+        </div>
+      </div>
+
+      {/* Upload Modal */}
+      <div className={`modal-overlay ${showUpload?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowUpload(false)}>
+        <div className="modal" style={{width:500}}>
+          <div className="modal-header"><div className="modal-title">Upload Document</div><button className="modal-close" onClick={()=>setShowUpload(false)}>✕</button></div>
+          <form onSubmit={submit} encType="multipart/form-data">
+            <div className="modal-body">
+              <div style={{border:'2px dashed var(--border)',borderRadius:10,padding:'28px 20px',textAlign:'center',cursor:'pointer',marginBottom:14,transition:'border-color .15s,background .15s'}} onClick={()=>document.getElementById('fileInput').click()}>
+                <div style={{fontSize:28,marginBottom:8}}>📂</div>
+                <div style={{fontSize:'13.5px',fontWeight:500,marginBottom:4}}>Click to browse or drag & drop</div>
+                <div style={{fontSize:12,color:'var(--text-muted)'}}>PDF, DOCX, JPG, PNG — max 20 MB</div>
+              </div>
+              <input id="fileInput" type="file" style={{display:'none'}} accept=".pdf,.docx,.doc,.jpg,.jpeg,.png" onChange={e=>setData('file',e.target.files[0])} />
+              {data.file && <div style={{background:'var(--bg-elevated)',borderRadius:8,padding:'9px 12px',marginBottom:10,fontSize:13,display:'flex',alignItems:'center',gap:10}}><span>📄</span><span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{data.file.name}</span></div>}
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Document Type</label><select className="form-input form-select" value={data.tag} onChange={e=>setData('tag',e.target.value)}><option value="lease">Lease Agreement</option><option value="id">ID Document</option><option value="notice">Notice / Letter</option><option value="other">Other</option></select></div>
+                <div className="form-group"><label className="form-label">Linked Unit</label><select className="form-input form-select" value={data.unit_ref} onChange={e=>setData('unit_ref',e.target.value)}><option value="">— None —</option>{units.map(u=><option key={u.id} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-ghost" onClick={()=>setShowUpload(false)}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={processing}>Upload Files</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </AppLayout>
+  );
+}
