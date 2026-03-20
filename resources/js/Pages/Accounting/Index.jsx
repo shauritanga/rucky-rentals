@@ -429,28 +429,28 @@ export default function Accounting({ accounts = [], entries = [] }) {
         w.document.close();
     };
 
+    const renderPageBarActions = ({ extra = null, showNewJE = true, showExport = true } = {}) => (
+        <>
+            {extra}
+            <div className="period-select">
+                <select value={period} onChange={(e) => { setPeriod(e.target.value); refreshAll(); }}>
+                    <option value="Q1-2026">Q1 2026 (Jan-Mar)</option>
+                    <option value="Q4-2025">Q4 2025</option>
+                    <option value="FY-2025">Full Year 2025</option>
+                    <option value="FY-2026">Full Year 2026 (YTD)</option>
+                </select>
+            </div>
+            <button className="icon-btn" onClick={refreshAll} title="Refresh from dashboard" style={{ color: 'var(--green)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+            </button>
+            {showNewJE && <button className="btn-primary" onClick={openJEModal}>+ New Journal Entry</button>}
+            {showExport && <button className="btn-ghost" onClick={printCurrent}>Export PDF</button>}
+            <span style={{ fontSize: 12.5, color: syncStatus.startsWith('Synced') ? 'var(--green)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>{syncStatus}</span>
+        </>
+    );
+
     return (
         <AppLayout title="Accounting">
-            <div className="acc-module-topbar">
-                <div className="acc-module-title">Accounting <span>- Velour Properties</span></div>
-                <div id="acc-sync-status" className="acc-sync-status" style={{ color: syncStatus.startsWith('Synced') ? 'var(--green)' : 'var(--text-muted)' }}>{syncStatus}</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <div className="period-select">
-                        <select value={period} onChange={(e) => { setPeriod(e.target.value); refreshAll(); }}>
-                            <option value="Q1-2026">Q1 2026 (Jan-Mar)</option>
-                            <option value="Q4-2025">Q4 2025</option>
-                            <option value="FY-2025">Full Year 2025</option>
-                            <option value="FY-2026">Full Year 2026 (YTD)</option>
-                        </select>
-                    </div>
-                    <button className="icon-btn" onClick={refreshAll} title="Refresh from dashboard" style={{ color: 'var(--green)' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-                    </button>
-                    <button className="btn-primary" onClick={openJEModal}>+ New Journal Entry</button>
-                    <button className="btn-ghost" onClick={printCurrent}>Export PDF</button>
-                </div>
-            </div>
-
             <div className="acc-layout">
                 <aside className="acc-sidebar">
                     {NAV.map((n) => (
@@ -464,8 +464,14 @@ export default function Accounting({ accounts = [], entries = [] }) {
                 <main className="acc-content">
                     <div className={`acc-page ${active === 'coa' ? 'active' : ''}`} id="acc-print-coa">
                         <SectionHeader title="Chart of Accounts" subtitle="All account codes used in the general ledger">
-                            <div className="search-box"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="Search accounts..." value={coaSearch} onChange={(e) => setCoaSearch(e.target.value)} /></div>
-                            <button className="btn-primary" onClick={() => setShowAccountModal(true)}>+ Add Account</button>
+                            {renderPageBarActions({
+                                extra: (
+                                    <>
+                                        <div className="search-box"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="Search accounts..." value={coaSearch} onChange={(e) => setCoaSearch(e.target.value)} /></div>
+                                        <button className="btn-primary" onClick={() => setShowAccountModal(true)}>+ Add Account</button>
+                                    </>
+                                ),
+                            })}
                         </SectionHeader>
 
                         <div className="card">
@@ -496,9 +502,14 @@ export default function Accounting({ accounts = [], entries = [] }) {
 
                     <div className={`acc-page ${active === 'je' ? 'active' : ''}`} id="acc-print-je">
                         <SectionHeader title="Journal Entries" subtitle={jeStats}>
-                            <div className="search-box"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="Search entries..." value={jeSearch} onChange={(e) => setJeSearch(e.target.value)} /></div>
-                            <select className="form-input form-select" value={jeFilter} onChange={(e) => setJeFilter(e.target.value)} style={{ width: 110, padding: '6px 28px 6px 10px', fontSize: 12.5 }}><option value="">All</option><option value="posted">Posted</option><option value="draft">Draft</option><option value="void">Void</option></select>
-                            <button className="btn-primary" onClick={openJEModal}>+ New Entry</button>
+                            {renderPageBarActions({
+                                extra: (
+                                    <>
+                                        <div className="search-box"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg><input type="text" placeholder="Search entries..." value={jeSearch} onChange={(e) => setJeSearch(e.target.value)} /></div>
+                                        <select className="form-input form-select" value={jeFilter} onChange={(e) => setJeFilter(e.target.value)} style={{ width: 110, padding: '6px 28px 6px 10px', fontSize: 12.5 }}><option value="">All</option><option value="posted">Posted</option><option value="draft">Draft</option><option value="void">Void</option></select>
+                                    </>
+                                ),
+                            })}
                         </SectionHeader>
 
                         <div className="card">
@@ -551,10 +562,14 @@ export default function Accounting({ accounts = [], entries = [] }) {
 
                     <div className={`acc-page ${active === 'gl' ? 'active' : ''}`} id="acc-print-gl">
                         <SectionHeader title="General Ledger" subtitle="Transactions by account with running balances">
-                            <select className="form-input form-select" value={glFilter} onChange={(e) => setGlFilter(e.target.value)} style={{ width: 240, padding: '6px 28px 6px 10px', fontSize: 12.5 }}>
-                                <option value="">All Key Accounts</option>
-                                {accountData.map((a) => <option key={a.code} value={a.code}>{a.code} - {a.name}</option>)}
-                            </select>
+                            {renderPageBarActions({
+                                extra: (
+                                    <select className="form-input form-select" value={glFilter} onChange={(e) => setGlFilter(e.target.value)} style={{ width: 240, padding: '6px 28px 6px 10px', fontSize: 12.5 }}>
+                                        <option value="">All Key Accounts</option>
+                                        {accountData.map((a) => <option key={a.code} value={a.code}>{a.code} - {a.name}</option>)}
+                                    </select>
+                                ),
+                            })}
                         </SectionHeader>
 
                         {glAccounts.map((acct) => {
@@ -604,7 +619,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'tb' ? 'active' : ''}`} id="acc-print-tb">
-                        <SectionHeader title="Trial Balance" subtitle="As at 31 March 2026"><button className="btn-ghost" onClick={printCurrent}>Export PDF</button></SectionHeader>
+                        <SectionHeader title="Trial Balance" subtitle="As at 31 March 2026">{renderPageBarActions()}</SectionHeader>
                         <div className="card">
                             <table className="ledger-table">
                                 <thead><tr><th style={{ paddingLeft: 16 }}>Code</th><th>Account Name</th><th>Type</th><th className="num" style={{ color: 'var(--accent)' }}>Debit ($)</th><th className="num" style={{ color: 'var(--green)' }}>Credit ($)</th></tr></thead>
@@ -627,7 +642,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'pl' ? 'active' : ''}`} id="acc-print-pl">
-                        <SectionHeader title="Profit & Loss Statement" subtitle="For the period ending 31 March 2026"><button className="btn-ghost" onClick={printCurrent}>Export PDF</button></SectionHeader>
+                        <SectionHeader title="Profit & Loss Statement" subtitle="For the period ending 31 March 2026">{renderPageBarActions()}</SectionHeader>
                         <div className="card">
                             <ReportSection title="Revenue" rows={plData.revenue} field="ytd" />
                             <ReportSection title="Expenses" rows={plData.expense} field="ytd" />
@@ -637,7 +652,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'bs' ? 'active' : ''}`} id="acc-print-bs">
-                        <SectionHeader title="Balance Sheet" subtitle="As at 31 March 2026"><button className="btn-ghost" onClick={printCurrent}>Export PDF</button></SectionHeader>
+                        <SectionHeader title="Balance Sheet" subtitle="As at 31 March 2026">{renderPageBarActions()}</SectionHeader>
                         <div className="card">
                             <ReportSection title="Assets" rows={bsData.assets} field="balance" />
                             <ReportSection title="Liabilities" rows={bsData.liabilities} field="balance" />
@@ -647,7 +662,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'cf' ? 'active' : ''}`} id="acc-print-cf">
-                        <SectionHeader title="Cash Flow Statement" subtitle="For the quarter ended 31 March 2026"><button className="btn-ghost" onClick={printCurrent}>Export PDF</button></SectionHeader>
+                        <SectionHeader title="Cash Flow Statement" subtitle="For the quarter ended 31 March 2026">{renderPageBarActions()}</SectionHeader>
                         <div className="card">
                             <CashSection title="Operating Activities" rows={cfData.operating} total={cfData.tO} />
                             <CashSection title="Investing Activities" rows={cfData.investing} total={cfData.tI} />
