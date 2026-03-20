@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('leases', function (Blueprint $table) {
             $table->id();
             $table->foreignId('tenant_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('unit_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('unit_id');
             $table->date('start_date');
             $table->date('end_date');
             $table->integer('duration_months');

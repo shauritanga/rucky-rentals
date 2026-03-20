@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Support\MockRentalData;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -11,6 +12,10 @@ class TenantController extends Controller
 {
     public function index()
     {
+        if (MockRentalData::shouldUse()) {
+            return Inertia::render('Tenants/Index', ['tenants' => MockRentalData::tenants()]);
+        }
+
         $tenants = Tenant::with(['leases.unit'])->orderBy('name')->get();
         return Inertia::render('Tenants/Index', ['tenants' => $tenants]);
     }
@@ -39,7 +44,7 @@ class TenantController extends Controller
     {
         $data = $request->validate([
             'name'         => 'required|string',
-            'email'        => 'required|email|unique:tenants,email,'.$tenant->id,
+            'email'        => 'required|email|unique:tenants,email,' . $tenant->id,
             'phone'        => 'required|string',
             'national_id'  => 'nullable|string',
             'nok_name'     => 'nullable|string',

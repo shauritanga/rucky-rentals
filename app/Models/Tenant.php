@@ -7,9 +7,25 @@ use Illuminate\Database\Eloquent\Model;
 class Tenant extends Model
 {
     protected $fillable = [
-        'name', 'email', 'phone', 'id_number', 'nok_name', 'nok_phone', 'nok_relationship', 'status',
+        'name',
+        'email',
+        'phone',
+        'national_id',
+        'initials',
+        'color',
+        'text_color',
+        'nok_name',
+        'nok_phone',
+        'nok_relation',
+        'notes',
     ];
 
-    public function leases() { return $this->hasMany(Lease::class); }
-    public function payments() { return $this->hasMany(Payment::class); }
+    public function leases()
+    {
+        return $this->hasMany(Lease::class);
+    }
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
 }

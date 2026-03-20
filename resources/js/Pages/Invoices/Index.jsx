@@ -53,6 +53,8 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
 
   const { data, setData, post, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
 
+  const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
+
   const filtered = invoices.filter(inv => {
     const matchFilter = filter === 'all' || inv.status === filter;
     const q = search.toLowerCase();
@@ -73,7 +75,57 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
     paid: invoices.filter(i=>i.status==='paid').length,
     overdue: invoices.filter(i=>i.status==='overdue').length,
   };
-  const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
+  const modalTotal = items.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0);
+  const typeHint = invType === 'proforma'
+    ? 'A Proforma Invoice is a preliminary estimate - not legally binding, sent before the lease is signed or activated.'
+    : 'A Tax Invoice is a legally binding request for payment, issued when rent is due.';
+
+  const openInvoiceModal = () => {
+    setInvType('invoice');
+    reset();
+    setData('issued_date', '2026-03-19');
+    setItems([{ description: '', sub_description: '', quantity: 1, unit_price: 0 }]);
+    setShowModal(true);
+  };
+
+  const onLeaseChange = (leaseId) => {
+    setData('lease_id', leaseId);
+    if (!leaseId) return;
+
+    const l = leases.find((x) => String(x.id) === String(leaseId));
+    if (!l) return;
+
+    const tenantName = l.tenant?.name || '';
+    const tenantEmail = l.tenant?.email || '';
+    const unitRef = l.unit?.number || l.unit_ref || '';
+    const monthlyRent = Number(l.monthly_rent ?? l.rent ?? 0) || 0;
+    const deposit = Number(l.deposit ?? 0) || 0;
+    const period = l.start_date && l.end_date ? `${l.start_date} - ${l.end_date}` : '';
+
+    setData('tenant_name', tenantName);
+    setData('tenant_email', tenantEmail);
+    setData('unit_ref', unitRef);
+    if (period) setData('period', period);
+
+    const nextItems = [{
+      description: `Rental Payment - Unit ${unitRef || '-'}`,
+      sub_description: period,
+      quantity: 1,
+      unit_price: monthlyRent,
+    }];
+
+    if ((l.status === 'pending_accountant' || l.status === 'pending_pm') && deposit > 0) {
+      setInvType('proforma');
+      nextItems.push({
+        description: 'Security Deposit',
+        sub_description: 'Refundable deposit',
+        quantity: 1,
+        unit_price: deposit,
+      });
+    }
+
+    setItems(nextItems);
+  };
 
   const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
@@ -138,7 +190,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
             <option value="due">Due Date</option>
             <option value="amount-hi">Amount ↓</option>
           </select>
-          <button className="btn-primary" onClick={()=>setShowModal(true)}>
+          <button className="btn-primary" onClick={openInvoiceModal}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New Invoice
           </button>
@@ -203,16 +255,31 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
                     <button key={t} type="button" onClick={()=>setInvType(t)} style={{flex:1,padding:'8px 14px',borderRadius:7,border:'none',fontSize:13,fontWeight:500,fontFamily:'inherit',cursor:'pointer',background:invType===t?'var(--bg-surface)':'none',color:invType===t?'var(--text-primary)':'var(--text-muted)',boxShadow:invType===t?'0 1px 3px rgba(0,0,0,.2)':'none',transition:'all .15s'}}>{l}</button>
                   ))}
                 </div>
+                <div style={{marginTop:8,fontSize:12,color:'var(--text-muted)'}}>{typeHint}</div>
               </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Link to Lease (optional)</label>
+                  <select className="form-input form-select" value={data.lease_id || ''} onChange={(e)=>onLeaseChange(e.target.value)}>
+                    <option value="">- Manual entry -</option>
+                    {leases.map((l) => (
+                      <option key={l.id} value={l.id}>{`${l.unit?.number || l.unit_ref || 'Unit'} - ${l.tenant?.name || 'Tenant'} (${l.status || 'active'})`}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group"><label className="form-label">Issue Date *</label><input className="form-input" type="date" value={data.issued_date} onChange={e=>setData('issued_date',e.target.value)} required /></div>
+              </div>
+
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Tenant / Billed To *</label><input className="form-input" value={data.tenant_name} onChange={e=>setData('tenant_name',e.target.value)} placeholder="Full name" required /></div>
                 <div className="form-group"><label className="form-label">Unit</label><input className="form-input" value={data.unit_ref} onChange={e=>setData('unit_ref',e.target.value)} placeholder="e.g. A-101" /></div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Issue Date *</label><input className="form-input" type="date" value={data.issued_date} onChange={e=>setData('issued_date',e.target.value)} required /></div>
-                <div className="form-group"><label className="form-label">Due Date</label><input className="form-input" type="date" value={data.due_date} onChange={e=>setData('due_date',e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Due Date *</label><input className="form-input" type="date" value={data.due_date} onChange={e=>setData('due_date',e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Period Covered</label><input className="form-input" value={data.period} onChange={e=>setData('period',e.target.value)} placeholder="e.g. Apr - Jun 2026" /></div>
               </div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Period Covered</label><input className="form-input" value={data.period} onChange={e=>setData('period',e.target.value)} placeholder="e.g. Apr – Jun 2026" /></div></div>
+
               <div style={{marginBottom:14}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                   <label className="form-label" style={{margin:0}}>Line Items *</label>
@@ -226,13 +293,15 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
                     {items.length>1 && <button type="button" className="btn-ghost" style={{flex:'0 0 32px',height:38,padding:0,justifyContent:'center',display:'flex',alignItems:'center'}} onClick={()=>setItems(items.filter((_,j)=>j!==i))}>✕</button>}
                   </div>
                 ))}
-                {items.reduce((s,i)=>s+i.quantity*i.unit_price,0)>0 && (
+                {modalTotal > 0 && (
                   <div style={{background:'var(--bg-elevated)',borderRadius:9,padding:'12px 14px',fontSize:13,color:'var(--text-secondary)'}}>
-                    Total: <strong style={{color:'var(--accent)'}}>${fmt(items.reduce((s,i)=>s+i.quantity*i.unit_price,0))}</strong>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Subtotal</span><span>${fmt(modalTotal)}</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>VAT (0%)</span><span>$0</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Due</span><span style={{color:'var(--accent)',fontWeight:700}}>${fmt(modalTotal)}</span></div>
                   </div>
                 )}
               </div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Notes / Payment Instructions</label><textarea className="form-input" value={data.notes} onChange={e=>setData('notes',e.target.value)} rows={2} style={{resize:'vertical'}} placeholder="Bank details, reference number…" /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Notes / Payment Instructions</label><textarea className="form-input" value={data.notes} onChange={e=>setData('notes',e.target.value)} rows={2} style={{resize:'vertical'}} placeholder="Bank details, reference number, payment instructions..." /></div></div>
             </div>
             <div className="modal-footer" style={{flexShrink:0}}>
               <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>

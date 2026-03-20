@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MaintenanceTicket;
 use App\Models\Unit;
+use App\Support\MockRentalData;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -11,6 +12,13 @@ class MaintenanceController extends Controller
 {
     public function index()
     {
+        if (MockRentalData::shouldUse()) {
+            return Inertia::render('Maintenance/Index', [
+                'tickets' => MockRentalData::maintenanceTickets(),
+                'units' => MockRentalData::units(),
+            ]);
+        }
+
         $tickets = MaintenanceTicket::with('unit')->orderByDesc('reported_date')->get();
         $units   = Unit::orderBy('unit_number')->get();
         return Inertia::render('Maintenance/Index', compact('tickets', 'units'));
@@ -44,7 +52,7 @@ class MaintenanceController extends Controller
         $allowed = ['status', 'assignee', 'cost'];
         if ($request->has('note')) {
             $notes = json_decode($maintenanceTicket->notes ?? '[]', true);
-            $notes[] = ['author'=>'James Mwangi','av'=>'JM','date'=>now()->format('M d'),'text'=>$request->input('note')];
+            $notes[] = ['author' => 'James Mwangi', 'av' => 'JM', 'date' => now()->format('M d'), 'text' => $request->input('note')];
             $maintenanceTicket->update(['notes' => json_encode($notes)]);
         } else {
             $maintenanceTicket->update($request->only($allowed));

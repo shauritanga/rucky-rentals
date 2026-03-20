@@ -7,6 +7,7 @@ use App\Models\InvoiceItem;
 use App\Models\Lease;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Support\MockRentalData;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -14,8 +15,16 @@ class InvoiceController extends Controller
 {
     public function index()
     {
+        if (MockRentalData::shouldUse()) {
+            return Inertia::render('Invoices/Index', [
+                'invoices' => MockRentalData::invoices(),
+                'leases' => MockRentalData::leases(),
+                'tenants' => MockRentalData::tenants(),
+            ]);
+        }
+
         $invoices = Invoice::with('items')->orderByDesc('created_at')->get();
-        $leases   = Lease::with(['tenant','unit'])->whereIn('status',['active','expiring','overdue','pending_accountant','pending_pm'])->get();
+        $leases   = Lease::with(['tenant', 'unit'])->whereIn('status', ['active', 'expiring', 'overdue', 'pending_accountant', 'pending_pm'])->get();
         $tenants  = Tenant::orderBy('name')->get();
         return Inertia::render('Invoices/Index', compact('invoices', 'leases', 'tenants'));
     }

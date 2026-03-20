@@ -5,16 +5,34 @@ import { Head, useForm } from '@inertiajs/react';
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
 const fmt = (n) => Number(n).toLocaleString();
+const SQM_PER_SQFT = 0.09290304;
+
+const unitCurrency = (unit) => (unit?.currency === 'TZS' ? 'TZS' : 'USD');
+const unitSizeSqm = (unit) => {
+  const sqm = Number(unit?.size_sqm);
+  if (sqm > 0) return sqm;
+  const sqft = Number(unit?.size_sqft);
+  return sqft > 0 ? sqft * SQM_PER_SQFT : 0;
+};
+const unitRatePerSqm = (unit) => {
+  const rate = Number(unit?.rate_per_sqm);
+  if (rate > 0) return rate;
+  const sqm = unitSizeSqm(unit);
+  return sqm > 0 ? Number(unit?.rent || 0) / sqm : 0;
+};
+const money = (amount, currency = 'USD') => currency === 'TZS' ? `TZS ${fmt(amount)}` : `$${fmt(amount)}`;
 
 function UnitCard({ unit, onClick }) {
   const lease = unit.leases?.[0];
   const tenant = lease?.tenant;
+  const currency = unitCurrency(unit);
+  const sizeSqm = unitSizeSqm(unit);
   return (
     <div className={`unit-card ${unit.status}`} onClick={() => onClick(unit)}>
       <div className="unit-card-head">
         <div>
           <div className="unit-card-id">{unit.unit_number}</div>
-          <div className="unit-card-type">{unit.type} · {unit.size_sqft} sq ft</div>
+          <div className="unit-card-type">{unit.type} · {sizeSqm.toFixed(1)} m²</div>
         </div>
         <span className={`badge ${STATUS_CLASS[unit.status]}`}>{STATUS_LABEL[unit.status]}</span>
       </div>
@@ -25,8 +43,8 @@ function UnitCard({ unit, onClick }) {
         }
       </div>
       <div className="unit-card-foot">
-        <span className="unit-card-rent">${fmt(unit.rent)}<span style={{fontSize:11,fontWeight:400,color:'var(--text-muted)'}}>/mo</span></span>
-        <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{unit.size_sqft} ft²</span>
+        <span className="unit-card-rent">{money(unit.rent, currency)}<span style={{fontSize:11,fontWeight:400,color:'var(--text-muted)'}}>/mo</span></span>
+        <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{sizeSqm.toFixed(1)} m²</span>
       </div>
     </div>
   );
@@ -41,8 +59,12 @@ export default function UnitsIndex({ units }) {
   const [showModal, setShowModal] = useState(false);
 
   const { data, setData, post, processing, reset } = useForm({
-    unit_number:'', floor:'', type:'Studio', size_sqft:'', rent:'', status:'vacant', notes:''
+    unit_number:'', floor:'1', type:'Studio', size_sqm:'', rate_per_sqm:'', currency:'USD', status:'vacant', notes:''
   });
+
+  const sizeSqmInput = Number(data.size_sqm) || 0;
+  const ratePerSqmInput = Number(data.rate_per_sqm) || 0;
+  const computedMonthlyRent = sizeSqmInput * ratePerSqmInput;
 
   const filtered = units.filter(u => {
     const matchStatus = filter === 'all' || u.status === filter;
@@ -118,8 +140,8 @@ export default function UnitsIndex({ units }) {
                             <td style={{color:'var(--text-secondary)'}}>{u.type}</td>
                             <td>{t?<div className="tenant-cell"><div className="t-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div>{t.name}</div>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
                             <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
-                            <td style={{fontWeight:600}}>${fmt(u.rent)}</td>
-                            <td style={{color:'var(--text-muted)'}}>{u.size_sqft} ft²</td>
+                            <td style={{fontWeight:600}}>{money(u.rent, unitCurrency(u))}</td>
+                            <td style={{color:'var(--text-muted)'}}>{unitSizeSqm(u).toFixed(1)} m²</td>
                           </tr>
                         );
                       })}
@@ -138,7 +160,7 @@ export default function UnitsIndex({ units }) {
             <div className="drawer-header">
               <div>
                 <div style={{fontSize:26,fontWeight:700,letterSpacing:'-.8px'}}>{selected.unit_number}</div>
-                <div style={{fontSize:13,color:'var(--text-muted)',marginTop:4}}>Floor {selected.floor} · {selected.type} · {selected.size_sqft} sq ft</div>
+                <div style={{fontSize:13,color:'var(--text-muted)',marginTop:4}}>Floor {selected.floor} · {selected.type} · {unitSizeSqm(selected).toFixed(1)} m²</div>
               </div>
               <button className="drawer-close" onClick={()=>setSelected(null)}>✕</button>
             </div>
@@ -147,9 +169,11 @@ export default function UnitsIndex({ units }) {
                 <div className="drawer-section-title">Unit Details</div>
                 <div className="kv-grid">
                   <div className="kv"><div className="kv-label">Status</div><div className={`kv-value ${selected.status==='occupied'?'green':selected.status==='overdue'?'red':selected.status==='maintenance'?'accent':'amber'}`}>{STATUS_LABEL[selected.status]}</div></div>
-                  <div className="kv"><div className="kv-label">Monthly Rent</div><div className="kv-value">${fmt(selected.rent)}</div></div>
-                  <div className="kv"><div className="kv-label">Size</div><div className="kv-value">{selected.size_sqft} sq ft</div></div>
-                  <div className="kv"><div className="kv-label">Security Deposit</div><div className="kv-value">${fmt(selected.deposit)}</div></div>
+                  <div className="kv"><div className="kv-label">Monthly Rent</div><div className="kv-value">{money(selected.rent, unitCurrency(selected))}</div></div>
+                  <div className="kv"><div className="kv-label">Size</div><div className="kv-value">{unitSizeSqm(selected).toFixed(1)} m²</div></div>
+                  <div className="kv"><div className="kv-label">Rate per m²</div><div className="kv-value">{money(unitRatePerSqm(selected).toFixed(2), unitCurrency(selected))}</div></div>
+                  <div className="kv"><div className="kv-label">Currency</div><div className="kv-value">{unitCurrency(selected)}</div></div>
+                  <div className="kv"><div className="kv-label">Security Deposit</div><div className="kv-value">{money(selected.deposit, unitCurrency(selected))}</div></div>
                 </div>
               </div>
               {selected.leases?.[0]?.tenant && (
@@ -171,7 +195,7 @@ export default function UnitsIndex({ units }) {
                   <div className="kv-grid">
                     <div className="kv"><div className="kv-label">Start</div><div className="kv-value">{selected.leases[0].start_date}</div></div>
                     <div className="kv"><div className="kv-label">End</div><div className="kv-value">{selected.leases[0].end_date}</div></div>
-                    <div className="kv"><div className="kv-label">Annual Value</div><div className="kv-value">${fmt(selected.rent*12)}</div></div>
+                    <div className="kv"><div className="kv-label">Annual Value</div><div className="kv-value">{money(selected.rent*12, unitCurrency(selected))}</div></div>
                     <div className="kv"><div className="kv-label">Status</div><div className={`kv-value ${selected.leases[0].status==='active'?'green':selected.leases[0].status==='overdue'?'red':'amber'}`}>{selected.leases[0].status}</div></div>
                   </div>
                 </div>
@@ -202,10 +226,14 @@ export default function UnitsIndex({ units }) {
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Type</label><select className="form-input form-select" value={data.type} onChange={e=>setData('type',e.target.value)}>{['Studio','1 Bed','2 Bed','3 Bed','Penthouse'].map(t=><option key={t}>{t}</option>)}</select></div>
-                <div className="form-group"><label className="form-label">Monthly Rent ($)</label><input className="form-input" type="number" value={data.rent} onChange={e=>setData('rent',e.target.value)} placeholder="1200" required /></div>
+                <div className="form-group"><label className="form-label">Size (m²)</label><input className="form-input" type="number" step="0.01" min="0" value={data.size_sqm} onChange={e=>setData('size_sqm',e.target.value)} placeholder="60" required /></div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Size (sq ft)</label><input className="form-input" type="number" value={data.size_sqft} onChange={e=>setData('size_sqft',e.target.value)} placeholder="650" required /></div>
+                <div className="form-group"><label className="form-label">Currency</label><select className="form-input form-select" value={data.currency} onChange={e=>setData('currency',e.target.value)}><option value="TZS">TZS</option><option value="USD">USD</option></select></div>
+                <div className="form-group"><label className="form-label">Rate per m²</label><input className="form-input" type="number" step="0.01" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required /></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Computed Monthly Rent</label><input className="form-input" type="text" value={computedMonthlyRent > 0 ? money(computedMonthlyRent.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>
                 <div className="form-group"><label className="form-label">Status</label><select className="form-input form-select" value={data.status} onChange={e=>setData('status',e.target.value)}>{['vacant','occupied','maintenance'].map(s=><option key={s}>{s}</option>)}</select></div>
               </div>
             </div>

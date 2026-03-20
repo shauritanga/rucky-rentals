@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Payment;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Support\MockRentalData;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -12,6 +13,14 @@ class PaymentController extends Controller
 {
     public function index()
     {
+        if (MockRentalData::shouldUse()) {
+            return Inertia::render('Payments/Index', [
+                'payments' => MockRentalData::payments(),
+                'tenants' => MockRentalData::tenants(),
+                'units' => MockRentalData::units(),
+            ]);
+        }
+
         $payments = Payment::with(['tenant', 'unit'])->orderByDesc('created_at')->get();
         $tenants  = Tenant::orderBy('name')->get();
         $units    = Unit::orderBy('unit_number')->get();

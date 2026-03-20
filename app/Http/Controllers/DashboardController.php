@@ -7,12 +7,17 @@ use App\Models\Tenant;
 use App\Models\Payment;
 use App\Models\MaintenanceTicket;
 use App\Models\Lease;
+use App\Support\MockRentalData;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
     public function index()
     {
+        if (MockRentalData::shouldUse()) {
+            return Inertia::render('Dashboard', MockRentalData::dashboard());
+        }
+
         $totalUnits    = Unit::count();
         $occupiedUnits = Unit::whereIn('status', ['occupied', 'overdue'])->count();
         $vacantUnits   = Unit::where('status', 'vacant')->count();

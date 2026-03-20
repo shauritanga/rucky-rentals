@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Document;
 use App\Models\Unit;
+use App\Support\MockRentalData;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -11,6 +12,13 @@ class DocumentController extends Controller
 {
     public function index()
     {
+        if (MockRentalData::shouldUse()) {
+            return Inertia::render('Documents/Index', [
+                'documents' => MockRentalData::documents(),
+                'units' => MockRentalData::units(),
+            ]);
+        }
+
         $documents = Document::with('unit')->orderByDesc('created_at')->get();
         $units     = Unit::orderBy('unit_number')->get();
         return Inertia::render('Documents/Index', compact('documents', 'units'));
@@ -28,9 +36,9 @@ class DocumentController extends Controller
         $file = $request->file('file');
         $path = $file->store('documents', 'public');
         $ext  = strtolower($file->getClientOriginalExtension());
-        $type = in_array($ext, ['jpg','jpeg','png','gif','webp']) ? 'img'
-              : ($ext === 'pdf' ? 'pdf'
-              : (in_array($ext, ['doc','docx']) ? 'word' : 'other'));
+        $type = in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp']) ? 'img'
+            : ($ext === 'pdf' ? 'pdf'
+                : (in_array($ext, ['doc', 'docx']) ? 'word' : 'other'));
 
         $unit = $request->unit_ref ? Unit::where('unit_number', $request->unit_ref)->first() : null;
 
