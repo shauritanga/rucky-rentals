@@ -11,8 +11,10 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ElectricityController;
 use App\Http\Controllers\AccountingController;
+use App\Http\Controllers\ProfileController;
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
 
 Route::resource('units', UnitController::class)->only(['index','store','update','destroy']);
 Route::resource('tenants', TenantController::class)->only(['index','store','update','destroy']);

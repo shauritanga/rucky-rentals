@@ -52,13 +52,13 @@ export default function AppLayout({ children, title, subtitle }) {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="user-card">
+          <Link href="/profile" className="user-card" style={{ textDecoration: 'none', color: 'inherit' }}>
             <div className="avatar">JM</div>
             <div className="user-info">
               <div className="user-name">James Mwangi</div>
               <div className="user-role">Property Manager</div>
             </div>
-          </div>
+          </Link>
         </div>
       </aside>
 
