@@ -6,7 +6,10 @@ use Illuminate\Database\Eloquent\Model;
 
 class JournalEntry extends Model
 {
-    protected $fillable = ['number', 'date', 'description', 'status'];
+    protected $fillable = ['entry_number', 'entry_date', 'description', 'reference', 'status'];
 
-    public function lines() { return $this->hasMany(JournalLine::class); }
+    public function lines()
+    {
+        return $this->hasMany(JournalLine::class);
+    }
 }
