@@ -58,6 +58,7 @@ export default function AppLayout({ children, title, subtitle }) {
               <div className="user-name">James Mwangi</div>
               <div className="user-role">Property Manager</div>
             </div>
+            <svg style={{ flexShrink: 0, marginLeft: 'auto', opacity: .4 }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
           </Link>
         </div>
       </aside>
