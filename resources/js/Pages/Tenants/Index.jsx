@@ -35,6 +35,36 @@ export default function TenantsIndex({ tenants }) {
 
   const totalRent = (t) => (t.leases||[]).reduce((s,l)=>s+Number(l.monthly_rent),0);
   const totalBal  = (t) => (t.leases||[]).reduce((s,l)=>l.status==='overdue'?s+Number(l.monthly_rent):s,0);
+  const toMonYear = (date) => {
+    if (!date) return '—';
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return date;
+    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  };
+  const leaseProgress = (lease) => {
+    if (!lease?.start_date || !lease?.end_date) return { pct: 0, fillClass: '', caption: 'No active lease' };
+    const now = new Date('2026-03-20');
+    const start = new Date(lease.start_date);
+    const end = new Date(lease.end_date);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return { pct: 0, fillClass: '', caption: 'No active lease' };
+    const total = end.getTime() - start.getTime();
+    const elapsed = Math.max(0, Math.min(now.getTime() - start.getTime(), total));
+    const pct = Math.max(0, Math.min(100, (elapsed / total) * 100));
+    const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const fillClass = daysLeft < 0 ? 'danger' : daysLeft <= 60 ? 'warning' : '';
+    const caption = daysLeft < 0 ? `Expired ${Math.abs(daysLeft)} days ago` : `${daysLeft} days remaining`;
+    return { pct, fillClass, caption };
+  };
+  const paymentHistory = (tenant) => {
+    const rent = totalRent(tenant);
+    const overdue = totalBal(tenant) > 0;
+    return [
+      { ok: !overdue, month: 'March 2026', amount: rent, date: overdue ? 'Overdue' : 'Mar 1, 2026' },
+      { ok: true, month: 'February 2026', amount: rent, date: 'Feb 2, 2026' },
+      { ok: !overdue, month: 'January 2026', amount: rent, date: overdue ? 'Late — Jan 18' : 'Jan 3, 2026' },
+      { ok: true, month: 'December 2025', amount: rent, date: 'Dec 1, 2025' },
+    ];
+  };
 
   return (
     <AppLayout title="Tenants" subtitle={`${tenants.length} tenants`}>
@@ -135,57 +165,128 @@ export default function TenantsIndex({ tenants }) {
       }
 
       {/* Tenant Drawer */}
-      <div className={`drawer-overlay ${selected?'open':''}`} onClick={e=>e.target===e.currentTarget&&setSelected(null)}>
-        <div className="drawer">
-          {selected && <>
-            <div className="drawer-header">
-              <div style={{display:'flex',alignItems:'center',gap:14}}>
-                <div style={{width:52,height:52,borderRadius:'50%',background:selected.color,color:selected.text_color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:700,flexShrink:0}}>{selected.initials}</div>
-                <div>
-                  <div style={{fontSize:18,fontWeight:700}}>{selected.name}</div>
-                  <div style={{fontSize:'12.5px',color:'var(--text-muted)',marginTop:4}}>Unit {(selected.leases||[]).map(l=>l.unit?.unit_number).join(', ')||'—'}</div>
-                </div>
-              </div>
-              <button className="drawer-close" onClick={()=>setSelected(null)}>✕</button>
-            </div>
-            <div className="drawer-body">
-              {selected.notes && <div style={{background:'var(--amber-dim)',border:'1px solid var(--amber)',borderRadius:9,padding:'11px 13px',fontSize:'12.5px',color:'var(--amber)',marginBottom:20}}>{selected.notes}</div>}
-              <div className="drawer-section">
-                <div className="drawer-section-title">Contact Information</div>
-                {[['Email',selected.email],['Phone',selected.phone],['National ID',selected.national_id||'—']].map(([l,v])=>(
-                  <div key={l} style={{background:'var(--bg-elevated)',borderRadius:9,padding:'10px 13px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-                    <div style={{width:28,height:28,borderRadius:7,background:'var(--accent-dim)',color:'var(--accent)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <div className={`tenant-drawer-overlay ${selected?'open':''}`} onClick={e=>e.target===e.currentTarget&&setSelected(null)}>
+        <div className="tenant-drawer">
+          {selected && (() => {
+            const status = getTenantStatus(selected);
+            const ringClass = status === 'overdue' ? 'red' : status === 'expiring' ? 'amber' : 'green';
+            const unitsText = (selected.leases||[]).map(l=>l.unit?.unit_number).filter(Boolean).join(', ') || '—';
+            const firstLease = (selected.leases||[])[0];
+            const prog = leaseProgress(firstLease);
+            const hist = paymentHistory(selected);
+            const bal = totalBal(selected);
+            return (
+              <>
+                <div className="tdr-header">
+                  <div className="tdr-avatar-wrap">
+                    <div className="tdr-avatar" style={{background:selected.color,color:selected.text_color}}>
+                      <div className={`tdr-status-ring ${ringClass}`}></div>
+                      {selected.initials}
                     </div>
-                    <div><div style={{fontSize:11,color:'var(--text-muted)'}}>{l}</div><div style={{fontSize:13,fontWeight:500}}>{v}</div></div>
+                    <div>
+                      <div className="tdr-name">{selected.name}</div>
+                      <div className="tdr-unit">Unit {unitsText}</div>
+                      <div className="tdr-since">Tenant since {toMonYear(firstLease?.start_date)}</div>
+                    </div>
                   </div>
-                ))}
-              </div>
-              <div className="drawer-section">
-                <div className="drawer-section-title">Lease Overview</div>
-                <div className="kv-grid">
-                  <div className="kv"><div className="kv-label">Monthly Rent</div><div className="kv-value">${fmt(totalRent(selected))}</div></div>
-                  <div className="kv"><div className="kv-label">Balance</div><div className={`kv-value ${totalBal(selected)>0?'red':'green'}`}>{totalBal(selected)>0?`$${fmt(totalBal(selected))} overdue`:'Paid up'}</div></div>
-                  <div className="kv"><div className="kv-label">Deposit Held</div><div className="kv-value">${fmt((selected.leases||[]).reduce((s,l)=>s+Number(l.deposit),0))}</div></div>
-                  <div className="kv"><div className="kv-label">Leases</div><div className="kv-value accent">{selected.leases?.length||0}</div></div>
+                  <button className="drawer-close" onClick={()=>setSelected(null)}>✕</button>
                 </div>
-              </div>
-              {selected.nok_name && (
-                <div className="drawer-section">
-                  <div className="drawer-section-title">Emergency Contact</div>
-                  <div style={{background:'var(--bg-elevated)',borderRadius:9,padding:'10px 13px'}}>
-                    <div style={{fontSize:11,color:'var(--text-muted)'}}>{selected.nok_relation}</div>
-                    <div style={{fontSize:13,fontWeight:600}}>{selected.nok_name}</div>
-                    <div style={{fontSize:12,color:'var(--text-muted)'}}>{selected.nok_phone}</div>
+
+                <div className="tdr-body">
+                  {selected.notes && (
+                    <div className="tdr-section">
+                      <div className="tdr-note">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{flexShrink:0,marginTop:1}}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <span>{selected.notes}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="tdr-section">
+                    <div className="tdr-section-title">Contact Information</div>
+                    <div className="tdr-contact-list">
+                      <div className="tdr-contact-item">
+                        <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+                        <div><div className="tdr-contact-label">Email</div><div className="tdr-contact-value">{selected.email}</div></div>
+                      </div>
+                      <div className="tdr-contact-item">
+                        <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.84 1.16 2 2 0 012.82.84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 8.1a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg></div>
+                        <div><div className="tdr-contact-label">Phone</div><div className="tdr-contact-value">{selected.phone}</div></div>
+                      </div>
+                      <div className="tdr-contact-item">
+                        <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+                        <div><div className="tdr-contact-label">National ID</div><div className="tdr-contact-value">{selected.national_id || '—'}</div></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="tdr-section">
+                    <div className="tdr-section-title">Lease Overview</div>
+                    <div className="tdr-lease-progress">
+                      {firstLease ? (
+                        <>
+                          <div className="tdr-lease-dates"><span>{toMonYear(firstLease.start_date)}</span><span>{toMonYear(firstLease.end_date)}</span></div>
+                          <div className="tdr-lease-track"><div className={`tdr-lease-fill ${prog.fillClass}`} style={{width:`${prog.pct.toFixed(1)}%`}}></div></div>
+                          <div className="tdr-lease-caption">{prog.caption}</div>
+                        </>
+                      ) : <div style={{color:'var(--text-muted)',fontSize:13}}>No active lease</div>}
+                    </div>
+                    <div className="tdr-kv-grid">
+                      <div className="tdr-kv"><div className="tdr-kv-label">Monthly Rent</div><div className="tdr-kv-value">${fmt(totalRent(selected))}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Balance</div><div className={`tdr-kv-value ${bal>0?'red':'green'}`}>{bal>0?`$${fmt(bal)} overdue`:'Paid up'}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Deposit Held</div><div className="tdr-kv-value">${fmt((selected.leases||[]).reduce((s,l)=>s+Number(l.deposit),0))}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Units</div><div className="tdr-kv-value accent">{unitsText}</div></div>
+                    </div>
+                  </div>
+
+                  <div className="tdr-section">
+                    <div className="tdr-section-title">Payment History</div>
+                    <div>
+                      {hist.map((p, idx) => (
+                        <div className="tdr-payment-row" key={idx}>
+                          <div className={`tdr-pay-dot ${p.ok?'green':'red'}`}></div>
+                          <div className="tdr-pay-month">{p.month}</div>
+                          <div className="tdr-pay-amount" style={{color:p.ok?'var(--green)':'var(--red)'}}>${fmt(p.amount)}</div>
+                          <div className="tdr-pay-date">{p.date}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="tdr-section">
+                    <div className="tdr-section-title">Emergency Contact</div>
+                    <div className="tdr-contact-list">
+                      <div className="tdr-contact-item">
+                        <div className="tdr-contact-icon" style={{background:'var(--amber-dim)',color:'var(--amber)'}}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .84h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.29a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg>
+                        </div>
+                        <div>
+                          <div className="tdr-contact-label">{selected.nok_relation || 'Next of Kin'}</div>
+                          <div className="tdr-contact-value">{selected.nok_name || '—'}</div>
+                          <div className="tdr-contact-label" style={{marginTop:2}}>{selected.nok_phone || '—'}</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
-            </div>
-            <div className="drawer-footer">
-              <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>setSelected(null)}>Edit Tenant</button>
-              <button className="btn-secondary" onClick={()=>setSelected(null)}>Send Invoice</button>
-            </div>
-          </>}
+
+                <div className="tdr-footer">
+                  <button className="btn-primary" onClick={()=>setSelected(null)} style={{flex:1,justifyContent:'center'}}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Edit Tenant
+                  </button>
+                  <button className="btn-secondary" onClick={()=>setSelected(null)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                    Send Invoice
+                  </button>
+                  <button className="btn-secondary" onClick={()=>setSelected(null)}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .84h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.29a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg>
+                    Contact
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 

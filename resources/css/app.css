@@ -259,6 +259,63 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .history-dot.accent{background:var(--accent)}
 .history-text{font-size:13px}
 .history-date{font-size:11.5px;color:var(--text-muted);margin-top:1px}
+
+/* Tenant drawer exact styles */
+.tenant-drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.38);backdrop-filter:blur(2px);z-index:90;opacity:0;pointer-events:none;transition:opacity .22s}
+.tenant-drawer-overlay.open{opacity:1;pointer-events:all}
+.tenant-drawer{position:fixed;top:0;right:0;bottom:0;width:460px;max-width:100vw;background:var(--bg-surface);border-left:1px solid var(--border);z-index:91;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);box-shadow:var(--shadow-float)}
+.tenant-drawer-overlay.open .tenant-drawer{transform:translateX(0)}
+.tdr-header{padding:20px 22px 14px;border-bottom:1px solid var(--border-subtle);display:flex;align-items:flex-start;justify-content:space-between}
+.tdr-avatar-wrap{display:flex;gap:14px;align-items:center}
+.tdr-avatar{position:relative;width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0}
+.tdr-status-ring{position:absolute;inset:-3px;border-radius:50%;border:2px solid transparent}
+.tdr-status-ring.green{border-color:var(--green)}
+.tdr-status-ring.amber{border-color:var(--amber)}
+.tdr-status-ring.red{border-color:var(--red)}
+.tdr-name{font-size:18px;font-weight:700;line-height:1.15;letter-spacing:-.3px}
+.tdr-unit{font-size:13px;color:var(--text-muted);margin-top:3px}
+.tdr-since{font-size:12px;color:var(--text-muted);margin-top:2px}
+.tdr-body{flex:1;overflow-y:auto;padding:18px 22px 24px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.tdr-section{margin-bottom:22px}
+.tdr-section-title{font-size:11px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px}
+.tdr-note{background:var(--amber-dim);border:1px solid var(--amber);color:var(--amber);border-radius:9px;padding:10px 12px;display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45}
+.tdr-contact-list{display:flex;flex-direction:column;gap:8px}
+.tdr-contact-item{display:flex;align-items:flex-start;gap:10px;background:var(--bg-elevated);border-radius:9px;padding:10px 12px}
+.tdr-contact-icon{width:28px;height:28px;border-radius:8px;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tdr-contact-label{font-size:11px;color:var(--text-muted);line-height:1.2}
+.tdr-contact-value{font-size:13px;font-weight:500;margin-top:1px;line-height:1.3}
+.tdr-lease-progress{background:var(--bg-elevated);border-radius:10px;padding:12px;margin-bottom:10px}
+.tdr-lease-dates{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:8px}
+.tdr-lease-track{height:8px;background:var(--bg-base);border-radius:999px;overflow:hidden}
+.tdr-lease-fill{height:100%;background:var(--green);border-radius:999px;transition:width .3s}
+.tdr-lease-fill.warning{background:var(--amber)}
+.tdr-lease-fill.danger{background:var(--red)}
+.tdr-lease-caption{margin-top:7px;font-size:11.5px;color:var(--text-muted)}
+.tdr-kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tdr-kv{background:var(--bg-elevated);border-radius:9px;padding:10px 12px}
+.tdr-kv-label{font-size:11px;color:var(--text-muted)}
+.tdr-kv-value{font-size:14px;font-weight:600;margin-top:2px}
+.tdr-kv-value.green{color:var(--green)}
+.tdr-kv-value.red{color:var(--red)}
+.tdr-kv-value.accent{color:var(--accent)}
+.tdr-payment-row{display:grid;grid-template-columns:12px 1fr auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle)}
+.tdr-payment-row:last-child{border-bottom:none}
+.tdr-pay-dot{width:8px;height:8px;border-radius:50%}
+.tdr-pay-dot.green{background:var(--green)}
+.tdr-pay-dot.red{background:var(--red)}
+.tdr-pay-month{font-size:12.5px}
+.tdr-pay-amount{font-size:12.5px;font-weight:600}
+.tdr-pay-date{font-size:11px;color:var(--text-muted);text-align:right}
+.tdr-footer{display:flex;gap:8px;padding:12px 22px;border-top:1px solid var(--border-subtle);background:var(--bg-surface)}
+.tdr-footer .btn-secondary,.tdr-footer .btn-primary{height:34px;padding:0 12px;font-size:12.5px}
+
+@media (max-width:760px){
+	.tenant-drawer{width:100%}
+	.tdr-kv-grid{grid-template-columns:1fr}
+	.tdr-payment-row{grid-template-columns:12px 1fr auto}
+	.tdr-pay-date{grid-column:2/-1;text-align:left;margin-left:0}
+}
+
 .unit-card-foot{display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border-subtle)}
 .unit-card-rent{font-size:14px;font-weight:600}
 .floor-section{margin-bottom:24px}
