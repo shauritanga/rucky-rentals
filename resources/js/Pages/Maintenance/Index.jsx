@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
+import useExchangeRate from '@/hooks/useExchangeRate';
 
-const fmt = (n) => Number(n).toLocaleString();
 const CAT_ICONS = { Plumbing:'🔧', Electrical:'💡', HVAC:'❄️', General:'🪛', Security:'🔒' };
 
 export default function MaintenanceIndex({ tickets, units }) {
@@ -13,6 +13,7 @@ export default function MaintenanceIndex({ tickets, units }) {
   const [note, setNote] = useState('');
 
   const { data, setData, post, processing, reset } = useForm({ title:'', description:'', unit_ref:'', category:'Plumbing', priority:'med', assignee:'' });
+  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
 
   const filtered = tickets.filter(t => {
     const matchFilter = filter === 'all' || t.status === filter;
@@ -22,6 +23,7 @@ export default function MaintenanceIndex({ tickets, units }) {
   });
 
   const counts = { all: tickets.length, open: tickets.filter(t=>t.status==='open').length, 'in-progress': tickets.filter(t=>t.status==='in-progress').length, resolved: tickets.filter(t=>t.status==='resolved').length };
+  const totalCostUsd = tickets.reduce((sum, ticket) => sum + Number(ticket.cost || 0), 0);
 
   const submit = (e) => { e.preventDefault(); post('/maintenance', { onSuccess: () => { reset(); setShowModal(false); } }); };
   const updateStatus = (ticket, status) => router.patch(`/maintenance/${ticket.id}`, { status }, { onSuccess: () => setSelected(s => s ? {...s, status} : null) });
@@ -37,7 +39,7 @@ export default function MaintenanceIndex({ tickets, units }) {
         <div className="stat-card"><div className="stat-top"><div className="stat-icon red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><span className="stat-delta down">{tickets.filter(t=>t.priority==='high'&&t.status==='open').length} urgent</span></div><div className="stat-value">{counts.open + counts['in-progress']}</div><div className="stat-label">Open Tickets</div></div>
         <div className="stat-card"><div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><span className="stat-delta up">avg</span></div><div className="stat-value">3.2d</div><div className="stat-label">Avg Resolution Time</div></div>
         <div className="stat-card"><div className="stat-top"><div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg></div><span className="stat-delta up">this month</span></div><div className="stat-value">{counts.resolved}</div><div className="stat-label">Resolved Tickets</div></div>
-        <div className="stat-card"><div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div><span className="stat-delta down">↑ 5%</span></div><div className="stat-value">${(tickets.reduce((s,t)=>s+Number(t.cost||0),0)/1000).toFixed(1)}k</div><div className="stat-label">Cost This Month</div></div>
+        <div className="stat-card"><div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div><span className="stat-delta down">↑ 5%</span></div><div className="stat-value">{formatCompactTzsFromUsd(totalCostUsd)}</div><div className="stat-label">Cost This Month</div></div>
       </div>
 
       <div className="toolbar">
@@ -72,7 +74,7 @@ export default function MaintenanceIndex({ tickets, units }) {
                 <td><span className={`maint-status-badge ${t.status}`}>{t.status==='in-progress'?'In Progress':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
                 <td style={{fontSize:12,color:'var(--text-muted)',whiteSpace:'nowrap'}}>{t.reported_date}</td>
                 <td><div className="assignee-chip"><div className="assignee-dot">{t.assignee?t.assignee.slice(0,2).toUpperCase():'?'}</div>{t.assignee||'—'}</div></td>
-                <td style={{fontSize:13,fontWeight:600,color:t.cost?'var(--text-secondary)':'var(--text-muted)'}}>{t.cost?`$${fmt(t.cost)}`:'—'}</td>
+                <td style={{fontSize:13,fontWeight:600,color:t.cost?'var(--text-secondary)':'var(--text-muted)'}}>{t.cost ? formatTzsFromUsd(t.cost) : '—'}</td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(t)}}>···</button></td>
               </tr>
             ))}

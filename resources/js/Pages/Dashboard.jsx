@@ -1,15 +1,14 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Head } from '@inertiajs/react';
-
-const fmt = (n) => Number(n).toLocaleString();
-const fmtK = (n) => n >= 1000 ? '$' + (n / 1000).toFixed(0) + 'k' : '$' + fmt(n);
+import useExchangeRate from '@/hooks/useExchangeRate';
 
 const STATUS_CLASS = { occupied: 'occupied', vacant: 'vacant', overdue: 'overdue', maintenance: 'maintenance' };
 const STATUS_LABEL = { occupied: 'Occupied', vacant: 'Vacant', overdue: 'Overdue', maintenance: 'Maintenance' };
 
 export default function Dashboard({ stats, recentPayments, maintenanceItems, units, occupancyByFloor }) {
+  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
   const upcomingEvents = [
-    { day: '20', mon: 'Mar', title: 'Rent due - A-102', meta: 'Brian Kimani - $950', type: 'rent', label: 'Rent' },
+    { day: '20', mon: 'Mar', title: 'Rent due - A-102', meta: `Brian Kimani - ${formatTzsFromUsd(950)}`, type: 'rent', label: 'Rent' },
     { day: '22', mon: 'Mar', title: 'Plumbing repair - D-401', meta: 'Contractor visit scheduled', type: 'repair', label: 'Repair' },
     { day: '25', mon: 'Mar', title: 'Move-in - B-202', meta: 'New tenant onboarding', type: 'move', label: 'Move-in' },
     { day: '31', mon: 'Mar', title: 'Lease renewal - C-302', meta: '12 months extension', type: 'move', label: 'Lease' },
@@ -41,9 +40,9 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
         <div className="stat-card">
           <div className="stat-top">
             <div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
-            <span className="stat-delta down">↓ $800</span>
+            <span className="stat-delta down">↓ {formatTzsFromUsd(800)}</span>
           </div>
-          <div className="stat-value">{fmtK(stats.monthlyRevenue)}</div>
+          <div className="stat-value">{formatCompactTzsFromUsd(stats.monthlyRevenue)}</div>
           <div className="stat-label">Revenue / Month</div>
         </div>
         <div className="stat-card">
@@ -51,7 +50,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
             <div className="stat-icon red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
             <span className="stat-delta down">{stats.overdueUnits} pending</span>
           </div>
-          <div className="stat-value">{fmtK(stats.overdueBalance)}</div>
+          <div className="stat-value">{formatCompactTzsFromUsd(stats.overdueBalance)}</div>
           <div className="stat-label">Overdue Rent</div>
         </div>
       </div>
@@ -100,8 +99,8 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                         )}
                       </td>
                       <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
-                      <td className="amount">${fmt(u.rent)}</td>
-                      <td className={`amount ${isOverdue ? 'due' : isOccupied ? 'paid' : ''}`}>{isOverdue ? `$${fmt(u.rent)}` : isOccupied ? 'Paid' : '—'}</td>
+                      <td className="amount">{formatTzsFromUsd(u.rent)}</td>
+                      <td className={`amount ${isOverdue ? 'due' : isOccupied ? 'paid' : ''}`}>{isOverdue ? formatTzsFromUsd(u.rent) : isOccupied ? 'Paid' : '—'}</td>
                       <td><button className="action-dots">···</button></td>
                     </tr>
                   );
@@ -173,7 +172,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                   <div className="pay-unit">Unit {p.unit?.unit_number || '—'}</div>
                 </div>
                 <div>
-                  <div className="pay-amount" style={{ color: p.status === 'paid' ? 'var(--green)' : 'var(--red)' }}>{p.status === 'paid' ? '+' : ''}${fmt(p.amount)}</div>
+                  <div className="pay-amount" style={{ color: p.status === 'paid' ? 'var(--green)' : 'var(--red)' }}>{p.status === 'paid' ? '+ ' : ''}{formatTzsFromUsd(p.amount)}</div>
                   <div className="pay-date">{p.paid_date || 'Overdue'}</div>
                 </div>
               </div>

@@ -17,7 +17,7 @@ const COMMERCIAL_UNIT_TYPES = [
   'Kiosk',
 ];
 
-const unitCurrency = (unit) => (unit?.currency === 'TZS' ? 'TZS' : 'USD');
+const unitCurrency = (unit) => (unit?.currency === 'USD' ? 'USD' : 'TZS');
 const unitSizeSqm = (unit) => {
   const sqm = Number(unit?.size_sqm);
   if (sqm > 0) return sqm;
@@ -30,7 +30,7 @@ const unitRatePerSqm = (unit) => {
   const sqm = unitSizeSqm(unit);
   return sqm > 0 ? Number(unit?.rent || 0) / sqm : 0;
 };
-const money = (amount, currency = 'USD') => currency === 'TZS' ? `TZS ${fmt(amount)}` : `$${fmt(amount)}`;
+const money = (amount, currency = 'TZS') => currency === 'USD' ? `$${fmt(amount)}` : `TZS ${fmt(amount)}`;
 
 function UnitCard({ unit, onClick }) {
   const lease = unit.leases?.[0];
@@ -69,7 +69,7 @@ export default function UnitsIndex({ units }) {
   const [showModal, setShowModal] = useState(false);
 
   const { data, setData, post, processing, reset } = useForm({
-    unit_number:'', floor:'1', type:'Office Suite', size_sqm:'', rate_per_sqm:'', currency:'USD', status:'vacant', notes:''
+    unit_number:'', floor:'1', type:'Office Suite', size_sqm:'', rate_per_sqm:'', currency:'TZS', status:'vacant', notes:''
   });
 
   const sizeSqmInput = Number(data.size_sqm) || 0;

@@ -1,6 +1,8 @@
 <?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use AshAllenDesign\LaravelExchangeRates\Classes\ExchangeRate;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\TenantController;
@@ -16,13 +18,13 @@ use App\Http\Controllers\ProfileController;
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
 
-Route::resource('units', UnitController::class)->only(['index','store','update','destroy']);
-Route::resource('tenants', TenantController::class)->only(['index','store','update','destroy']);
-Route::resource('leases', LeaseController::class)->only(['index','store','update','destroy']);
-Route::resource('payments', PaymentController::class)->only(['index','store','update','destroy']);
-Route::resource('maintenance', MaintenanceController::class)->only(['index','store','update','destroy']);
-Route::resource('documents', DocumentController::class)->only(['index','store','update','destroy']);
-Route::resource('invoices', InvoiceController::class)->only(['index','store','update','destroy']);
+Route::resource('units', UnitController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('tenants', TenantController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('leases', LeaseController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('payments', PaymentController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('maintenance', MaintenanceController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('documents', DocumentController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('invoices', InvoiceController::class)->only(['index', 'store', 'update', 'destroy']);
 
 Route::get('electricity', [ElectricityController::class, 'index'])->name('electricity');
 Route::post('electricity/readings', [ElectricityController::class, 'storeReading'])->name('electricity.readings.store');
@@ -33,3 +35,17 @@ Route::get('accounting', [AccountingController::class, 'index'])->name('accounti
 Route::post('accounting/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');
 Route::post('accounting/journal-entries', [AccountingController::class, 'storeJournalEntry'])->name('accounting.journal.store');
 Route::patch('accounting/journal-entries/{journalEntry}', [AccountingController::class, 'updateJournalEntry'])->name('accounting.journal.update');
+
+Route::get('exchange-rate', function (Request $request, ExchangeRate $exchangeRate) {
+	$base = strtoupper($request->query('base', 'USD'));
+	$target = strtoupper($request->query('target', 'TZS'));
+
+	$rate = $exchangeRate->exchangeRate($base, $target);
+
+	return response()->json([
+		'base' => $base,
+		'target' => $target,
+		'rate' => $rate,
+		'fetched_at' => now()->toIso8601String(),
+	]);
+})->name('exchange-rate');

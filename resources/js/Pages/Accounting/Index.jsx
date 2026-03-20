@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
 const toNum = (v) => Number(v ?? 0) || 0;
-const fmtMoney = (v) => `$${toNum(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtMoney = (v) => `TZS ${toNum(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const titleCase = (s) => (s || '').charAt(0).toUpperCase() + (s || '').slice(1);
 
 const DEFAULT_ACCOUNTS = [
@@ -514,7 +514,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
 
                         <div className="card">
                             <table className="ledger-table">
-                                <thead><tr><th style={{ paddingLeft: 16 }}>Entry #</th><th>Date</th><th>Description</th><th>Reference</th><th>Lines</th><th className="num" style={{ color: 'var(--accent)' }}>Debit ($)</th><th className="num" style={{ color: 'var(--green)' }}>Credit ($)</th><th>Status</th><th></th></tr></thead>
+                                <thead><tr><th style={{ paddingLeft: 16 }}>Entry #</th><th>Date</th><th>Description</th><th>Reference</th><th>Lines</th><th className="num" style={{ color: 'var(--accent)' }}>Debit (TZS)</th><th className="num" style={{ color: 'var(--green)' }}>Credit (TZS)</th><th>Status</th><th></th></tr></thead>
                                 <tbody>
                                     {filteredEntries.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--text-muted)' }}>No entries found.</td></tr>}
                                     {filteredEntries.map((je) => {
@@ -622,7 +622,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                         <SectionHeader title="Trial Balance" subtitle="As at 31 March 2026">{renderPageBarActions()}</SectionHeader>
                         <div className="card">
                             <table className="ledger-table">
-                                <thead><tr><th style={{ paddingLeft: 16 }}>Code</th><th>Account Name</th><th>Type</th><th className="num" style={{ color: 'var(--accent)' }}>Debit ($)</th><th className="num" style={{ color: 'var(--green)' }}>Credit ($)</th></tr></thead>
+                                <thead><tr><th style={{ paddingLeft: 16 }}>Code</th><th>Account Name</th><th>Type</th><th className="num" style={{ color: 'var(--accent)' }}>Debit (TZS)</th><th className="num" style={{ color: 'var(--green)' }}>Credit (TZS)</th></tr></thead>
                                 <tbody>
                                     {trialRows.map((r) => (
                                         <tr key={r.code}>
@@ -693,7 +693,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                                 </div>
                                 <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)' }}>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 32px', gap: 0, padding: '6px 12px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-                                        <span>Account</span><span style={{ textAlign: 'right' }}>Debit ($)</span><span style={{ textAlign: 'right' }}>Credit ($)</span><span></span>
+                                        <span>Account</span><span style={{ textAlign: 'right' }}>Debit (TZS)</span><span style={{ textAlign: 'right' }}>Credit (TZS)</span><span></span>
                                     </div>
                                     {jeForm.lines.map((l, i) => (
                                         <div className="je-entry-row" key={i}>
@@ -741,7 +741,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                                 <div className="form-group"><label className="form-label">Category</label><input className="form-input" type="text" value={accountForm.cat} onChange={(e) => setAccountForm((f) => ({ ...f, cat: e.target.value }))} placeholder="e.g. Current Assets" /></div>
                             </div>
                             <div className="form-row">
-                                <div className="form-group"><label className="form-label">Opening Balance ($)</label><input className="form-input" type="number" value={accountForm.opening} onChange={(e) => setAccountForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" /></div>
+                                <div className="form-group"><label className="form-label">Opening Balance (TZS)</label><input className="form-input" type="number" value={accountForm.opening} onChange={(e) => setAccountForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" /></div>
                                 <div className="form-group"><label className="form-label">Description</label><input className="form-input" type="text" value={accountForm.desc} onChange={(e) => setAccountForm((f) => ({ ...f, desc: e.target.value }))} placeholder="Optional" /></div>
                             </div>
                         </div>

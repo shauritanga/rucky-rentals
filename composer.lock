@@ -4,8 +4,82 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d88c1b5f234eed439f91d235146d7a5c",
+    "content-hash": "a8cc56f72c913de1956003d537650ee6",
     "packages": [
+        {
+            "name": "ashallendesign/laravel-exchange-rates",
+            "version": "v7.11.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/ash-jc-allen/laravel-exchange-rates.git",
+                "reference": "727d585c86ef895b09c7a950f109b7897250eee2"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/ash-jc-allen/laravel-exchange-rates/zipball/727d585c86ef895b09c7a950f109b7897250eee2",
+                "reference": "727d585c86ef895b09c7a950f109b7897250eee2",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "guzzlehttp/guzzle": "^7.0",
+                "illuminate/cache": "^9.0|^10.0|^11.0|^12.0|^13.0",
+                "illuminate/container": "^9.0|^10.0|^11.0|^12.0|^13.0",
+                "nesbot/carbon": "^2.0|^3.0",
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "larastan/larastan": "^1.0|^2.0|^3.0",
+                "mockery/mockery": "^1.0",
+                "orchestra/testbench": "^7.0|^8.0|^9.0|^10.0|^13.0",
+                "phpunit/phpunit": "^9.0|^10.5|^11.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "ExchangeRate": "AshAllenDesign\\LaravelExchangeRates\\Facades\\ExchangeRate"
+                    },
+                    "providers": [
+                        "AshAllenDesign\\LaravelExchangeRates\\Providers\\ExchangeRatesProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "AshAllenDesign\\LaravelExchangeRates\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Ash Allen",
+                    "email": "mail@ashallendesign.co.uk"
+                }
+            ],
+            "description": "A wrapper package for interacting with the exchangeratesapi.io API.",
+            "homepage": "https://github.com/ash-jc-allen/laravel-exchange-rates",
+            "keywords": [
+                "ashallendesign",
+                "exchange-rate",
+                "exchangeratesapi.io",
+                "laravel-exchange-rates"
+            ],
+            "support": {
+                "issues": "https://github.com/ash-jc-allen/laravel-exchange-rates/issues",
+                "source": "https://github.com/ash-jc-allen/laravel-exchange-rates/tree/v7.11.0"
+            },
+            "funding": [
+                {
+                    "url": "https://github.com/ash-jc-allen",
+                    "type": "github"
+                }
+            ],
+            "time": "2026-03-13T12:14:34+00:00"
+        },
         {
             "name": "brick/math",
             "version": "0.14.8",

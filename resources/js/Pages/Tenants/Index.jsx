@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
+import useExchangeRate from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 
@@ -13,13 +14,18 @@ function getTenantStatus(tenant) {
 }
 
 export default function TenantsIndex({ tenants }) {
+  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('name');
   const [view, setView] = useState('card');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
   const { data, setData, post, processing, reset } = useForm({ name:'', email:'', phone:'', national_id:'', nok_name:'', nok_phone:'', nok_relation:'', notes:'' });
+
+  const totalRent = (t) => (t.leases||[]).reduce((s,l)=>s+Number(l.monthly_rent),0);
+  const totalBal  = (t) => (t.leases||[]).reduce((s,l)=>l.status==='overdue'?s+Number(l.monthly_rent):s,0);
 
   const filtered = tenants.filter(t => {
     const st = getTenantStatus(t);
@@ -29,12 +35,21 @@ export default function TenantsIndex({ tenants }) {
     return matchFilter && matchSearch;
   });
 
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === 'rent-hi') return totalRent(b) - totalRent(a);
+    if (sortBy === 'rent-lo') return totalRent(a) - totalRent(b);
+    if (sortBy === 'balance') return totalBal(b) - totalBal(a);
+    if (sortBy === 'lease') {
+      const ae = new Date(a.leases?.[0]?.end_date || 0).getTime();
+      const be = new Date(b.leases?.[0]?.end_date || 0).getTime();
+      return ae - be;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
   const counts = { all: tenants.length, good: tenants.filter(t=>getTenantStatus(t)==='good').length, overdue: tenants.filter(t=>getTenantStatus(t)==='overdue').length, expiring: tenants.filter(t=>getTenantStatus(t)==='expiring').length };
 
   const submit = (e) => { e.preventDefault(); post('/tenants', { onSuccess: () => { reset(); setShowModal(false); } }); };
-
-  const totalRent = (t) => (t.leases||[]).reduce((s,l)=>s+Number(l.monthly_rent),0);
-  const totalBal  = (t) => (t.leases||[]).reduce((s,l)=>l.status==='overdue'?s+Number(l.monthly_rent):s,0);
   const toMonYear = (date) => {
     if (!date) return '—';
     const d = new Date(date);
@@ -79,7 +94,7 @@ export default function TenantsIndex({ tenants }) {
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--amber)'}}>{counts.expiring}</div><div className="tn-stat-label">Lease Expiring Soon</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>$42k</div><div className="tn-stat-label">Monthly Revenue</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{formatCompactTzsFromUsd(42000)}</div><div className="tn-stat-label">Monthly Revenue</div></div>
       </div>
 
       <div className="toolbar">
@@ -95,6 +110,13 @@ export default function TenantsIndex({ tenants }) {
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" placeholder="Search tenants…" value={search} onChange={e=>setSearch(e.target.value)} />
           </div>
+          <select className="form-input form-select" value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{width:140,padding:'6px 28px 6px 10px',fontSize:'12.5px'}}>
+            <option value="name">Sort: Name</option>
+            <option value="rent-hi">Sort: Rent ↓</option>
+            <option value="rent-lo">Sort: Rent ↑</option>
+            <option value="lease">Sort: Lease End</option>
+            <option value="balance">Sort: Balance</option>
+          </select>
           <div className="view-toggle">
             <button className={`vt-btn ${view==='card'?'active':''}`} onClick={()=>setView('card')} title="Cards"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></button>
             <button className={`vt-btn ${view==='list'?'active':''}`} onClick={()=>setView('list')} title="List"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
@@ -108,7 +130,7 @@ export default function TenantsIndex({ tenants }) {
 
       {view === 'card'
         ? <div className="tenants-grid">
-            {filtered.map(t => {
+            {sorted.map(t => {
               const st = getTenantStatus(t);
               const bal = totalBal(t);
               const rent = totalRent(t);
@@ -125,7 +147,7 @@ export default function TenantsIndex({ tenants }) {
                       <div className="tc-name">{t.name}</div>
                       <div className="tc-unit">Unit {units||'—'}</div>
                     </div>
-                    {bal > 0 && <span className="badge overdue">${fmt(bal)} due</span>}
+                    {bal > 0 && <span className="badge overdue">{formatTzsFromUsd(bal)} due</span>}
                     {bal === 0 && st === 'expiring' && <span className="badge vacant">Expiring</span>}
                   </div>
                   <div className="tc-contact">
@@ -134,7 +156,7 @@ export default function TenantsIndex({ tenants }) {
                   </div>
                   <div className="tc-foot">
                     <div style={{flex:1,fontSize:12,color:'var(--text-muted)'}}>{t.leases?.[0]?.end_date ? `Lease until ${t.leases[0].end_date}` : '—'}</div>
-                    <div className="tc-rent">${fmt(rent)}<span style={{fontWeight:400,fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+                    <div className="tc-rent">{formatTzsFromUsd(rent)}<span style={{fontWeight:400,fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
                   </div>
                 </div>
               );
@@ -144,7 +166,7 @@ export default function TenantsIndex({ tenants }) {
             <table className="data-table">
               <thead><tr><th>Tenant</th><th>Unit(s)</th><th>Status</th><th>Monthly Rent</th><th>Balance</th><th>Lease End</th></tr></thead>
               <tbody>
-                {filtered.map(t => {
+                {sorted.map(t => {
                   const st = getTenantStatus(t);
                   const bal = totalBal(t);
                   const units = (t.leases||[]).map(l=>l.unit?.unit_number).filter(Boolean).join(', ');
@@ -153,8 +175,8 @@ export default function TenantsIndex({ tenants }) {
                       <td><div className="tenant-cell"><div className="t-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div><div><div style={{fontWeight:600}}>{t.name}</div><div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{t.email}</div></div></div></td>
                       <td style={{fontWeight:500,color:'var(--text-secondary)'}}>{units||'—'}</td>
                       <td><span className={`badge ${st==='overdue'?'overdue':st==='expiring'?'vacant':'occupied'}`}>{st==='good'?'Good':st.charAt(0).toUpperCase()+st.slice(1)}</span></td>
-                      <td style={{fontWeight:600}}>${fmt(totalRent(t))}</td>
-                      <td>{bal>0?<span style={{color:'var(--red)',fontWeight:600}}>${fmt(bal)}</span>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td style={{fontWeight:600}}>{formatTzsFromUsd(totalRent(t))}</td>
+                      <td>{bal>0?<span style={{color:'var(--red)',fontWeight:600}}>{formatTzsFromUsd(bal)}</span>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
                       <td style={{color:'var(--text-secondary)'}}>{t.leases?.[0]?.end_date||'—'}</td>
                     </tr>
                   );
@@ -232,9 +254,9 @@ export default function TenantsIndex({ tenants }) {
                       ) : <div style={{color:'var(--text-muted)',fontSize:13}}>No active lease</div>}
                     </div>
                     <div className="tdr-kv-grid">
-                      <div className="tdr-kv"><div className="tdr-kv-label">Monthly Rent</div><div className="tdr-kv-value">${fmt(totalRent(selected))}</div></div>
-                      <div className="tdr-kv"><div className="tdr-kv-label">Balance</div><div className={`tdr-kv-value ${bal>0?'red':'green'}`}>{bal>0?`$${fmt(bal)} overdue`:'Paid up'}</div></div>
-                      <div className="tdr-kv"><div className="tdr-kv-label">Deposit Held</div><div className="tdr-kv-value">${fmt((selected.leases||[]).reduce((s,l)=>s+Number(l.deposit),0))}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Monthly Rent</div><div className="tdr-kv-value">{formatTzsFromUsd(totalRent(selected))}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Balance</div><div className={`tdr-kv-value ${bal>0?'red':'green'}`}>{bal>0?`${formatTzsFromUsd(bal)} overdue`:'Paid up'}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Deposit Held</div><div className="tdr-kv-value">{formatTzsFromUsd((selected.leases||[]).reduce((s,l)=>s+Number(l.deposit),0))}</div></div>
                       <div className="tdr-kv"><div className="tdr-kv-label">Units</div><div className="tdr-kv-value accent">{unitsText}</div></div>
                     </div>
                   </div>
@@ -246,7 +268,7 @@ export default function TenantsIndex({ tenants }) {
                         <div className="tdr-payment-row" key={idx}>
                           <div className={`tdr-pay-dot ${p.ok?'green':'red'}`}></div>
                           <div className="tdr-pay-month">{p.month}</div>
-                          <div className="tdr-pay-amount" style={{color:p.ok?'var(--green)':'var(--red)'}}>${fmt(p.amount)}</div>
+                          <div className="tdr-pay-amount" style={{color:p.ok?'var(--green)':'var(--red)'}}>{formatTzsFromUsd(p.amount)}</div>
                           <div className="tdr-pay-date">{p.date}</div>
                         </div>
                       ))}

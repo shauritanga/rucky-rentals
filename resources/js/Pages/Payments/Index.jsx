@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
+import useExchangeRate from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 
 export default function PaymentsIndex({ payments, tenants, units }) {
+  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [month, setMonth] = useState('Mar 2026');
@@ -31,9 +33,9 @@ export default function PaymentsIndex({ payments, tenants, units }) {
       <Head title="Payments" />
 
       <div className="stats-grid">
-        <div className="stat-card"><div className="stat-top"><div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg></div><span className="stat-delta up">↑ 4%</span></div><div className="stat-value">${(collected/1000).toFixed(1)}k</div><div className="stat-label">Collected This Month</div></div>
-        <div className="stat-card"><div className="stat-top"><div className="stat-icon red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><span className="stat-delta down">{counts.overdue} tenants</span></div><div className="stat-value">${(overdueAmt/1000).toFixed(1)}k</div><div className="stat-label">Overdue Balance</div></div>
-        <div className="stat-card"><div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div><span className="stat-delta up">↑ $800</span></div><div className="stat-value">$42k</div><div className="stat-label">Expected This Month</div></div>
+        <div className="stat-card"><div className="stat-top"><div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg></div><span className="stat-delta up">↑ 4%</span></div><div className="stat-value">{formatCompactTzsFromUsd(collected)}</div><div className="stat-label">Collected This Month</div></div>
+        <div className="stat-card"><div className="stat-top"><div className="stat-icon red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><span className="stat-delta down">{counts.overdue} tenants</span></div><div className="stat-value">{formatCompactTzsFromUsd(overdueAmt)}</div><div className="stat-label">Overdue Balance</div></div>
+        <div className="stat-card"><div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div><span className="stat-delta up">↑ {formatTzsFromUsd(800)}</span></div><div className="stat-value">{formatCompactTzsFromUsd(42000)}</div><div className="stat-label">Expected This Month</div></div>
         <div className="stat-card"><div className="stat-top"><div className="stat-icon blue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div><span className="stat-delta up">{counts.paid > 0 ? Math.round(counts.paid/(counts.paid+counts.overdue+counts.pending)*100) : 0}%</span></div><div className="stat-value">{counts.paid}/{counts.paid+counts.overdue+counts.pending}</div><div className="stat-label">Paid This Month</div></div>
       </div>
 
@@ -67,7 +69,7 @@ export default function PaymentsIndex({ payments, tenants, units }) {
                 <td><div className="tenant-cell"><div className="t-avatar" style={{background:p.tenant?.color,color:p.tenant?.text_color}}>{p.tenant?.initials}</div><div><div style={{fontWeight:600}}>{p.tenant?.name}</div></div></div></td>
                 <td style={{fontWeight:600,color:'var(--text-secondary)'}}>{p.unit?.unit_number}</td>
                 <td style={{color:'var(--text-secondary)'}}>{p.month}</td>
-                <td style={{fontWeight:700}}>${fmt(p.amount)}</td>
+                <td style={{fontWeight:700}}>{formatTzsFromUsd(p.amount)}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{p.method||'—'}</td>
                 <td><span className={`badge ${p.status}`}>{p.status.charAt(0).toUpperCase()+p.status.slice(1)}</span></td>
                 <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{p.paid_date||'—'}</td>
@@ -89,7 +91,7 @@ export default function PaymentsIndex({ payments, tenants, units }) {
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Month</label><select className="form-input form-select" value={data.month} onChange={e=>setData('month',e.target.value)}>{['Mar 2026','Feb 2026','Jan 2026','Dec 2025'].map(m=><option key={m}>{m}</option>)}</select></div>
-                <div className="form-group"><label className="form-label">Amount ($) *</label><input className="form-input" type="number" value={data.amount} onChange={e=>setData('amount',e.target.value)} required /></div>
+                <div className="form-group"><label className="form-label">Amount (TZS) *</label><input className="form-input" type="number" value={data.amount} onChange={e=>setData('amount',e.target.value)} required /></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Method</label><select className="form-input form-select" value={data.method} onChange={e=>setData('method',e.target.value)}>{['M-Pesa','Bank Transfer','Cash'].map(m=><option key={m}>{m}</option>)}</select></div>

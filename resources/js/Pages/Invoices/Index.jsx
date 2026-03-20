@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
+import useExchangeRate from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 
 function InvoiceDoc({ inv }) {
+  const { formatTzsFromUsd } = useExchangeRate();
   const total = (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
   const isPaid = inv.status === 'paid';
   const isOver = inv.status === 'overdue';
@@ -31,11 +33,11 @@ function InvoiceDoc({ inv }) {
       <div style={{height:1,background:'var(--border-subtle)',margin:'20px 0'}}></div>
       <table style={{width:'100%',borderCollapse:'collapse',marginBottom:20}}>
         <thead><tr>{['Description','Qty','Unit Price','Amount'].map(h=><th key={h} style={{textAlign:h==='Amount'||h==='Unit Price'||h==='Qty'?'right':'left',fontSize:'10.5px',fontWeight:700,letterSpacing:'.5px',textTransform:'uppercase',color:'var(--text-muted)',padding:'8px 10px',borderBottom:'2px solid var(--border)'}}>{h}</th>)}</tr></thead>
-        <tbody>{(inv.items||[]).map((item,i)=><tr key={i}><td style={{padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}><div style={{fontWeight:500}}>{item.description}</div>{item.sub_description&&<div style={{fontSize:'11.5px',color:'var(--text-muted)',marginTop:2}}>{item.sub_description}</div>}</td><td style={{textAlign:'center',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{item.quantity}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>${fmt(item.unit_price)}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13,fontWeight:600}}>${fmt(item.total)}</td></tr>)}</tbody>
+        <tbody>{(inv.items||[]).map((item,i)=><tr key={i}><td style={{padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}><div style={{fontWeight:500}}>{item.description}</div>{item.sub_description&&<div style={{fontSize:'11.5px',color:'var(--text-muted)',marginTop:2}}>{item.sub_description}</div>}</td><td style={{textAlign:'center',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{item.quantity}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{formatTzsFromUsd(item.unit_price)}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13,fontWeight:600}}>{formatTzsFromUsd(item.total)}</td></tr>)}</tbody>
       </table>
       <div style={{marginLeft:'auto',width:220}}>
-        {[['Subtotal',`$${fmt(total)}`],['VAT (0%)','$0']].map(([l,v])=><div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{l}</span><span>{v}</span></div>)}
-        <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>${fmt(total)}</span></div>
+        {[['Subtotal',formatTzsFromUsd(total)],['VAT (0%)',formatTzsFromUsd(0)]].map(([l,v])=><div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{l}</span><span>{v}</span></div>)}
+        <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatTzsFromUsd(total)}</span></div>
       </div>
       {inv.notes && <div style={{marginTop:28,paddingTop:16,borderTop:'1px solid var(--border-subtle)',fontSize:'11.5px',color:'var(--text-muted)',lineHeight:1.7}}>{inv.notes.split('\n').map((l,i)=><div key={i}>{l}</div>)}</div>}
     </div>
@@ -52,6 +54,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
 
   const { data, setData, post, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
+  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
 
   const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
 
@@ -75,6 +78,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
     paid: invoices.filter(i=>i.status==='paid').length,
     overdue: invoices.filter(i=>i.status==='overdue').length,
   };
+  const collectedUsd = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + total(i), 0);
   const modalTotal = items.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0);
   const typeHint = invType === 'proforma'
     ? 'A Proforma Invoice is a preliminary estimate - not legally binding, sent before the lease is signed or activated.'
@@ -170,7 +174,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--red)'}}>{counts.overdue}</div><div className="tn-stat-label">Overdue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>${(invoices.filter(i=>i.status==='paid').reduce((s,i)=>s+total(i),0)/1000).toFixed(1)}k</div><div className="tn-stat-label">Collected</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactTzsFromUsd(collectedUsd)}</div><div className="tn-stat-label">Collected</div></div>
       </div>
 
       <div className="toolbar">
@@ -209,7 +213,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
                 <td style={{fontWeight:600,color:'var(--text-secondary)'}}>{inv.unit_ref}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{inv.issued_date}</td>
                 <td style={{fontSize:'12.5px',color:inv.status==='overdue'?'var(--red)':'var(--text-secondary)'}}>{inv.due_date||'—'}</td>
-                <td style={{fontWeight:700}}>${fmt(total(inv))}</td>
+                <td style={{fontWeight:700}}>{formatTzsFromUsd(total(inv))}</td>
                 <td><span className={`badge ${inv.status}`}>{inv.status.charAt(0).toUpperCase()+inv.status.slice(1)}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(inv)}}>···</button></td>
               </tr>

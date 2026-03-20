@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
+import useExchangeRate from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 const CYCLE_LABELS = { 3:'Quarterly · 3mo', 4:'4-Month', 6:'Semi-Annual · 6mo', 12:'Annual' };
@@ -138,6 +139,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     new_tenant_name:'', new_tenant_email:'', new_tenant_phone:'', new_tenant_national_id:''
   });
+  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
 
   useEffect(() => {
     const nextEndDate = addMonthsISO(data.start_date, data.duration_months);
@@ -176,6 +178,8 @@ export default function LeasesIndex({ leases, tenants, units }) {
   ['all','active','expiring','overdue','pending_accountant','pending_pm','rejected'].forEach(s => {
     counts[s] = s === 'all' ? leases.length : leases.filter(l=>l.status===s).length;
   });
+  const monthlyRevenueUsd = leases.reduce((sum, lease) => sum + Number(lease.monthly_rent || 0), 0);
+  const annualContractUsd = monthlyRevenueUsd * 12;
 
   const currentTenant = tenants.find(t => String(t.id) === String(data.tenant_id));
   const filteredTenants = tenants.filter(t => {
@@ -278,9 +282,9 @@ export default function LeasesIndex({ leases, tenants, units }) {
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--red)'}}>{counts.overdue}</div><div className="tn-stat-label">Payment Overdue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>$42k</div><div className="tn-stat-label">Monthly Revenue</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactTzsFromUsd(monthlyRevenueUsd)}</div><div className="tn-stat-label">Monthly Revenue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>$504k</div><div className="tn-stat-label">Annual Contract Value</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{formatCompactTzsFromUsd(annualContractUsd)}</div><div className="tn-stat-label">Annual Contract Value</div></div>
       </div>
 
       <div className="toolbar">
@@ -312,7 +316,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{l.start_date}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{l.end_date}</td>
                 <td><span className={`lease-cycle-pill c${l.payment_cycle}`}>{CYCLE_LABELS[l.payment_cycle]}</span></td>
-                <td style={{fontWeight:600}}>${fmt(l.monthly_rent)}</td>
+                <td style={{fontWeight:600}}>{formatTzsFromUsd(l.monthly_rent)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
                   {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':l.status==='pending_accountant'?'⏳ Accountant':l.status==='pending_pm'?'⏳ Prop. Manager':l.status==='rejected'?'✕ Rejected':'—'}
                 </td>
@@ -416,10 +420,10 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 <div className="kv-grid ldr-kv-grid">
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Status</div><div className={`kv-value ldr-kv-value ${STATUS_KV_MAP[selected.status] || ''}`}>{STATUS_LABEL_MAP[selected.status] || selected.status}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Payment Cycle</div><div className="kv-value ldr-kv-value" style={{fontSize:'12.5px'}}>{CYCLE_PAYMENTS[selected.payment_cycle] || `${selected.payment_cycle} months`}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">${fmt(selected.monthly_rent)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">${fmt(selected.monthly_rent * selected.payment_cycle)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">${fmt(selected.monthly_rent * 12)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">${fmt(selected.deposit)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{formatTzsFromUsd(selected.monthly_rent)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{formatTzsFromUsd(selected.monthly_rent * selected.payment_cycle)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{formatTzsFromUsd(selected.monthly_rent * 12)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{formatTzsFromUsd(selected.deposit)}</div></div>
                 </div>
               </div>
 
@@ -436,7 +440,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
                           <td style={{color:'var(--text-muted)',fontSize:'12px'}}>{row.installNum}</td>
                           <td style={{fontWeight:600,fontSize:'13px'}}>{row.dueDate}</td>
                           <td style={{fontSize:'12px',color:'var(--text-muted)'}}>{row.period}</td>
-                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>${fmt(row.amount)}</td>
+                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.amount)}</td>
                           <td>
                             <span style={{fontSize:'11.5px',fontWeight:600,color:row.status==='paid'?'var(--green)':row.status==='overdue'?'var(--red)':row.status==='upcoming'?'var(--amber)':'var(--text-muted)'}}>
                               {row.status === 'paid' ? 'Paid' : row.status === 'overdue' ? 'Overdue' : row.status === 'upcoming' ? 'Due Soon' : 'Scheduled'}
