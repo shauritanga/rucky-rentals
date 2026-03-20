@@ -33,9 +33,6 @@ export default function AppLayout({ children, title, subtitle }) {
         <div className="sidebar-header">
           <div className="logo-mark">R</div>
           <span className="logo-text">Rucky Rentals</span>
-          <button className="toggle-btn" onClick={() => setCollapsed(!collapsed)} title="Toggle sidebar">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
-          </button>
         </div>
 
         <nav className="nav">
@@ -67,6 +64,18 @@ export default function AppLayout({ children, title, subtitle }) {
 
       <div className="main">
         <header className="topbar">
+          <button
+            className="toggle-btn"
+            onClick={() => setCollapsed(!collapsed)}
+            title="Toggle sidebar"
+            aria-label="Toggle sidebar"
+            aria-expanded={!collapsed}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="1.5" y="1.5" width="15" height="15" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+              <line x1="6" y1="1.5" x2="6" y2="16.5" stroke="currentColor" strokeWidth="1.5"/>
+            </svg>
+          </button>
           <div className="topbar-title">
             {title} {subtitle && <span>— {subtitle}</span>}
           </div>
