@@ -17,6 +17,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ProfileController;
 
 Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
+Route::view('/login', 'auth.login')->name('login');
 Route::get('/profile', [ProfileController::class, 'index'])->name('profile');
 
 Route::resource('units', UnitController::class)->only(['index', 'store', 'update', 'destroy']);
