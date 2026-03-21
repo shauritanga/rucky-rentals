@@ -163,6 +163,13 @@ export default function LeasesIndex({ leases, tenants, units }) {
   const [leaseMode, setLeaseMode] = useState('existing');
   const [tenantSearch, setTenantSearch] = useState('');
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const [possessionDate, setPossessionDate] = useState('2026-04-01');
+  const [rentStartDate, setRentStartDate] = useState('2026-04-01');
+  const [fitoutEnabled, setFitoutEnabled] = useState(false);
+  const [fitoutToDate, setFitoutToDate] = useState('');
+  const [whtRate, setWhtRate] = useState(10);
+  const [scRate, setScRate] = useState(5);
+  const [vatRate, setVatRate] = useState(18);
 
   const { data, setData, post, processing, reset } = useForm({
     tenant_mode:'existing',
@@ -172,30 +179,67 @@ export default function LeasesIndex({ leases, tenants, units }) {
   });
 
   useEffect(() => {
-    const nextEndDate = addMonthsISO(data.start_date, data.duration_months);
+    if (!possessionDate) return;
+    if (!fitoutEnabled) {
+      setRentStartDate(possessionDate);
+      return;
+    }
+
+    if (!fitoutToDate) return;
+    const fitoutEnd = new Date(`${fitoutToDate}T00:00:00`);
+    if (Number.isNaN(fitoutEnd.getTime())) return;
+    fitoutEnd.setDate(fitoutEnd.getDate() + 1);
+    setRentStartDate(fitoutEnd.toISOString().slice(0, 10));
+  }, [possessionDate, fitoutEnabled, fitoutToDate]);
+
+  useEffect(() => {
+    const nextEndDate = addMonthsISO(rentStartDate, data.duration_months);
     if (nextEndDate && nextEndDate !== data.end_date) {
       setData('end_date', nextEndDate);
     }
-  }, [data.start_date, data.duration_months, data.end_date, setData]);
+    if (rentStartDate && rentStartDate !== data.start_date) {
+      setData('start_date', rentStartDate);
+    }
+  }, [rentStartDate, data.duration_months, data.end_date, data.start_date, setData]);
 
   const summary = useMemo(() => {
     const rent = Number(data.monthly_rent) || 0;
     const cycle = Number(data.payment_cycle) || 0;
     const duration = Number(data.duration_months) || 0;
-    const instalment = rent * cycle;
+    const serviceCharge = Math.round(rent * (Number(scRate || 0) / 100));
+    const subtotal = rent + serviceCharge;
+    const vat = Math.round(subtotal * (Number(vatRate || 0) / 100));
+    const gross = subtotal + vat;
+    const wht = Math.round(rent * (Number(whtRate || 0) / 100));
+    const net = gross - wht;
+    const instalment = net * cycle;
     const deposit = Number(data.deposit) || (rent > 0 ? rent * 2 : 0);
-    const annual = rent * 12;
+    const annual = gross * 12;
+    const fitoutDays = fitoutEnabled && possessionDate && fitoutToDate
+      ? Math.max(0, Math.round((new Date(`${fitoutToDate}T00:00:00`) - new Date(`${possessionDate}T00:00:00`)) / 86400000) + 1)
+      : 0;
+    const fitoutExtraSC = fitoutDays > 0 ? Math.round(serviceCharge * fitoutDays / 30) : 0;
+    const fitoutExtraVAT = fitoutDays > 0 ? Math.round(fitoutExtraSC * (Number(vatRate || 0) / 100)) : 0;
 
     return {
       rent,
       cycle,
       duration,
+      serviceCharge,
+      subtotal,
+      vat,
+      gross,
+      wht,
+      net,
       instalment,
       deposit,
       annual,
-      period: `${fmtDateShort(data.start_date)} -> ${fmtDateShort(data.end_date)} (${duration} months)`,
+      fitoutDays,
+      fitoutExtraSC,
+      fitoutExtraVAT,
+      period: `${fmtDateShort(rentStartDate)} -> ${fmtDateShort(data.end_date)} (${duration} months)`,
     };
-  }, [data.monthly_rent, data.payment_cycle, data.duration_months, data.deposit, data.start_date, data.end_date]);
+  }, [data.monthly_rent, data.payment_cycle, data.duration_months, data.deposit, data.end_date, rentStartDate, scRate, vatRate, whtRate, fitoutEnabled, possessionDate, fitoutToDate]);
 
   const filtered = leases.filter(l => {
     const matchFilter = filter === 'all' || l.status === filter;
@@ -250,6 +294,13 @@ export default function LeasesIndex({ leases, tenants, units }) {
     setTenantSearch('');
     setShowTenantDropdown(false);
     setData('tenant_mode', 'existing');
+    setPossessionDate('2026-04-01');
+    setRentStartDate('2026-04-01');
+    setFitoutEnabled(false);
+    setFitoutToDate('');
+    setWhtRate(10);
+    setScRate(5);
+    setVatRate(18);
     setData('start_date', '2026-04-01');
     setData('duration_months', 12);
     setData('payment_cycle', 3);
@@ -309,7 +360,9 @@ export default function LeasesIndex({ leases, tenants, units }) {
     setLeaseMode('existing');
     setData('tenant_id', lease.tenant_id || lease.tenant?.id || '');
     setData('unit_id', lease.unit_id || lease.unit?.id || '');
-    setData('start_date', lease.end_date || lease.start_date);
+    setPossessionDate(lease.end_date || lease.start_date || '2026-04-01');
+    setRentStartDate(lease.end_date || lease.start_date || '2026-04-01');
+    setData('start_date', lease.end_date || lease.start_date || '2026-04-01');
     setData('duration_months', lease.duration_months || 12);
     setData('payment_cycle', lease.payment_cycle || 3);
     setData('monthly_rent', lease.monthly_rent || '');
@@ -655,7 +708,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
               </div>
 
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Start Date *</label><input className="form-input" type="date" value={data.start_date} onChange={e=>setData('start_date',e.target.value)} required /></div>
+                <div className="form-group"><label className="form-label">Possession Date * <span style={{color:'var(--text-muted)',fontWeight:400,fontSize:11}}>Service charge starts here</span></label><input className="form-input" type="date" value={possessionDate} onChange={e=>setPossessionDate(e.target.value)} required /></div>
                 <div className="form-group"><label className="form-label">Duration <span style={{color:'var(--text-muted)',fontWeight:400}}>(min. 1 year)</span></label>
                   <select className="form-input form-select" value={data.duration_months} onChange={e=>setData('duration_months',e.target.value)}>
                     {DURATION_OPTIONS.map(opt => <option key={opt.months} value={opt.months}>{opt.label}</option>)}
@@ -663,23 +716,82 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 </div>
               </div>
 
+              <div style={{background:'var(--bg-elevated)',borderRadius:10,padding:'14px 16px',marginBottom:12}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:'13.5px',fontWeight:500}}>Fit-Out Period</div>
+                    <div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Rent-free days from possession. Service charge runs from possession date regardless.</div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`pref-toggle ${fitoutEnabled ? 'on' : 'off'}`}
+                    onClick={() => {
+                      const next = !fitoutEnabled;
+                      setFitoutEnabled(next);
+                      if (next && possessionDate) {
+                        const d = new Date(`${possessionDate}T00:00:00`);
+                        d.setDate(d.getDate() + 14);
+                        setFitoutToDate(d.toISOString().slice(0, 10));
+                      }
+                      if (!next) {
+                        setFitoutToDate('');
+                        setRentStartDate(possessionDate || '');
+                      }
+                    }}
+                  />
+                </div>
+                {fitoutEnabled && (
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+                    <div>
+                      <label className="form-label">Fit-Out End Date <span style={{color:'var(--text-muted)',fontSize:11}}>Rent starts day after</span></label>
+                      <input className="form-input" type="date" value={fitoutToDate} onChange={(e)=>setFitoutToDate(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="form-label">Fit-Out Duration</label>
+                      <div style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 12px',fontSize:'13.5px',color:'var(--amber)',fontWeight:600}}>{summary.fitoutDays > 0 ? `${summary.fitoutDays} day${summary.fitoutDays !== 1 ? 's' : ''} rent-free` : '—'}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Lease End <span style={{color:'var(--text-muted)',fontSize:11}}>(auto-calculated)</span></label><input className="form-input" type="date" value={data.end_date} readOnly style={{opacity:.65,cursor:'default'}} /></div>
+                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>Rent Start Date <span style={{fontSize:11,color:'var(--green)',fontWeight:400}}>{fitoutEnabled && summary.fitoutDays > 0 ? `After ${summary.fitoutDays}-day fit-out` : 'Same as possession (no fit-out)'}</span></label><input className="form-input" type="date" value={rentStartDate} readOnly style={{opacity:.65,cursor:'default'}} /></div>
+                <div className="form-group"><label className="form-label">Lease End <span style={{color:'var(--text-muted)',fontSize:11}}>(auto-calculated from rent start)</span></label><input className="form-input" type="date" value={data.end_date} readOnly style={{opacity:.65,cursor:'default'}} /></div>
+              </div>
+
+              <div className="form-row">
                 <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Monthly Rent (${selectedUnitCurrency}) *`} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><input className="form-input" type="number" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group" style={{flex:'0 0 180px'}}><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Security Deposit (${selectedUnitCurrency})`} {data.monthly_rent && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>= 2 x monthly rent</span>}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto: 2x rent" /></div>
+                <div className="form-group" style={{flex:'0 0 110px'}}><label className="form-label">WHT Rate (%)</label><input className="form-input" type="number" min="0" max="100" value={whtRate} onChange={e=>setWhtRate(Number(e.target.value || 0))} /></div>
+                <div className="form-group" style={{flex:'0 0 120px'}}><label className="form-label">Service Charge (%)</label><input className="form-input" type="number" min="0" max="100" value={scRate} onChange={e=>setScRate(Number(e.target.value || 0))} /></div>
+                <div className="form-group" style={{flex:'0 0 100px'}}><label className="form-label">VAT Rate (%)</label><input className="form-input" type="number" min="0" max="100" value={vatRate} onChange={e=>setVatRate(Number(e.target.value || 0))} /></div>
               </div>
 
               {summary.rent > 0 && (
                 <div className="nl-summary-card" style={{marginBottom:14}}>
-                  <div className="nl-summary-row"><span>Instalment amount</span><strong>{formatMoney(summary.instalment, selectedUnitCurrency)} / {summary.cycle} months</strong></div>
+                  <div className="nl-summary-row"><span>Monthly Rent</span><strong>{formatMoney(summary.rent, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Service Charge ({Math.round(scRate)}%)</span><strong>{formatMoney(summary.serviceCharge, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{formatMoney(summary.subtotal, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>VAT ({Math.round(vatRate)}%)</span><strong>{formatMoney(summary.vat, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{formatMoney(summary.gross, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(whtRate)}% of rent)</span><strong style={{color:'var(--red)'}}>{`(${formatMoney(summary.wht, selectedUnitCurrency)})`}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{formatMoney(summary.net, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{formatMoney(summary.wht, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{formatMoney(summary.instalment, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>Security deposit</span><strong>{formatMoney(summary.deposit, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Annual value</span><strong>{formatMoney(summary.annual, selectedUnitCurrency)} / year</strong></div>
+                  <div className="nl-summary-row"><span>Annual value (incl. VAT)</span><strong>{formatMoney(summary.annual, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>Lease period</span><strong>{summary.period}</strong></div>
+                  {fitoutEnabled && summary.fitoutDays > 0 && (
+                    <div className="nl-summary-row">
+                      <span style={{color:'var(--amber)'}}>First invoice SC extra days</span>
+                      <strong style={{color:'var(--amber)'}}>{`${summary.fitoutDays} days · SC ${formatMoney(summary.fitoutExtraSC, selectedUnitCurrency)} + VAT ${formatMoney(summary.fitoutExtraVAT, selectedUnitCurrency)}`}</strong>
+                    </div>
+                  )}
                 </div>
               )}
-
-              <div className="form-row">
-                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Security Deposit (${selectedUnitCurrency})`} {data.monthly_rent && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>= 2 x monthly rent</span>}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto: 2x rent" /></div>
-              </div>
 
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Special Terms / Notes</label><textarea className="form-input" value={data.terms} onChange={e=>setData('terms',e.target.value)} rows={2} style={{resize:'vertical'}} placeholder="Optional: conditions, inclusions, exclusions…" /></div>

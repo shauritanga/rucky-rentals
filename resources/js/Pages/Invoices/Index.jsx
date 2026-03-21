@@ -87,8 +87,16 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     ? 'A Proforma Invoice is a preliminary estimate — not legally binding, sent before the lease is signed or activated.'
     : 'A Tax Invoice is a legally binding request for payment, issued when rent is due.';
 
+  const getLeaseUnitRef = (lease) => {
+    if (!lease) return '';
+    return lease.unit?.number || lease.unit?.unit_number || lease.unit_ref || '';
+  };
+
+  const getLeaseTenantName = (lease) => lease?.tenant?.name || lease?.tenant_name || '';
+  const getLeaseTenantEmail = (lease) => lease?.tenant?.email || lease?.tenant_email || '';
+
   const buildLeaseInvoiceItems = (lease) => {
-    const unitRef = lease.unit?.number || lease.unit_ref || '';
+    const unitRef = getLeaseUnitRef(lease);
     const monthlyRent = Number(lease.monthly_rent ?? lease.rent ?? 0) || 0;
     const paymentCycle = Number(lease.payment_cycle ?? 1) || 1;
     const period = lease.start_date && lease.end_date ? `${lease.start_date} - ${lease.end_date}` : '';
@@ -136,9 +144,9 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const l = leases.find((x) => String(x.id) === String(leaseId));
     if (!l) return;
 
-    const tenantName = l.tenant?.name || '';
-    const tenantEmail = l.tenant?.email || '';
-    const unitRef = l.unit?.number || l.unit_ref || '';
+    const tenantName = getLeaseTenantName(l);
+    const tenantEmail = getLeaseTenantEmail(l);
+    const unitRef = getLeaseUnitRef(l);
     const period = l.start_date && l.end_date ? `${l.start_date} - ${l.end_date}` : '';
 
     setData('tenant_name', tenantName);
@@ -157,8 +165,12 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     if (!data.lease_id) return;
     const selectedLease = leases.find((x) => String(x.id) === String(data.lease_id));
     if (!selectedLease) return;
+
+    setData('tenant_name', getLeaseTenantName(selectedLease));
+    setData('tenant_email', getLeaseTenantEmail(selectedLease));
+    setData('unit_ref', getLeaseUnitRef(selectedLease));
     setItems(buildLeaseInvoiceItems(selectedLease));
-  }, [data.lease_id]);
+  }, [data.lease_id, leases]);
 
   const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
@@ -306,7 +318,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                   <select className="form-input form-select" value={data.lease_id || ''} onChange={(e)=>onLeaseChange(e.target.value)}>
                     <option value="">- Manual entry -</option>
                     {leases.map((l) => (
-                      <option key={l.id} value={l.id}>{`${l.unit?.number || l.unit_ref || 'Unit'} - ${l.tenant?.name || 'Tenant'} (${l.status || 'active'})`}</option>
+                      <option key={l.id} value={l.id}>{`${getLeaseUnitRef(l) || 'Unit'} - ${getLeaseTenantName(l) || 'Tenant'} (${l.status || 'active'})`}</option>
                     ))}
                   </select>
                 </div>
