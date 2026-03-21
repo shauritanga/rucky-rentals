@@ -652,3 +652,74 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 	.acc-actions{width:100%}
 	.acc-actions .search-box{flex:1;min-width:180px}
 }
+
+/* Superuser console styles using shared dashboard palette */
+
+.superuser-shell .page-header{align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:12px}
+.superuser-shell .page-title{font-size:22px;font-weight:800;letter-spacing:-.5px}
+.superuser-shell .page-sub{font-size:13px;color:var(--text-muted);margin-top:3px}
+.superuser-shell .ph-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+.superuser-shell .stats-grid{gap:14px;margin-bottom:20px}
+.superuser-shell .stat-card{border-radius:13px;padding:18px 20px;transition:border-color .15s,transform .12s}
+.superuser-shell .stat-card:hover{transform:translateY(-1px)}
+
+.superuser-shell .role-tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
+.superuser-shell .role-tag.superuser{background:var(--accent-dim);color:var(--accent)}
+.superuser-shell .role-tag.manager{background:var(--accent-dim);color:var(--accent)}
+.superuser-shell .role-tag.accountant{background:var(--green-dim);color:var(--green)}
+.superuser-shell .role-tag.viewer{background:var(--bg-elevated);color:var(--text-muted)}
+
+.superuser-shell .perm-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-subtle)}
+.superuser-shell .perm-row:last-child{border-bottom:none}
+.superuser-shell .perm-label{font-size:13.5px;font-weight:500}
+.superuser-shell .perm-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+.superuser-shell .toggle{width:40px;height:22px;border-radius:20px;border:none;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s}
+.superuser-shell .toggle.on{background:var(--accent)}
+.superuser-shell .toggle.off{background:var(--border)}
+.superuser-shell .toggle::after{content:"";position:absolute;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s}
+.superuser-shell .toggle.on::after{left:20px}
+.superuser-shell .toggle.off::after{left:2px}
+
+.superuser-shell .settings-tabs{display:flex;gap:0;background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:20px}
+.superuser-shell .stab{flex:1;padding:7px 14px;border-radius:8px;border:none;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;color:var(--text-muted);background:none;transition:background .12s,color .12s;text-align:center}
+.superuser-shell .stab:hover{color:var(--text-secondary)}
+.superuser-shell .stab.active{background:var(--bg-surface);color:var(--text-primary);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+
+/* Superuser overview/properties structural blocks */
+.superuser-shell .prop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.superuser-shell .prop-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:13px;padding:20px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .12s;position:relative;overflow:hidden}
+.superuser-shell .prop-card::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;border-radius:13px 13px 0 0}
+.superuser-shell .prop-card.active-prop::before{background:var(--green)}
+.superuser-shell .prop-card.trial-prop::before{background:var(--amber)}
+.superuser-shell .prop-card.inactive-prop::before{background:var(--text-muted)}
+.superuser-shell .prop-card:hover{border-color:var(--accent);box-shadow:var(--shadow-card),0 0 0 1px var(--accent);transform:translateY(-1px)}
+.superuser-shell .prop-name{font-size:16px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
+.superuser-shell .prop-addr{font-size:12px;color:var(--text-muted);margin-bottom:14px}
+.superuser-shell .prop-kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.superuser-shell .prop-kv{background:var(--bg-elevated);border-radius:8px;padding:9px 11px}
+.superuser-shell .prop-kv-label{font-size:10px;color:var(--text-muted);margin-bottom:2px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.superuser-shell .prop-kv-value{font-size:14px;font-weight:700}
+.superuser-shell .prop-footer{display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--border-subtle)}
+.superuser-shell .prop-manager{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-secondary)}
+.superuser-shell .pm-avatar{width:22px;height:22px;border-radius:50%;background:var(--accent-dim);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700}
+
+.superuser-shell .act-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-subtle)}
+.superuser-shell .act-item:last-child{border-bottom:none}
+.superuser-shell .act-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.superuser-shell .act-dot.purple{background:var(--accent)}
+.superuser-shell .act-dot.blue{background:var(--accent)}
+.superuser-shell .act-dot.green{background:var(--green)}
+.superuser-shell .act-dot.amber{background:var(--amber)}
+.superuser-shell .act-dot.red{background:var(--red)}
+.superuser-shell .act-text{font-size:13px}
+.superuser-shell .act-meta{font-size:11.5px;color:var(--text-muted);margin-top:1px}
+
+.superuser-shell .health-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-subtle)}
+.superuser-shell .health-row:last-child{border-bottom:none}
+.superuser-shell .health-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.superuser-shell .health-name{font-size:13.5px;font-weight:500;flex:1}
+.superuser-shell .health-sub{font-size:11.5px;color:var(--text-muted)}
+.superuser-shell .health-status{font-size:12px;font-weight:600;white-space:nowrap}
+.superuser-shell .uptime-bar{height:4px;background:var(--bg-elevated);border-radius:20px;overflow:hidden;width:80px;margin-left:auto;margin-right:12px}
+.superuser-shell .uptime-fill{height:100%;border-radius:20px;background:var(--green)}

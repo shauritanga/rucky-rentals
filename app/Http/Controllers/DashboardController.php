@@ -8,12 +8,17 @@ use App\Models\Payment;
 use App\Models\MaintenanceTicket;
 use App\Models\Lease;
 use App\Support\MockRentalData;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
     public function index()
     {
+        if (Auth::check() && Auth::user()->role === 'superuser') {
+            return redirect()->route('superuser.index');
+        }
+
         if (MockRentalData::shouldUse()) {
             return Inertia::render('Dashboard', MockRentalData::dashboard());
         }

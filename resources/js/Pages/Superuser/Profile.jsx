@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
-import AppLayout from '@/Layouts/AppLayout';
+import SuperuserLayout from '@/Layouts/SuperuserLayout';
 
 const NOTIF_PREFS_SEED = [
   { key: 'lease_approved', label: 'Lease approved', sub: 'When a lease completes full approval', on: true },
@@ -53,16 +53,16 @@ function pwdStrength(password) {
 export default function Profile() {
   const { props } = usePage();
   const user = props?.auth?.user;
-  const userName = user?.name || 'User';
+  const userName = user?.name || 'Super Admin';
   const userParts = userName.split(' ');
-  const roleLabel = user?.role ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Property Manager';
+  const roleLabel = user?.role ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Super Admin';
 
   const [tab, setTab] = useState('personal');
-  const [firstName, setFirstName] = useState(userParts[0] || 'User');
-  const [lastName, setLastName] = useState(userParts.slice(1).join(' '));
-  const [email, setEmail] = useState(user?.email || '');
-  const [phone, setPhone] = useState('+255 754 111 222');
-  const [bio, setBio] = useState('Managing all operations for the assigned property since 2022. Responsible for leases, maintenance coordination and tenant relations.');
+  const [firstName, setFirstName] = useState(userParts[0] || 'Super');
+  const [lastName, setLastName] = useState(userParts.slice(1).join(' ') || 'Admin');
+  const [email, setEmail] = useState(user?.email || 'admin@ruckyrentals.co.tz');
+  const [phone, setPhone] = useState('+255 700 000 001');
+  const [bio, setBio] = useState('Platform owner responsible for global portfolio controls, manager assignments, and system governance.');
   const [avatarSrc, setAvatarSrc] = useState('');
   const [twofaEnabled, setTwofaEnabled] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState(NOTIF_PREFS_SEED);
@@ -141,7 +141,13 @@ export default function Profile() {
   };
 
   return (
-    <AppLayout title="My Profile" subtitle={userName}>
+    <SuperuserLayout
+      activeView="overview"
+      onNavigate={() => router.get('/superuser')}
+      title="My Profile"
+      subtitle="Superuser Console"
+      navCounts={{}}
+    >
       <Head title="My Profile" />
 
       <div className="profile-page">
@@ -161,7 +167,7 @@ export default function Profile() {
 
                 <div id="profile-display-name" className="profile-display-name">{displayName}</div>
                 <div className="profile-role-text">{roleLabel}</div>
-                <div className="profile-property-text">Assigned Property</div>
+                <div className="profile-property-text">All Properties</div>
                 <span className="profile-active-pill">● Active</span>
               </div>
 
@@ -217,7 +223,7 @@ export default function Profile() {
                   <div><label className="form-label">Email Address</label><input className="form-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
                   <div><label className="form-label">Phone Number</label><input className="form-input" type="text" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
                   <div><label className="form-label">Role</label><input className="form-input" type="text" value={roleLabel} readOnly style={{ opacity: .55, cursor: 'default' }} /></div>
-                  <div><label className="form-label">Assigned Property</label><input className="form-input" type="text" value="Assigned Property" readOnly style={{ opacity: .55, cursor: 'default' }} /></div>
+                  <div><label className="form-label">Assigned Property</label><input className="form-input" type="text" value="All Properties" readOnly style={{ opacity: .55, cursor: 'default' }} /></div>
                   <div style={{ gridColumn: '1 / -1' }}><label className="form-label">Bio / Notes</label><textarea className="form-input" rows="3" style={{ resize: 'vertical' }} value={bio} onChange={(e) => setBio(e.target.value)} /></div>
                 </div>
               </div>
@@ -326,6 +332,6 @@ export default function Profile() {
       </div>
 
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
-    </AppLayout>
+    </SuperuserLayout>
   );
 }
