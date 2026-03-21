@@ -193,9 +193,6 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
         <OverviewPage
           properties={effectiveProperties}
           managers={effectiveManagers}
-          stats={stats}
-          onGoProperties={() => setActiveView('properties')}
-          onOpenPropertyModal={() => setShowModal(true)}
         />
       )}
 

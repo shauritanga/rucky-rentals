@@ -110,12 +110,6 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
             <span className="notif-dot"></span>
           </button>
-          {!!actionLabel && (
-            <button type="button" className="btn-primary" onClick={onAction}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              <span>{actionLabel}</span>
-            </button>
-          )}
         </header>
 
         <div className="content">{children}</div>
