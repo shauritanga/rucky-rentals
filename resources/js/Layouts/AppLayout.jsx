@@ -14,6 +14,8 @@ const NAV = [
   { label: 'Invoices',     href: '/invoices',     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>, section: null },
   { label: 'Accounting',   href: '/accounting',   icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>, section: null },
   { label: 'Reports',      href: '/reports',      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>, section: null },
+  { label: 'Team',         href: '/team',         icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>, section: 'Administration', badge: '0' },
+  { label: 'Audit Trail',  href: '/audit',        icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>, section: null, badge: '!', badgeStyle: { background: 'var(--red)', display: 'none' } },
 ];
 
 export default function AppLayout({ children, title, subtitle }) {
@@ -38,8 +40,6 @@ export default function AppLayout({ children, title, subtitle }) {
 
   const isActive = (href) => href === '/' ? url === '/' : url.startsWith(href);
 
-  let lastSection = null;
-
   return (
     <div className="app-layout">
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} id="sidebar">
@@ -49,15 +49,16 @@ export default function AppLayout({ children, title, subtitle }) {
         </div>
 
         <nav className="nav">
-          {NAV.map((item) => {
-            const showSection = item.section && item.section !== lastSection;
-            if (item.section) lastSection = item.section;
+          {NAV.map((item, index) => {
+            const previousSection = index > 0 ? NAV[index - 1].section : null;
+            const showSection = Boolean(item.section) && item.section !== previousSection;
             return (
-              <div key={item.href}>
+              <div key={item.href ?? item.label}>
                 {showSection && <span className="nav-section-label">{item.section}</span>}
                 <Link href={item.href} className={`nav-item ${isActive(item.href) ? 'active' : ''}`}>
                   {item.icon}
                   <span className="nav-label">{item.label}</span>
+                  {item.badge && <span className="nav-badge" style={item.badgeStyle}>{item.badge}</span>}
                 </Link>
               </div>
             );

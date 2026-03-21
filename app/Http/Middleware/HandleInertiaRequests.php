@@ -46,6 +46,11 @@ class HandleInertiaRequests extends Middleware
                     'must_change_password' => (bool) $request->user()->must_change_password,
                 ] : null,
             ],
+            'flash' => [
+                'success' => fn() => $request->session()->get('success'),
+                'error' => fn() => $request->session()->get('error'),
+                'created_invoice_id' => fn() => $request->session()->get('created_invoice_id'),
+            ],
         ];
     }
 }

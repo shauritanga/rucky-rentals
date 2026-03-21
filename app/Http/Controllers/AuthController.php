@@ -29,9 +29,20 @@ class AuthController extends Controller
                 ->onlyInput('email');
         }
 
+        $user = $request->user();
+
+        if ($user && $user->status === 'suspended') {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return back()
+                ->withErrors(['email' => 'Your account is suspended. Please contact your administrator.'])
+                ->onlyInput('email');
+        }
+
         $request->session()->regenerate();
 
-        $user = $request->user();
         if ($user && $user->must_change_password) {
             return redirect()->route('password.force');
         }

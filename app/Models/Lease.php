@@ -24,8 +24,20 @@ class Lease extends Model
 
     protected $casts = ['approval_log' => 'array'];
 
-    public function property() { return $this->belongsTo(Property::class); }
-    public function tenant() { return $this->belongsTo(Tenant::class); }
-    public function unit() { return $this->belongsTo(Unit::class); }
-    public function invoices() { return $this->hasMany(Invoice::class); }
+    public function property()
+    {
+        return $this->belongsTo(Property::class);
+    }
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::class);
+    }
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class);
+    }
+    public function invoices()
+    {
+        return $this->hasMany(Invoice::class);
+    }
 }

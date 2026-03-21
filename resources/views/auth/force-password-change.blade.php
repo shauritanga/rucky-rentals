@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +17,9 @@
             --danger-bg: #fef2f2;
         }
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             margin: 0;
@@ -58,7 +61,9 @@
             opacity: .92;
         }
 
-        .body { padding: 22px 24px; }
+        .body {
+            padding: 22px 24px;
+        }
 
         .alert {
             background: var(--danger-bg);
@@ -121,42 +126,44 @@
         }
     </style>
 </head>
+
 <body>
-<div class="card">
-    <div class="head">
-        <h1>Change Your Password</h1>
-        <p>For security, you must set a new password before continuing.</p>
-    </div>
-    <div class="body">
-        @if ($errors->any())
+    <div class="card">
+        <div class="head">
+            <h1>Change Your Password</h1>
+            <p>For security, you must set a new password before continuing.</p>
+        </div>
+        <div class="body">
+            @if ($errors->any())
             <div class="alert">{{ $errors->first() }}</div>
-        @endif
+            @endif
 
-        <form method="POST" action="{{ route('password.force.update') }}">
-            @csrf
+            <form method="POST" action="{{ route('password.force.update') }}">
+                @csrf
 
-            <label for="current_password">Current Password</label>
-            <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
-            @error('current_password')
+                <label for="current_password">Current Password</label>
+                <input id="current_password" name="current_password" type="password" autocomplete="current-password" required>
+                @error('current_password')
                 <div class="error">{{ $message }}</div>
-            @enderror
+                @enderror
 
-            <label for="password">New Password</label>
-            <input id="password" name="password" type="password" autocomplete="new-password" required>
-            @error('password')
+                <label for="password">New Password</label>
+                <input id="password" name="password" type="password" autocomplete="new-password" required>
+                @error('password')
                 <div class="error">{{ $message }}</div>
-            @enderror
+                @enderror
 
-            <label for="password_confirmation">Confirm New Password</label>
-            <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required>
+                <label for="password_confirmation">Confirm New Password</label>
+                <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required>
 
-            <button type="submit">Update Password & Continue</button>
+                <button type="submit">Update Password & Continue</button>
 
-            <div class="hint">
-                Use at least 8 characters and avoid reusing the default password.
-            </div>
-        </form>
+                <div class="hint">
+                    Use at least 8 characters and avoid reusing the default password.
+                </div>
+            </form>
+        </div>
     </div>
-</div>
 </body>
+
 </html>

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
+const VAT_RATE = 0.18;
 
 function InvoiceDoc({ inv }) {
   const { formatTzsFromUsd } = useExchangeRate();
@@ -44,7 +45,7 @@ function InvoiceDoc({ inv }) {
   );
 }
 
-export default function InvoicesIndex({ invoices, leases, tenants }) {
+export default function InvoicesIndex({ invoices, leases, tenants, flash = {} }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('date-desc');
@@ -79,10 +80,46 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
     overdue: invoices.filter(i=>i.status==='overdue').length,
   };
   const collectedUsd = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + total(i), 0);
-  const modalTotal = items.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0);
+  const modalSubtotal = items.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0);
+  const modalVat = modalSubtotal * VAT_RATE;
+  const modalTotal = modalSubtotal + modalVat;
   const typeHint = invType === 'proforma'
-    ? 'A Proforma Invoice is a preliminary estimate - not legally binding, sent before the lease is signed or activated.'
+    ? 'A Proforma Invoice is a preliminary estimate — not legally binding, sent before the lease is signed or activated.'
     : 'A Tax Invoice is a legally binding request for payment, issued when rent is due.';
+
+  const buildLeaseInvoiceItems = (lease) => {
+    const unitRef = lease.unit?.number || lease.unit_ref || '';
+    const monthlyRent = Number(lease.monthly_rent ?? lease.rent ?? 0) || 0;
+    const paymentCycle = Number(lease.payment_cycle ?? 1) || 1;
+    const period = lease.start_date && lease.end_date ? `${lease.start_date} - ${lease.end_date}` : '';
+    const deposit = Number(lease.deposit ?? 0) || 0;
+    const nextItems = [{
+      description: `Rental Payment - Unit ${unitRef || '-'}`,
+      sub_description: period,
+      quantity: 1,
+      unit_price: monthlyRent * paymentCycle,
+    }];
+
+    if ((lease.status === 'pending_accountant' || lease.status === 'pending_pm') && deposit > 0) {
+      nextItems.push({
+        description: 'Security Deposit',
+        sub_description: '2x monthly rent (refundable)',
+        quantity: 1,
+        unit_price: deposit,
+      });
+    }
+
+    return nextItems;
+  };
+
+  useEffect(() => {
+    if (!flash?.created_invoice_id) return;
+
+    const created = invoices.find((inv) => Number(inv.id) === Number(flash.created_invoice_id));
+    if (created) {
+      setSelected(created);
+    }
+  }, [flash?.created_invoice_id, invoices]);
 
   const openInvoiceModal = () => {
     setInvType('invoice');
@@ -102,8 +139,6 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
     const tenantName = l.tenant?.name || '';
     const tenantEmail = l.tenant?.email || '';
     const unitRef = l.unit?.number || l.unit_ref || '';
-    const monthlyRent = Number(l.monthly_rent ?? l.rent ?? 0) || 0;
-    const deposit = Number(l.deposit ?? 0) || 0;
     const period = l.start_date && l.end_date ? `${l.start_date} - ${l.end_date}` : '';
 
     setData('tenant_name', tenantName);
@@ -111,25 +146,19 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
     setData('unit_ref', unitRef);
     if (period) setData('period', period);
 
-    const nextItems = [{
-      description: `Rental Payment - Unit ${unitRef || '-'}`,
-      sub_description: period,
-      quantity: 1,
-      unit_price: monthlyRent,
-    }];
-
-    if ((l.status === 'pending_accountant' || l.status === 'pending_pm') && deposit > 0) {
+    if (l.status === 'pending_accountant' || l.status === 'pending_pm') {
       setInvType('proforma');
-      nextItems.push({
-        description: 'Security Deposit',
-        sub_description: 'Refundable deposit',
-        quantity: 1,
-        unit_price: deposit,
-      });
     }
 
-    setItems(nextItems);
+    setItems(buildLeaseInvoiceItems(l));
   };
+
+  useEffect(() => {
+    if (!data.lease_id) return;
+    const selectedLease = leases.find((x) => String(x.id) === String(data.lease_id));
+    if (!selectedLease) return;
+    setItems(buildLeaseInvoiceItems(selectedLease));
+  }, [data.lease_id]);
 
   const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
@@ -141,12 +170,21 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
     const hasAmount = items.some((i) => Number(i.quantity) > 0 && Number(i.unit_price) > 0);
     if (!hasAmount) return;
 
-    transform((form) => ({
+    transform((form) => {
+      const matchedTenant = tenants.find(
+        (t) => String(t.name || '').toLowerCase() === String(form.tenant_name || '').trim().toLowerCase()
+      );
+
+      return {
       ...form,
       type: invType,
+      unit_ref: form.unit_ref?.trim() || '—',
+      tenant_email: form.tenant_email || matchedTenant?.email || null,
       items,
+      notes: form.notes?.trim() || `Bank: Equity Bank Kenya  |  A/C: 0123456789  |  Ref: ${form.unit_ref || ''}`,
       ...(action === 'draft' ? { status: 'draft' } : {}),
-    }));
+      };
+    });
 
     post('/invoices', {
       preserveScroll: true,
@@ -254,9 +292,9 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
             <div className="modal-body" style={{overflowY:'auto',flex:1}}>
               <div style={{marginBottom:18}}>
                 <label className="form-label" style={{marginBottom:8,display:'block'}}>Invoice Type *</label>
-                <div style={{display:'flex',gap:0,background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:9,padding:3}}>
+                <div className="nl-toggle-bar">
                   {[['invoice','Tax Invoice'],['proforma','Proforma Invoice']].map(([t,l])=>(
-                    <button key={t} type="button" onClick={()=>setInvType(t)} style={{flex:1,padding:'8px 14px',borderRadius:7,border:'none',fontSize:13,fontWeight:500,fontFamily:'inherit',cursor:'pointer',background:invType===t?'var(--bg-surface)':'none',color:invType===t?'var(--text-primary)':'var(--text-muted)',boxShadow:invType===t?'0 1px 3px rgba(0,0,0,.2)':'none',transition:'all .15s'}}>{l}</button>
+                    <button key={t} type="button" className={`nl-toggle-btn ${invType===t?'active':''}`} onClick={()=>setInvType(t)}>{l}</button>
                   ))}
                 </div>
                 <div style={{marginTop:8,fontSize:12,color:'var(--text-muted)'}}>{typeHint}</div>
@@ -285,10 +323,7 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
               </div>
 
               <div style={{marginBottom:14}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                  <label className="form-label" style={{margin:0}}>Line Items *</label>
-                  <button type="button" className="btn-ghost" style={{padding:'4px 10px',fontSize:12}} onClick={addItem}>+ Add Line</button>
-                </div>
+                <label className="form-label" style={{marginBottom:8,display:'block'}}>Line Items *</label>
                 {items.map((item,i)=>(
                   <div key={i} style={{display:'flex',gap:6,alignItems:'flex-start',marginBottom:8}}>
                     <div style={{flex:2}}><input className="form-input" placeholder="Description" value={item.description} onChange={e=>updateItem(i,'description',e.target.value)} style={{marginBottom:4}} /><input className="form-input" placeholder="Sub-description" value={item.sub_description} onChange={e=>updateItem(i,'sub_description',e.target.value)} style={{fontSize:12}} /></div>
@@ -297,11 +332,15 @@ export default function InvoicesIndex({ invoices, leases, tenants }) {
                     {items.length>1 && <button type="button" className="btn-ghost" style={{flex:'0 0 32px',height:38,padding:0,justifyContent:'center',display:'flex',alignItems:'center'}} onClick={()=>setItems(items.filter((_,j)=>j!==i))}>✕</button>}
                   </div>
                 ))}
+                <button type="button" className="btn-ghost" style={{width:'100%',marginTop:8,justifyContent:'center',display:'flex',alignItems:'center',gap:6}} onClick={addItem}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  Add Line Item
+                </button>
                 {modalTotal > 0 && (
                   <div style={{background:'var(--bg-elevated)',borderRadius:9,padding:'12px 14px',fontSize:13,color:'var(--text-secondary)'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Subtotal</span><span>${fmt(modalTotal)}</span></div>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>VAT (0%)</span><span>$0</span></div>
-                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Due</span><span style={{color:'var(--accent)',fontWeight:700}}>${fmt(modalTotal)}</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Subtotal</span><span>{formatTzsFromUsd(modalSubtotal)}</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>VAT (18%)</span><span>{formatTzsFromUsd(modalVat)}</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Due</span><span style={{color:'var(--accent)',fontWeight:700}}>{formatTzsFromUsd(modalTotal)}</span></div>
                   </div>
                 )}
               </div>
