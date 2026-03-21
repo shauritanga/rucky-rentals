@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
-import useExchangeRate from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
+const CURRENCY_FALLBACK = 'USD';
 const CYCLE_LABELS = { 3:'Quarterly · 3mo', 4:'4-Month', 6:'Semi-Annual · 6mo', 12:'Annual' };
 const CYCLE_PAYMENTS = { 3:'Quarterly', 4:'4-Month', 6:'Semi-Annual', 12:'Annual' };
 const STATUS_BADGE = { active:'active', expiring:'expiring', overdue:'overdue', pending_accountant:'pending_accountant', pending_pm:'pending_pm', rejected:'rejected', terminated:'pending' };
@@ -20,6 +20,37 @@ function addMonthsISO(startDate, months) {
   if (Number.isNaN(d.getTime())) return '';
   d.setMonth(d.getMonth() + Number(months || 0));
   return d.toISOString().slice(0, 10);
+}
+
+function resolveCurrency(currency) {
+  const normalized = String(currency || '').toUpperCase();
+  return ['USD', 'TZS'].includes(normalized) ? normalized : CURRENCY_FALLBACK;
+}
+
+function formatMoney(amount, currency = CURRENCY_FALLBACK) {
+  if (amount == null || Number.isNaN(Number(amount))) return '—';
+  const code = resolveCurrency(currency);
+  const noDecimals = code === 'TZS';
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: code,
+    minimumFractionDigits: noDecimals ? 0 : 2,
+    maximumFractionDigits: noDecimals ? 0 : 2,
+  }).format(Number(amount));
+}
+
+function formatCompactMoney(amount, currency = CURRENCY_FALLBACK) {
+  if (amount == null || Number.isNaN(Number(amount))) return '—';
+  const code = resolveCurrency(currency);
+  const value = Number(amount);
+  const abs = Math.abs(value);
+
+  if (abs >= 1_000_000_000) return `${code} ${(value / 1_000_000_000).toFixed(1)}B`;
+  if (abs >= 1_000_000) return `${code} ${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${code} ${(value / 1_000).toFixed(0)}k`;
+
+  return formatMoney(value, code);
 }
 
 function fmtDateShort(dateStr) {
@@ -139,7 +170,6 @@ export default function LeasesIndex({ leases, tenants, units }) {
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     new_tenant_name:'', new_tenant_email:'', new_tenant_phone:'', new_tenant_national_id:''
   });
-  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
 
   useEffect(() => {
     const nextEndDate = addMonthsISO(data.start_date, data.duration_months);
@@ -178,8 +208,18 @@ export default function LeasesIndex({ leases, tenants, units }) {
   ['all','active','expiring','overdue','pending_accountant','pending_pm','rejected'].forEach(s => {
     counts[s] = s === 'all' ? leases.length : leases.filter(l=>l.status===s).length;
   });
-  const monthlyRevenueUsd = leases.reduce((sum, lease) => sum + Number(lease.monthly_rent || 0), 0);
-  const annualContractUsd = monthlyRevenueUsd * 12;
+  const monthlyRevenueByCurrency = useMemo(() => {
+    return leases.reduce((acc, lease) => {
+      const currency = resolveCurrency(lease.currency || lease.unit?.currency);
+      acc[currency] = (acc[currency] || 0) + Number(lease.monthly_rent || 0);
+      return acc;
+    }, { USD: 0, TZS: 0 });
+  }, [leases]);
+
+  const annualContractByCurrency = useMemo(() => ({
+    USD: monthlyRevenueByCurrency.USD * 12,
+    TZS: monthlyRevenueByCurrency.TZS * 12,
+  }), [monthlyRevenueByCurrency]);
 
   const currentTenant = tenants.find(t => String(t.id) === String(data.tenant_id));
   const filteredTenants = tenants.filter(t => {
@@ -197,6 +237,12 @@ export default function LeasesIndex({ leases, tenants, units }) {
     });
     return Object.entries(grouped).sort((a, b) => Number(a[0]) - Number(b[0]));
   }, [units]);
+
+  const selectedUnit = useMemo(
+    () => units.find((u) => String(u.id) === String(data.unit_id)),
+    [units, data.unit_id]
+  );
+  const selectedUnitCurrency = resolveCurrency(selectedUnit?.currency);
 
   const openLeaseModal = () => {
     reset();
@@ -253,6 +299,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
   const approvalLog = useMemo(() => parseApprovalLog(selected?.approval_log), [selected]);
   const leaseProgress = useMemo(() => (selected ? calcLeaseProgress(selected) : { pct: 0, daysLeft: 0 }), [selected]);
   const paymentSchedule = useMemo(() => (selected ? buildPaymentSchedule(selected, isPending) : []), [selected, isPending]);
+  const selectedLeaseCurrency = resolveCurrency(selected?.currency || selected?.unit?.currency);
 
   const renewFromDrawer = () => {
     if (!selected) return;
@@ -282,9 +329,9 @@ export default function LeasesIndex({ leases, tenants, units }) {
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--red)'}}>{counts.overdue}</div><div className="tn-stat-label">Payment Overdue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactTzsFromUsd(monthlyRevenueUsd)}</div><div className="tn-stat-label">Monthly Revenue</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{`${formatCompactMoney(monthlyRevenueByCurrency.USD, 'USD')} · ${formatCompactMoney(monthlyRevenueByCurrency.TZS, 'TZS')}`}</div><div className="tn-stat-label">Monthly Revenue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{formatCompactTzsFromUsd(annualContractUsd)}</div><div className="tn-stat-label">Annual Contract Value</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{`${formatCompactMoney(annualContractByCurrency.USD, 'USD')} · ${formatCompactMoney(annualContractByCurrency.TZS, 'TZS')}`}</div><div className="tn-stat-label">Annual Contract Value</div></div>
       </div>
 
       <div className="toolbar">
@@ -316,7 +363,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{l.start_date}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{l.end_date}</td>
                 <td><span className={`lease-cycle-pill c${l.payment_cycle}`}>{CYCLE_LABELS[l.payment_cycle]}</span></td>
-                <td style={{fontWeight:600}}>{formatTzsFromUsd(l.monthly_rent)}</td>
+                <td style={{fontWeight:600}}>{formatMoney(l.monthly_rent, l.currency || l.unit?.currency)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
                   {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':l.status==='pending_accountant'?'⏳ Accountant':l.status==='pending_pm'?'⏳ Prop. Manager':l.status==='rejected'?'✕ Rejected':'—'}
                 </td>
@@ -420,10 +467,10 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 <div className="kv-grid ldr-kv-grid">
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Status</div><div className={`kv-value ldr-kv-value ${STATUS_KV_MAP[selected.status] || ''}`}>{STATUS_LABEL_MAP[selected.status] || selected.status}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Payment Cycle</div><div className="kv-value ldr-kv-value" style={{fontSize:'12.5px'}}>{CYCLE_PAYMENTS[selected.payment_cycle] || `${selected.payment_cycle} months`}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{formatTzsFromUsd(selected.monthly_rent)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{formatTzsFromUsd(selected.monthly_rent * selected.payment_cycle)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{formatTzsFromUsd(selected.monthly_rent * 12)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{formatTzsFromUsd(selected.deposit)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{formatMoney(selected.monthly_rent, selectedLeaseCurrency)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{formatMoney(selected.monthly_rent * selected.payment_cycle, selectedLeaseCurrency)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{formatMoney(selected.monthly_rent * 12, selectedLeaseCurrency)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{formatMoney(selected.deposit, selectedLeaseCurrency)}</div></div>
                 </div>
               </div>
 
@@ -440,7 +487,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
                           <td style={{color:'var(--text-muted)',fontSize:'12px'}}>{row.installNum}</td>
                           <td style={{fontWeight:600,fontSize:'13px'}}>{row.dueDate}</td>
                           <td style={{fontSize:'12px',color:'var(--text-muted)'}}>{row.period}</td>
-                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.amount)}</td>
+                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatMoney(row.amount, selectedLeaseCurrency)}</td>
                           <td>
                             <span style={{fontSize:'11.5px',fontWeight:600,color:row.status==='paid'?'var(--green)':row.status==='overdue'?'var(--red)':row.status==='upcoming'?'var(--amber)':'var(--text-muted)'}}>
                               {row.status === 'paid' ? 'Paid' : row.status === 'overdue' ? 'Overdue' : row.status === 'upcoming' ? 'Due Soon' : 'Scheduled'}
@@ -511,10 +558,10 @@ export default function LeasesIndex({ leases, tenants, units }) {
 
       {/* New Lease Modal */}
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
-        <div className="modal" style={{width:560,maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
+        <div className="modal" style={{width:'min(560px, calc(100vw - 24px))',maxHeight:'calc(100dvh - 24px)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">New Lease Agreement</div><button className="modal-close" onClick={()=>setShowModal(false)}>✕</button></div>
-          <form onSubmit={submit}>
-            <div className="modal-body" style={{overflowY:'auto',flex:1}}>
+          <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
+            <div className="modal-body" style={{overflowY:'auto',flex:1,minHeight:0}}>
               <div style={{marginBottom:18}}>
                 <label className="form-label" style={{marginBottom:8,display:'block'}}>Tenant *</label>
                 <div className="nl-toggle-bar">
@@ -595,7 +642,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
                     <option value="">Select unit…</option>
                     {unitsByFloor.map(([floor, floorUnits]) => (
                       <optgroup key={floor} label={`Floor ${floor}`}>
-                        {floorUnits.map(u => <option key={u.id} value={u.id}>{u.unit_number} — {u.type} (${fmt(u.rent)}/mo)</option>)}
+                        {floorUnits.map(u => <option key={u.id} value={u.id}>{u.unit_number} — {u.type} ({formatMoney(u.rent, u.currency)}/mo)</option>)}
                       </optgroup>
                     ))}
                   </select>
@@ -618,20 +665,20 @@ export default function LeasesIndex({ leases, tenants, units }) {
 
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Lease End <span style={{color:'var(--text-muted)',fontSize:11}}>(auto-calculated)</span></label><input className="form-input" type="date" value={data.end_date} readOnly style={{opacity:.65,cursor:'default'}} /></div>
-                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>Monthly Rent ($) * {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><input className="form-input" type="number" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
+                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Monthly Rent (${selectedUnitCurrency}) *`} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><input className="form-input" type="number" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
               </div>
 
               {summary.rent > 0 && (
                 <div className="nl-summary-card" style={{marginBottom:14}}>
-                  <div className="nl-summary-row"><span>Instalment amount</span><strong>${fmt(summary.instalment)} / {summary.cycle} months</strong></div>
-                  <div className="nl-summary-row"><span>Security deposit</span><strong>${fmt(summary.deposit)}</strong></div>
-                  <div className="nl-summary-row"><span>Annual value</span><strong>${fmt(summary.annual)} / year</strong></div>
+                  <div className="nl-summary-row"><span>Instalment amount</span><strong>{formatMoney(summary.instalment, selectedUnitCurrency)} / {summary.cycle} months</strong></div>
+                  <div className="nl-summary-row"><span>Security deposit</span><strong>{formatMoney(summary.deposit, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Annual value</span><strong>{formatMoney(summary.annual, selectedUnitCurrency)} / year</strong></div>
                   <div className="nl-summary-row"><span>Lease period</span><strong>{summary.period}</strong></div>
                 </div>
               )}
 
               <div className="form-row">
-                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>Security Deposit ($) {data.monthly_rent && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>= 2 x monthly rent</span>}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto: 2x rent" /></div>
+                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Security Deposit (${selectedUnitCurrency})`} {data.monthly_rent && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>= 2 x monthly rent</span>}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto: 2x rent" /></div>
               </div>
 
               <div className="form-row">

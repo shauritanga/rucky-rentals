@@ -71,14 +71,13 @@ export default function TenantsIndex({ tenants }) {
     return { pct, fillClass, caption };
   };
   const paymentHistory = (tenant) => {
-    const rent = totalRent(tenant);
-    const overdue = totalBal(tenant) > 0;
-    return [
-      { ok: !overdue, month: 'March 2026', amount: rent, date: overdue ? 'Overdue' : 'Mar 1, 2026' },
-      { ok: true, month: 'February 2026', amount: rent, date: 'Feb 2, 2026' },
-      { ok: !overdue, month: 'January 2026', amount: rent, date: overdue ? 'Late — Jan 18' : 'Jan 3, 2026' },
-      { ok: true, month: 'December 2025', amount: rent, date: 'Dec 1, 2025' },
-    ];
+    return (tenant.payments || []).map((p) => ({
+      ok: p.status === 'paid',
+      month: p.month || 'Payment',
+      amount: Number(p.amount || 0),
+      date: p.paid_date || p.created_at || '-',
+      status: p.status || 'pending',
+    }));
   };
 
   return (
@@ -264,12 +263,19 @@ export default function TenantsIndex({ tenants }) {
                   <div className="tdr-section">
                     <div className="tdr-section-title">Payment History</div>
                     <div>
+                      {hist.length === 0 && (
+                        <div style={{ color: 'var(--text-muted)', fontSize: 12.5, padding: '8px 0' }}>
+                          No payments recorded yet.
+                        </div>
+                      )}
                       {hist.map((p, idx) => (
                         <div className="tdr-payment-row" key={idx}>
                           <div className={`tdr-pay-dot ${p.ok?'green':'red'}`}></div>
                           <div className="tdr-pay-month">{p.month}</div>
                           <div className="tdr-pay-amount" style={{color:p.ok?'var(--green)':'var(--red)'}}>{formatTzsFromUsd(p.amount)}</div>
-                          <div className="tdr-pay-date">{p.date}</div>
+                          <div className="tdr-pay-date">
+                            {toMonYear(p.date)} · {String(p.status || '').charAt(0).toUpperCase() + String(p.status || '').slice(1)}
+                          </div>
                         </div>
                       ))}
                     </div>

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Tenant extends Model
 {
     protected $fillable = [
+        'property_id',
         'name',
         'email',
         'phone',
@@ -23,6 +24,10 @@ class Tenant extends Model
     public function leases()
     {
         return $this->hasMany(Lease::class);
+    }
+    public function property()
+    {
+        return $this->belongsTo(Property::class);
     }
     public function payments()
     {
