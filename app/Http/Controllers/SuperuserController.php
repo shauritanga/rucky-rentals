@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ManagerWelcomeMail;
+use App\Models\AuditLog;
 use App\Models\Property;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -16,17 +17,32 @@ class SuperuserController extends Controller
     public function index()
     {
         $properties = Property::with('manager:id,name,email')
+            ->withCount([
+                'units as unit_count_live',
+                'units as occupied_units_live' => fn($q) => $q->whereIn('status', ['occupied', 'overdue']),
+            ])
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->map(function ($property) {
+                $property->unit_count = (int) ($property->unit_count_live ?? 0);
+                $property->occupied_units = (int) ($property->occupied_units_live ?? 0);
+                return $property;
+            });
 
         $managers = User::query()
             ->whereIn('role', ['manager', 'superuser'])
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'role', 'property_id']);
 
+        $auditLogs = AuditLog::query()
+            ->latest()
+            ->limit(200)
+            ->get();
+
         return Inertia::render('Superuser/Index', [
             'properties' => $properties,
             'managers' => $managers,
+            'auditLogs' => $auditLogs,
         ]);
     }
 
@@ -40,6 +56,7 @@ class SuperuserController extends Controller
             'status' => 'required|in:active,trial,inactive',
             'unit_count' => 'nullable|integer|min:0',
             'occupied_units' => 'nullable|integer|min:0',
+            'total_floors' => 'nullable|integer|min:1',
             'manager_user_id' => 'nullable|exists:users,id',
         ]);
 
@@ -62,6 +79,8 @@ class SuperuserController extends Controller
         $nextCode = $maxBldCode + 1;
         $data['code'] = 'BLD' . str_pad((string) $nextCode, 2, '0', STR_PAD_LEFT);
         $data['country'] = $data['country'] ?: 'Tanzania';
+        $data['unit_count'] = 0;
+        $data['occupied_units'] = 0;
 
         $property = Property::create($data);
 
@@ -71,6 +90,14 @@ class SuperuserController extends Controller
                 'property_id' => $property->id,
             ]);
         }
+
+        $this->logAudit(
+            request: $request,
+            action: 'Property created',
+            resource: sprintf('%s (%s)', $property->name, $property->code),
+            propertyName: $property->name,
+            category: 'settings',
+        );
 
         return back()->with('success', 'Property created successfully.');
     }
@@ -92,6 +119,14 @@ class SuperuserController extends Controller
             'role' => 'manager',
             'property_id' => $property->id,
         ]);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Manager assigned',
+            resource: sprintf('%s -> %s', $property->name, $newManager->name),
+            propertyName: $property->name,
+            category: 'user',
+        );
 
         return back()->with('success', 'Manager assigned successfully.');
     }
@@ -131,6 +166,14 @@ class SuperuserController extends Controller
             $property->update(['manager_user_id' => $user->id]);
         }
 
+        $this->logAudit(
+            request: $request,
+            action: 'User created',
+            resource: sprintf('%s (%s)', $user->name, $user->role),
+            propertyName: $assignedPropertyName ?? 'All',
+            category: 'user',
+        );
+
         if ($data['role'] === 'manager') {
             Mail::to($user->email)->send(new ManagerWelcomeMail(
                 managerName: $user->name,
@@ -142,5 +185,22 @@ class SuperuserController extends Controller
         }
 
         return back()->with('success', 'User created successfully.');
+    }
+
+    private function logAudit(Request $request, string $action, ?string $resource, ?string $propertyName, string $category, string $result = 'success', array $metadata = []): void
+    {
+        $actor = $request->user();
+
+        AuditLog::create([
+            'user_id' => $actor?->id,
+            'user_name' => $actor?->name ?? 'System',
+            'action' => $action,
+            'resource' => $resource,
+            'property_name' => $propertyName,
+            'ip_address' => $request->ip(),
+            'result' => $result,
+            'category' => $category,
+            'metadata' => empty($metadata) ? null : $metadata,
+        ]);
     }
 }

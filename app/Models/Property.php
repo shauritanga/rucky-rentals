@@ -15,6 +15,7 @@ class Property extends Model
         'status',
         'unit_count',
         'occupied_units',
+        'total_floors',
         'manager_user_id',
     ];
 
@@ -26,5 +27,10 @@ class Property extends Model
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    public function units()
+    {
+        return $this->hasMany(Unit::class);
     }
 }

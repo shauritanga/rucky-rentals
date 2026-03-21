@@ -85,12 +85,13 @@ const VIEW_META = {
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
 
-export default function SuperuserIndex({ properties = [], managers = [] }) {
+export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [] }) {
   const [activeView, setActiveView] = useState('overview');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
   const [showManagerModal, setShowManagerModal] = useState(false);
+  const [creatingManager, setCreatingManager] = useState(false);
 
   const [managerForm, setManagerForm] = useState({
     name: '',
@@ -110,7 +111,7 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
     status: 'active',
     unit_count: 0,
     occupied_units: 0,
-    total_floors: 1,
+    total_floors: 7,
   });
 
   const effectiveProperties = properties.length > 0 ? properties : DEMO_PROPERTIES;
@@ -133,7 +134,7 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
         setData('city', 'Dar es Salaam');
         setData('country', 'Tanzania');
         setData('status', 'active');
-        setData('total_floors', 1);
+        setData('total_floors', 7);
         setShowModal(false);
       },
     });
@@ -161,6 +162,9 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
 
   const submitManager = (e) => {
     e.preventDefault();
+    if (creatingManager) return;
+
+    setCreatingManager(true);
     router.post('/superuser/managers', managerForm, {
       preserveScroll: true,
       onSuccess: () => {
@@ -173,6 +177,9 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
           property_id: '',
           twoFA: 'yes',
         });
+      },
+      onFinish: () => {
+        setCreatingManager(false);
       },
     });
   };
@@ -211,7 +218,7 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
 
       {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} onOpenManagerModal={() => setShowManagerModal(true)} />}
       {activeView === 'roles' && <RolesPage />}
-      {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} />}
+      {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage />}
 
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
@@ -221,7 +228,7 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
             <div className="modal-body">
               <div className="form-row"><div className="form-group"><label className="form-label">Property Name *</label><input className="form-input" value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="e.g. Rucky Heights" required /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Address *</label><input className="form-input" value={data.address} onChange={(e) => setData('address', e.target.value)} placeholder="Full street address" required /></div><div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={(e) => setData('city', e.target.value)} placeholder="Dar es Salaam" /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Total Units</label><input className="form-input" type="number" value={data.unit_count} onChange={(e) => setData('unit_count', e.target.value)} placeholder="32" min="0" /></div><div className="form-group"><label className="form-label">Total Floors</label><input className="form-input" type="number" value={data.total_floors} onChange={(e) => setData('total_floors', e.target.value)} placeholder="6" min="1" /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Total Units</label><input className="form-input" type="number" value={data.unit_count} onChange={(e) => setData('unit_count', e.target.value)} placeholder="0" min="0" /></div><div className="form-group"><label className="form-label">Total Floors</label><input className="form-input" type="number" value={data.total_floors} onChange={(e) => setData('total_floors', e.target.value)} placeholder="7" min="1" /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Status</label>
                 <select className="form-input form-select" value={data.status} onChange={(e) => setData('status', e.target.value)}>
                   <option value="active">Active</option>
@@ -231,8 +238,17 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
               </div></div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing}>Add Property</button>
+              <button type="button" className="btn-ghost" onClick={() => setShowModal(false)} disabled={processing}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>
+                {processing ? (
+                  <>
+                    <span className="btn-spinner" aria-hidden="true"></span>
+                    <span>Adding Property...</span>
+                  </>
+                ) : (
+                  <span>Add Property</span>
+                )}
+              </button>
             </div>
           </form>
         </div>
@@ -269,8 +285,17 @@ export default function SuperuserIndex({ properties = [], managers = [] }) {
               </div></div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn-ghost" onClick={() => setShowManagerModal(false)}>Cancel</button>
-              <button type="submit" className="btn-primary">Create User</button>
+              <button type="button" className="btn-ghost" onClick={() => setShowManagerModal(false)} disabled={creatingManager}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={creatingManager} aria-busy={creatingManager}>
+                {creatingManager ? (
+                  <>
+                    <span className="btn-spinner" aria-hidden="true"></span>
+                    <span>Creating User...</span>
+                  </>
+                ) : (
+                  <span>Create User</span>
+                )}
+              </button>
             </div>
           </form>
         </div>

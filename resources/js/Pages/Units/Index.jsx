@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 
@@ -60,7 +60,7 @@ function UnitCard({ unit, onClick }) {
   );
 }
 
-export default function UnitsIndex({ units }) {
+export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = true }) {
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
@@ -68,9 +68,26 @@ export default function UnitsIndex({ units }) {
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
+  const availableFloors = useMemo(
+    () => (Array.isArray(floorOptions) && floorOptions.length > 0 ? floorOptions : []),
+    [floorOptions],
+  );
+
   const { data, setData, post, processing, reset } = useForm({
     unit_number:'', floor:'1', type:'Office Suite', size_sqm:'', rate_per_sqm:'', currency:'TZS', status:'vacant', notes:''
   });
+
+  useEffect(() => {
+    if (availableFloors.length === 0) {
+      setData('floor', '');
+      return;
+    }
+
+    const currentFloor = Number(data.floor);
+    if (!availableFloors.includes(currentFloor)) {
+      setData('floor', String(availableFloors[0]));
+    }
+  }, [availableFloors, data.floor, setData]);
 
   const sizeSqmInput = Number(data.size_sqm) || 0;
   const ratePerSqmInput = Number(data.rate_per_sqm) || 0;
@@ -118,7 +135,7 @@ export default function UnitsIndex({ units }) {
           </div>
           <select className="form-input form-select" value={floorFilter} onChange={e=>setFloorFilter(e.target.value)} style={{width:116,padding:'6px 28px 6px 10px',fontSize:'12.5px'}}>
             <option value="">All Floors</option>
-            {[1,2,3,4,5,6].map(f=><option key={f} value={f}>Floor {f}</option>)}
+            {availableFloors.map((f)=><option key={f} value={f}>Floor {f}</option>)}
           </select>
           <div className="view-toggle">
             <button className={`vt-btn ${view==='grid'?'active':''}`} onClick={()=>setView('grid')} title="Grid">
@@ -128,7 +145,7 @@ export default function UnitsIndex({ units }) {
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </button>
           </div>
-          <button className="btn-primary" onClick={()=>setShowModal(true)}>
+          <button className="btn-primary" onClick={()=>setShowModal(true)} disabled={!canCreateUnit || availableFloors.length === 0}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Unit
           </button>
@@ -259,9 +276,14 @@ export default function UnitsIndex({ units }) {
           </div>
           <form onSubmit={submit}>
             <div className="modal-body">
+              {(!canCreateUnit || availableFloors.length === 0) && (
+                <div style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid var(--amber)', borderRadius: 8, background: 'var(--amber-dim)', color: 'var(--amber)', fontSize: 12.5 }}>
+                  You cannot create units because no assigned property floors are available.
+                </div>
+              )}
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Unit Number</label><input className="form-input" value={data.unit_number} onChange={e=>setData('unit_number',e.target.value)} placeholder="e.g. A-103" required /></div>
-                <div className="form-group"><label className="form-label">Floor</label><select className="form-input form-select" value={data.floor} onChange={e=>setData('floor',e.target.value)} required>{[1,2,3,4,5,6].map(f=><option key={f} value={f}>Floor {f}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Floor</label><select className="form-input form-select" value={data.floor} onChange={e=>setData('floor',e.target.value)} required disabled={availableFloors.length===0}>{availableFloors.map((f)=><option key={f} value={f}>Floor {f}</option>)}</select></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Commercial Unit Type</label><select className="form-input form-select" value={data.type} onChange={e=>setData('type',e.target.value)}>{COMMERCIAL_UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
@@ -278,7 +300,7 @@ export default function UnitsIndex({ units }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing}>Add Unit</button>
+              <button type="submit" className="btn-primary" disabled={processing || !canCreateUnit || availableFloors.length===0}>Add Unit</button>
             </div>
           </form>
         </div>

@@ -19,31 +19,56 @@ class DashboardController extends Controller
             return redirect()->route('superuser.index');
         }
 
-        if (MockRentalData::shouldUse()) {
+        $user = Auth::user();
+
+        if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Dashboard', MockRentalData::dashboard());
         }
 
-        $totalUnits    = Unit::count();
-        $occupiedUnits = Unit::whereIn('status', ['occupied', 'overdue'])->count();
-        $vacantUnits   = Unit::where('status', 'vacant')->count();
-        $overdueUnits  = Unit::where('status', 'overdue')->count();
+        $unitsBaseQuery = Unit::query();
+        if ($user && $user->role === 'manager') {
+            if (empty($user->property_id)) {
+                $unitsBaseQuery->whereRaw('1 = 0');
+            } else {
+                $unitsBaseQuery->where('property_id', $user->property_id);
+            }
+        }
 
-        $monthlyRevenue = Lease::whereIn('status', ['active', 'expiring', 'overdue'])->sum('monthly_rent');
-        $overdueBalance = Payment::where('status', 'overdue')->sum('amount');
+        $unitIdsQuery = (clone $unitsBaseQuery)->select('id');
+
+        $totalUnits    = (clone $unitsBaseQuery)->count();
+        $occupiedUnits = (clone $unitsBaseQuery)->whereIn('status', ['occupied', 'overdue'])->count();
+        $vacantUnits   = (clone $unitsBaseQuery)->where('status', 'vacant')->count();
+        $overdueUnits  = (clone $unitsBaseQuery)->where('status', 'overdue')->count();
+
+        $monthlyRevenue = Lease::whereIn('status', ['active', 'expiring', 'overdue'])
+            ->whereIn('unit_id', $unitIdsQuery)
+            ->sum('monthly_rent');
+        $overdueBalance = Payment::where('status', 'overdue')
+            ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
+            ->sum('amount');
 
         $recentPayments = Payment::with(['tenant', 'unit'])
+            ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
             ->orderByDesc('created_at')
             ->limit(5)
             ->get();
 
         $maintenanceItems = MaintenanceTicket::whereIn('status', ['open', 'in-progress'])
+            ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
             ->orderByDesc('reported_date')
             ->limit(4)
             ->get();
 
-        $units = Unit::with(['leases.tenant'])->orderBy('floor')->orderBy('unit_number')->limit(7)->get();
+        $units = (clone $unitsBaseQuery)
+            ->with(['leases.tenant'])
+            ->orderBy('floor')
+            ->orderBy('unit_number')
+            ->limit(7)
+            ->get();
 
-        $occupancyByFloor = Unit::selectRaw('floor, count(*) as total, sum(case when status in ("occupied","overdue") then 1 else 0 end) as occupied')
+        $occupancyByFloor = (clone $unitsBaseQuery)
+            ->selectRaw("floor, count(*) as total, sum(case when status in ('occupied','overdue') then 1 else 0 end) as occupied")
             ->groupBy('floor')
             ->orderBy('floor')
             ->get();

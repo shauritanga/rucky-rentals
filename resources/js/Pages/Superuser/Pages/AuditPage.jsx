@@ -1,17 +1,19 @@
 import { useMemo, useState } from 'react';
 
-export default function AuditPage({ properties = [], managers = [] }) {
+export default function AuditPage({ auditLogs = [] }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('');
 
-  const rows = [
-    { ts: '2026-03-19 14:32', user: 'James Mwangi', action: 'Lease approved', resource: 'Lease L-B202-NEW', property: 'Rucky Heights', ip: '196.201.4.12', result: 'success', cat: 'lease' },
-    { ts: '2026-03-19 13:58', user: 'Grace Wanjiru', action: 'Payment recorded', resource: 'Invoice INV-1042', property: 'Rucky Gardens', ip: '196.201.4.18', result: 'success', cat: 'payment' },
-    { ts: '2026-03-19 12:44', user: 'Super Admin', action: 'User created', resource: 'User Patrick Kimani', property: 'All', ip: '41.80.96.4', result: 'success', cat: 'user' },
-    { ts: '2026-03-19 12:00', user: 'Diana Ochieng', action: 'Journal entry posted', resource: 'JE-015', property: 'All', ip: '196.201.4.22', result: 'success', cat: 'settings' },
-    { ts: '2026-03-19 10:15', user: 'Kevin Otieno', action: 'Maintenance ticket created', resource: 'TK-016', property: 'Rucky Towers', ip: '197.232.80.44', result: 'success', cat: 'lease' },
-    { ts: '2026-03-18 18:04', user: 'Unknown', action: 'Failed login (3 attempts)', resource: 'james@ruckyrentals.co.tz', property: '-', ip: '41.57.12.200', result: 'blocked', cat: 'login' },
-  ];
+  const rows = useMemo(() => auditLogs.map((row) => ({
+    ts: row.created_at ? new Date(row.created_at).toLocaleString() : '-',
+    user: row.user_name || 'System',
+    action: row.action || '-',
+    resource: row.resource || '-',
+    property: row.property_name || '-',
+    ip: row.ip_address || '-',
+    result: row.result || 'success',
+    cat: row.category || 'settings',
+  })), [auditLogs]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -46,6 +48,13 @@ export default function AuditPage({ properties = [], managers = [] }) {
         <table className="data-table">
           <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Resource</th><th>Property</th><th>IP Address</th><th>Result</th></tr></thead>
           <tbody>
+            {filteredRows.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                  No audit logs yet.
+                </td>
+              </tr>
+            )}
             {filteredRows.map((row, idx) => (
               <tr key={idx}>
                 <td>{row.ts}</td>
