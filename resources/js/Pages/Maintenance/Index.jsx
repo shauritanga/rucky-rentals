@@ -60,6 +60,9 @@ const MATERIAL_HINTS = {
   Cleaning: [{ name: 'Industrial cleaner', unit: 'L', factor: 0.1, qty: 3 }],
 };
 
+const MATERIALS_PAGE_SIZE = 10;
+const REQUESTS_PAGE_SIZE = 10;
+
 function normalizeWorkflowStatus(ticket) {
   if (ticket.workflow_status) return ticket.workflow_status;
   if (ticket.status === 'resolved') return 'completed';
@@ -112,6 +115,8 @@ export default function MaintenanceIndex({ tickets, units }) {
   const [note, setNote] = useState('');
   const [materials, setMaterials] = useState([]);
   const [images, setImages] = useState([]);
+  const [materialsPage, setMaterialsPage] = useState(1);
+  const [requestsPage, setRequestsPage] = useState(1);
   const [scheduleTasks, setScheduleTasks] = useState(INITIAL_SCHEDULED_TASKS);
   const [scheduleForm, setScheduleForm] = useState({
     title: '',
@@ -211,6 +216,19 @@ export default function MaintenanceIndex({ tickets, units }) {
     });
   }, [normalizedTickets, filter, catFilter, search]);
 
+  const requestsTotalPages = Math.max(1, Math.ceil(filteredTickets.length / REQUESTS_PAGE_SIZE));
+  const requestsCurrentPage = Math.min(requestsPage, requestsTotalPages);
+
+  const requestPageRows = useMemo(() => {
+    const start = (requestsCurrentPage - 1) * REQUESTS_PAGE_SIZE;
+    return filteredTickets.slice(start, start + REQUESTS_PAGE_SIZE);
+  }, [filteredTickets, requestsCurrentPage]);
+
+  const requestsStart = filteredTickets.length ? ((requestsCurrentPage - 1) * REQUESTS_PAGE_SIZE) + 1 : 0;
+  const requestsEnd = filteredTickets.length
+    ? Math.min(requestsCurrentPage * REQUESTS_PAGE_SIZE, filteredTickets.length)
+    : 0;
+
   const openRequests = counts.draft + counts.pending_accountant + counts.pending_manager + counts.approved + counts.in_progress;
   const pendingApprovals = counts.pending_accountant + counts.pending_manager;
   const urgentCount = normalizedTickets.filter(
@@ -273,6 +291,19 @@ export default function MaintenanceIndex({ tickets, units }) {
     });
     return rows;
   }, [normalizedTickets]);
+
+  const materialsTotalPages = Math.max(1, Math.ceil(materialsByRequestRows.length / MATERIALS_PAGE_SIZE));
+  const materialsCurrentPage = Math.min(materialsPage, materialsTotalPages);
+
+  const materialsPageRows = useMemo(() => {
+    const start = (materialsCurrentPage - 1) * MATERIALS_PAGE_SIZE;
+    return materialsByRequestRows.slice(start, start + MATERIALS_PAGE_SIZE);
+  }, [materialsByRequestRows, materialsCurrentPage]);
+
+  const materialsStart = materialsByRequestRows.length ? ((materialsCurrentPage - 1) * MATERIALS_PAGE_SIZE) + 1 : 0;
+  const materialsEnd = materialsByRequestRows.length
+    ? Math.min(materialsCurrentPage * MATERIALS_PAGE_SIZE, materialsByRequestRows.length)
+    : 0;
 
   const byTenant = useMemo(() => {
     const acc = {};
@@ -434,7 +465,7 @@ export default function MaintenanceIndex({ tickets, units }) {
               </thead>
               <tbody>
                 {filteredTickets.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No requests match your filters</td></tr>}
-                {filteredTickets.map((t) => {
+                {requestPageRows.map((t) => {
                   const statusMeta = STATUS_META[t.workflow_status] || STATUS_META.draft;
                   const pri = PRIORITY_META[t.priority] || PRIORITY_META.low;
                   return (
@@ -462,6 +493,28 @@ export default function MaintenanceIndex({ tickets, units }) {
                 })}
               </tbody>
             </table>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Showing {requestsStart}-{requestsEnd} of {filteredTickets.length}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 12, padding: '6px 10px' }}
+                  onClick={() => setRequestsPage((p) => Math.max(1, Math.min(requestsCurrentPage, p) - 1))}
+                  disabled={requestsCurrentPage <= 1}
+                >
+                  Previous
+                </button>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Page {requestsCurrentPage} / {requestsTotalPages}</div>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 12, padding: '6px 10px' }}
+                  onClick={() => setRequestsPage((p) => Math.min(requestsTotalPages, Math.min(requestsCurrentPage, p) + 1))}
+                  disabled={requestsCurrentPage >= requestsTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         </>
       )}
@@ -503,8 +556,30 @@ export default function MaintenanceIndex({ tickets, units }) {
             <div className="card-header"><div className="card-title">Materials by Request</div><div className="card-sub">Price entered by staff at market rate at time of submission</div></div>
             <table className="data-table">
               <thead><tr><th>Request</th><th>Unit</th><th>Material</th><th>Qty</th><th>Price/Unit (Market)</th><th>Total</th></tr></thead>
-              <tbody>{materialsByRequestRows.length ? materialsByRequestRows.map((row, idx) => <tr key={`mat-${row.reqId}-${idx}`}><td style={{fontSize:'12.5px'}}>{row.reqId}</td><td>{row.unit}</td><td style={{fontSize:13}}>{row.matName}</td><td style={{textAlign:'center'}}>{row.qty} {row.unitQty}</td><td style={{fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.unitPrice)}</td><td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.total)}</td></tr>) : <tr><td colSpan={6} style={{textAlign:'center',padding:30,color:'var(--text-muted)'}}>No material usage recorded</td></tr>}</tbody>
+              <tbody>{materialsByRequestRows.length ? materialsPageRows.map((row, idx) => <tr key={`mat-${row.reqId}-${materialsCurrentPage}-${idx}`}><td style={{fontSize:'12.5px'}}>{row.reqId}</td><td>{row.unit}</td><td style={{fontSize:13}}>{row.matName}</td><td style={{textAlign:'center'}}>{row.qty} {row.unitQty}</td><td style={{fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.unitPrice)}</td><td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.total)}</td></tr>) : <tr><td colSpan={6} style={{textAlign:'center',padding:30,color:'var(--text-muted)'}}>No material usage recorded</td></tr>}</tbody>
             </table>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Showing {materialsStart}-{materialsEnd} of {materialsByRequestRows.length}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 12, padding: '6px 10px' }}
+                  onClick={() => setMaterialsPage((p) => Math.max(1, Math.min(materialsCurrentPage, p) - 1))}
+                  disabled={materialsCurrentPage <= 1}
+                >
+                  Previous
+                </button>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Page {materialsCurrentPage} / {materialsTotalPages}</div>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 12, padding: '6px 10px' }}
+                  onClick={() => setMaterialsPage((p) => Math.min(materialsTotalPages, Math.min(materialsCurrentPage, p) + 1))}
+                  disabled={materialsCurrentPage >= materialsTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         </>
       )}
