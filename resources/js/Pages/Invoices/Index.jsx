@@ -1,14 +1,71 @@
 import { useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
-import useExchangeRate from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 const VAT_RATE = 0.18;
+const SERVICE_CHARGE_RATE = 0.05;
 
-function InvoiceDoc({ inv }) {
-  const { formatTzsFromUsd } = useExchangeRate();
+const normalizeCurrency = (value) => (String(value || '').toUpperCase() === 'TZS' ? 'TZS' : 'USD');
+
+const resolveInvoiceCurrency = (invoice, leases = []) => {
+  const direct = normalizeCurrency(invoice?.currency);
+  if (invoice?.currency) return direct;
+
+  const lease = leases.find((l) => Number(l.id) === Number(invoice?.lease_id));
+  return normalizeCurrency(lease?.currency || lease?.unit?.currency);
+};
+
+const formatMoney = (amount, currency = 'USD') => {
+  const numeric = Number(amount || 0);
+  if (Number.isNaN(numeric)) return '—';
+
+  const money = normalizeCurrency(currency);
+  const decimals = money === 'USD' ? 2 : 0;
+  return `${money} ${numeric.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+};
+
+const formatMoneyCompact = (amount, currency = 'USD') => {
+  const numeric = Number(amount || 0);
+  if (Number.isNaN(numeric)) return '—';
+
+  const money = normalizeCurrency(currency);
+  const abs = Math.abs(numeric);
+
+  if (abs >= 1_000_000) return `${money} ${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `${money} ${(abs / 1_000).toFixed(0)}k`;
+
+  const decimals = money === 'USD' ? 2 : 0;
+  return `${money} ${numeric.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+};
+
+const invoiceStatusLabel = (status = '') => {
+  const labels = {
+    draft: 'Draft',
+    proforma: 'Proforma',
+    unpaid: 'Unpaid',
+    partially_paid: 'Partially Paid',
+    paid: 'Paid',
+    overdue: 'Overdue',
+  };
+
+  return labels[status] || String(status || '').replace('_', ' ');
+};
+
+function InvoiceDoc({ inv, currency = 'USD' }) {
   const total = (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
+  const fitoutBadge = (description = '') => {
+    const text = String(description || '').toLowerCase();
+    if (!text.includes('fit-out')) return null;
+    if (text.includes('vat')) return 'FIT-OUT VAT';
+    return 'FIT-OUT';
+  };
   const rentAmount = (inv.items || [])
     .filter((i) => String(i.description || '').toLowerCase().includes('rent') && !String(i.description || '').toLowerCase().includes('service charge'))
     .reduce((s, i) => s + Number(i.total || 0), 0);
@@ -49,29 +106,51 @@ function InvoiceDoc({ inv }) {
       <div style={{height:1,background:'var(--border-subtle)',margin:'20px 0'}}></div>
       <table style={{width:'100%',borderCollapse:'collapse',marginBottom:20}}>
         <thead><tr>{['Description','Qty','Unit Price','Amount'].map(h=><th key={h} style={{textAlign:h==='Amount'||h==='Unit Price'||h==='Qty'?'right':'left',fontSize:'10.5px',fontWeight:700,letterSpacing:'.5px',textTransform:'uppercase',color:'var(--text-muted)',padding:'8px 10px',borderBottom:'2px solid var(--border)'}}>{h}</th>)}</tr></thead>
-        <tbody>{(inv.items||[]).map((item,i)=><tr key={i}><td style={{padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}><div style={{fontWeight:500}}>{item.description}</div>{item.sub_description&&<div style={{fontSize:'11.5px',color:'var(--text-muted)',marginTop:2}}>{item.sub_description}</div>}</td><td style={{textAlign:'center',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{item.quantity}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{formatTzsFromUsd(item.unit_price)}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13,fontWeight:600}}>{formatTzsFromUsd(item.total)}</td></tr>)}</tbody>
+        <tbody>
+          {(inv.items||[]).map((item,i) => {
+            const badge = fitoutBadge(item.description);
+            return (
+              <tr key={i}>
+                <td style={{padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>
+                  <div style={{fontWeight:500,display:'flex',alignItems:'center',gap:8}}>
+                    <span>{item.description}</span>
+                    {badge && (
+                      <span style={{fontSize:10,fontWeight:700,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--amber)',background:'var(--amber-dim)',border:'1px solid rgba(245,158,11,.35)',borderRadius:12,padding:'1px 7px'}}>
+                        {badge}
+                      </span>
+                    )}
+                  </div>
+                  {item.sub_description&&<div style={{fontSize:'11.5px',color:'var(--text-muted)',marginTop:2}}>{item.sub_description}</div>}
+                </td>
+                <td style={{textAlign:'center',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{item.quantity}</td>
+                <td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{formatMoney(item.unit_price, currency)}</td>
+                <td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13,fontWeight:600}}>{formatMoney(item.total, currency)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
       </table>
       <div style={{marginLeft:'auto',width:320}}>
         {rentAmount > 0 ? (
           <>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Rent</span><span>{formatTzsFromUsd(rentAmount)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Service Charge</span><span>{formatTzsFromUsd(serviceChargeAmount)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:600}}><span>Subtotal</span><span>{formatTzsFromUsd(subtotal)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>VAT (18%)</span><span>{formatTzsFromUsd(vatAmount)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:700}}><span>Gross Total</span><span>{formatTzsFromUsd(grossTotal)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--red)',borderTop:'1px solid var(--border-subtle)'}}><span>Less: WHT (10% of rent)</span><span>({formatTzsFromUsd(whtAmount)})</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Net Payable by Tenant</span><span style={{color:'var(--accent)'}}>{formatTzsFromUsd(netPayable)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Rent</span><span>{formatMoney(rentAmount, currency)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Service Charge</span><span>{formatMoney(serviceChargeAmount, currency)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:600}}><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>VAT (18%)</span><span>{formatMoney(vatAmount, currency)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:700}}><span>Gross Total</span><span>{formatMoney(grossTotal, currency)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--red)',borderTop:'1px solid var(--border-subtle)'}}><span>Less: WHT (10% of rent)</span><span>({formatMoney(whtAmount, currency)})</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Net Payable by Tenant</span><span style={{color:'var(--accent)'}}>{formatMoney(netPayable, currency)}</span></div>
           </>
         ) : (
           <>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatTzsFromUsd(total)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatTzsFromUsd(total)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(total, currency)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(total, currency)}</span></div>
           </>
         )}
       </div>
       {rentAmount > 0 && (
         <div style={{marginTop:10,padding:'10px 14px',background:'var(--amber-dim)',borderRadius:8,fontSize:12,color:'var(--amber)'}}>
-          <strong>WHT Reminder:</strong> Tenant to remit <strong>{formatTzsFromUsd(whtAmount)}</strong> directly to TRA. Ref: {inv.invoice_number}.
+          <strong>WHT Reminder:</strong> Tenant to remit <strong>{formatMoney(whtAmount, currency)}</strong> directly to TRA. Ref: {inv.invoice_number}.
         </div>
       )}
       {inv.notes && <div style={{marginTop:28,paddingTop:16,borderTop:'1px solid var(--border-subtle)',fontSize:'11.5px',color:'var(--text-muted)',lineHeight:1.7}}>{inv.notes.split('\n').map((l,i)=><div key={i}>{l}</div>)}</div>}
@@ -89,9 +168,11 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
 
   const { data, setData, post, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
-  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
 
   const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
+
+  const selectedLease = leases.find((l) => String(l.id) === String(data.lease_id));
+  const modalCurrency = normalizeCurrency(selectedLease?.currency || selectedLease?.unit?.currency);
 
   const filtered = invoices.filter(inv => {
     const matchFilter = filter === 'all' || inv.status === filter;
@@ -110,10 +191,21 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     all: invoices.length,
     proforma: invoices.filter(i=>i.status==='proforma').length,
     unpaid: invoices.filter(i=>i.status==='unpaid' || i.status==='draft').length,
+    partially_paid: invoices.filter(i=>i.status==='partially_paid').length,
     paid: invoices.filter(i=>i.status==='paid').length,
     overdue: invoices.filter(i=>i.status==='overdue').length,
   };
-  const collectedUsd = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + total(i), 0);
+  const collectedTotals = invoices
+    .filter(i => i.status === 'paid')
+    .reduce((acc, inv) => {
+      const currency = resolveInvoiceCurrency(inv, leases);
+      acc[currency] += Number(total(inv) || 0);
+      return acc;
+    }, { USD: 0, TZS: 0 });
+  const collectedLabel = ['USD', 'TZS']
+    .filter((currency) => collectedTotals[currency] > 0)
+    .map((currency) => formatMoneyCompact(collectedTotals[currency], currency))
+    .join(' + ') || '—';
   const modalSubtotal = items.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0);
   const modalVat = modalSubtotal * VAT_RATE;
   const modalTotal = modalSubtotal + modalVat;
@@ -133,14 +225,57 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const unitRef = getLeaseUnitRef(lease);
     const monthlyRent = Number(lease.monthly_rent ?? lease.rent ?? 0) || 0;
     const paymentCycle = Number(lease.payment_cycle ?? 1) || 1;
+    const serviceChargeRate = Number(lease.service_charge_rate ?? SERVICE_CHARGE_RATE * 100) || 0;
+    const vatRate = Number(lease.vat_rate ?? VAT_RATE * 100) || 0;
+    const possessionDate = lease.possession_date || lease.start_date || '';
+    const rentStartDate = lease.rent_start_date || lease.start_date || '';
     const period = lease.start_date && lease.end_date ? `${lease.start_date} - ${lease.end_date}` : '';
+    const rentBase = monthlyRent * paymentCycle;
+    const serviceCharge = Math.round(rentBase * (serviceChargeRate / 100) * 100) / 100;
+    const fitoutDays = (() => {
+      if (!lease.fitout_enabled || !possessionDate || !rentStartDate) return 0;
+      const start = new Date(`${possessionDate}T00:00:00`);
+      const rentStart = new Date(`${rentStartDate}T00:00:00`);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(rentStart.getTime())) return 0;
+      return Math.max(0, Math.round((rentStart - start) / 86400000));
+    })();
+    const dailyServiceCharge = monthlyRent > 0 ? (monthlyRent * (serviceChargeRate / 100)) / 30 : 0;
+    const fitoutExtraSC = fitoutDays > 0 ? Math.round(dailyServiceCharge * fitoutDays * 100) / 100 : 0;
+    const fitoutExtraVAT = fitoutExtraSC > 0 ? Math.round(fitoutExtraSC * (vatRate / 100) * 100) / 100 : 0;
     const deposit = Number(lease.deposit ?? 0) || 0;
     const nextItems = [{
       description: `Rental Payment - Unit ${unitRef || '-'}`,
       sub_description: period,
       quantity: 1,
-      unit_price: monthlyRent * paymentCycle,
+      unit_price: rentBase,
     }];
+
+    if (serviceCharge > 0) {
+      nextItems.push({
+        description: `Service Charge (${Math.round(serviceChargeRate)}%)`,
+        sub_description: period || 'Building/common services',
+        quantity: 1,
+        unit_price: serviceCharge,
+      });
+    }
+
+    if (fitoutExtraSC > 0) {
+      nextItems.push({
+        description: `Service Charge - Fit-Out Period (${fitoutDays} days)`,
+        sub_description: `${possessionDate} to ${rentStartDate} (rent-free period)`,
+        quantity: 1,
+        unit_price: fitoutExtraSC,
+      });
+    }
+
+    if (fitoutExtraVAT > 0) {
+      nextItems.push({
+        description: `VAT on Fit-Out Service Charge (${Math.round(vatRate)}%)`,
+        sub_description: 'VAT applicable to fit-out service charge',
+        quantity: 1,
+        unit_price: fitoutExtraVAT,
+      });
+    }
 
     if ((lease.status === 'pending_accountant' || lease.status === 'pending_pm') && deposit > 0) {
       nextItems.push({
@@ -256,14 +391,16 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{counts.unpaid}</div><div className="tn-stat-label">Unpaid</div></div>
         <div className="tn-stat-divider"></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--amber)'}}>{counts.partially_paid}</div><div className="tn-stat-label">Partially Paid</div></div>
+        <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--red)'}}>{counts.overdue}</div><div className="tn-stat-label">Overdue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactTzsFromUsd(collectedUsd)}</div><div className="tn-stat-label">Collected</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{collectedLabel}</div><div className="tn-stat-label">Collected</div></div>
       </div>
 
       <div className="toolbar">
         <div className="filters">
-          {[['all','All'],['proforma','Proforma'],['unpaid','Unpaid'],['paid','Paid'],['overdue','Overdue']].map(([f,l])=>(
+          {[['all','All'],['proforma','Proforma'],['unpaid','Unpaid'],['partially_paid','Partially Paid'],['paid','Paid'],['overdue','Overdue']].map(([f,l])=>(
             <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>setFilter(f)}>{l} <span className="pill-count">{counts[f]||0}</span></button>
           ))}
         </div>
@@ -297,8 +434,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <td style={{fontWeight:600,color:'var(--text-secondary)'}}>{inv.unit_ref}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{inv.issued_date}</td>
                 <td style={{fontSize:'12.5px',color:inv.status==='overdue'?'var(--red)':'var(--text-secondary)'}}>{inv.due_date||'—'}</td>
-                <td style={{fontWeight:700}}>{formatTzsFromUsd(total(inv))}</td>
-                <td><span className={`badge ${inv.status}`}>{inv.status.charAt(0).toUpperCase()+inv.status.slice(1)}</span></td>
+                <td style={{fontWeight:700}}>{formatMoney(total(inv), resolveInvoiceCurrency(inv, leases))}</td>
+                <td><span className={`badge ${inv.status}`}>{invoiceStatusLabel(inv.status)}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(inv)}}>···</button></td>
               </tr>
             ))}
@@ -318,10 +455,10 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               </div>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:24,scrollbarWidth:'thin',scrollbarColor:'var(--border) transparent'}}>
-              <InvoiceDoc inv={selected} />
+              <InvoiceDoc inv={selected} currency={resolveInvoiceCurrency(selected, leases)} />
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:8,flexShrink:0,background:'var(--bg-surface)'}}>
-              {(selected.status==='unpaid'||selected.status==='overdue') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
+              {(selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
               {selected.status==='proforma' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(s=>s?{...s,status:'unpaid'}:null)})}>Convert to Invoice</button>}
               {selected.status==='paid' && <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>window.print()}>Print / Save PDF</button>}
               <button className="btn-secondary" onClick={()=>setSelected(null)}>Email</button>
@@ -384,9 +521,9 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 </button>
                 {modalTotal > 0 && (
                   <div style={{background:'var(--bg-elevated)',borderRadius:9,padding:'12px 14px',fontSize:13,color:'var(--text-secondary)'}}>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Subtotal</span><span>{formatTzsFromUsd(modalSubtotal)}</span></div>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>VAT (18%)</span><span>{formatTzsFromUsd(modalVat)}</span></div>
-                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Due</span><span style={{color:'var(--accent)',fontWeight:700}}>{formatTzsFromUsd(modalTotal)}</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Subtotal</span><span>{formatMoney(modalSubtotal, modalCurrency)}</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>VAT (18%)</span><span>{formatMoney(modalVat, modalCurrency)}</span></div>
+                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Due</span><span style={{color:'var(--accent)',fontWeight:700}}>{formatMoney(modalTotal, modalCurrency)}</span></div>
                   </div>
                 )}
               </div>

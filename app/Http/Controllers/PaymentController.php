@@ -8,8 +8,10 @@ use App\Models\Invoice;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Support\MockRentalData;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class PaymentController extends Controller
@@ -101,10 +103,16 @@ class PaymentController extends Controller
 
         $data['property_id'] = $propertyId;
 
-        Payment::create($data);
-        if ($data['status'] === 'paid') {
-            Unit::find($data['unit_id'])->update(['status' => 'occupied']);
-        }
+        DB::transaction(function () use ($data) {
+            $payment = Payment::create($data);
+
+            if ($data['status'] === 'paid') {
+                Unit::find($data['unit_id'])?->update(['status' => 'occupied']);
+            }
+
+            $this->reconcileInvoiceStatus($payment->invoice_id);
+        });
+
         return back()->with('success', 'Payment recorded.');
     }
 
@@ -112,14 +120,45 @@ class PaymentController extends Controller
     {
         $this->authorizePaymentProperty($request, $payment);
         $payment->update($request->only(['status', 'method', 'paid_date']));
+
+        $this->reconcileInvoiceStatus($payment->invoice_id);
+
         return back()->with('success', 'Payment updated.');
     }
 
     public function destroy(Payment $payment)
     {
         $this->authorizePaymentProperty(request(), $payment);
+
+        $invoiceId = $payment->invoice_id;
         $payment->delete();
+
+        $this->reconcileInvoiceStatus($invoiceId);
+
         return back()->with('success', 'Payment deleted.');
+    }
+
+    private function reconcileInvoiceStatus(?int $invoiceId): void
+    {
+        if (empty($invoiceId)) return;
+
+        $invoice = Invoice::with('items')->find($invoiceId);
+        if (!$invoice || $invoice->type === 'proforma') return;
+
+        $invoiceTotal = (float) $invoice->items->sum(fn($item) => (float) $item->total);
+        $paidTotal = (float) Payment::where('invoice_id', $invoice->id)->sum('amount');
+
+        if ($invoiceTotal > 0 && $paidTotal + 0.00001 >= $invoiceTotal) {
+            $invoice->status = 'paid';
+        } elseif ($paidTotal > 0) {
+            $invoice->status = 'partially_paid';
+        } else {
+            $isOverdue = !empty($invoice->due_date)
+                && Carbon::today()->gt(Carbon::parse($invoice->due_date)->startOfDay());
+            $invoice->status = $isOverdue ? 'overdue' : 'unpaid';
+        }
+
+        $invoice->save();
     }
 
     private function scopeByUserProperty($query, Request $request, string $column): void

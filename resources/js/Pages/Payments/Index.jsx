@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
-import useExchangeRate from '@/hooks/useExchangeRate';
 
 const invoiceTotal = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
 
@@ -28,7 +27,53 @@ const fmtVariance = (amount, formatter) => {
 };
 
 export default function PaymentsIndex({ payments, invoices = [], tenants, units }) {
-  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
+  const normalizeCurrency = (value) => (String(value || '').toUpperCase() === 'TZS' ? 'TZS' : 'USD');
+
+  const resolveInvoiceUnit = (invoice) => {
+    if (!invoice) return null;
+    if (invoice.unit_id) {
+      const byId = units.find((u) => Number(u.id) === Number(invoice.unit_id));
+      if (byId) return byId;
+    }
+    if (invoice.unit_ref) {
+      const byRef = units.find(
+        (u) => String(u.unit_number || '').trim().toLowerCase() === String(invoice.unit_ref || '').trim().toLowerCase()
+      );
+      if (byRef) return byRef;
+    }
+    return null;
+  };
+
+  const getInvoiceCurrency = (invoice, unitFallback = null) => {
+    const unit = unitFallback || resolveInvoiceUnit(invoice);
+    return normalizeCurrency(invoice?.currency || unit?.currency);
+  };
+
+  const invoicePaidTotal = (invoiceId) => {
+    if (!invoiceId) return 0;
+    return payments
+      .filter((p) => Number(p.invoice_id) === Number(invoiceId) && p.status === 'paid')
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  };
+
+  const formatAmount = (amount, currency = 'USD', options = {}) => {
+    const numeric = Number(amount || 0);
+    if (Number.isNaN(numeric)) return '—';
+
+    const money = normalizeCurrency(currency);
+    const abs = Math.abs(numeric);
+
+    if (options.compact) {
+      if (abs >= 1_000_000) return `${money} ${(abs / 1_000_000).toFixed(1)}M`;
+      if (abs >= 1_000) return `${money} ${(abs / 1_000).toFixed(0)}k`;
+    }
+
+    const decimals = money === 'USD' ? 2 : 0;
+    return `${money} ${abs.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })}`;
+  };
 
   const [activeTab, setActiveTab] = useState('pay-ledger');
   const [filter, setFilter] = useState('all');
@@ -52,76 +97,71 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
     notes: '',
   });
 
-  const invoiceLedger = useMemo(() => {
-    return invoices
-      .filter((inv) => inv.type !== 'proforma')
-      .map((inv) => {
-        const total = invoiceTotal(inv);
-        const linkedPayments = payments.filter((p) => {
-          if (p.invoice_id && Number(p.invoice_id) === Number(inv.id)) return true;
-          return (
-            Number(p.tenant_id) === Number(inv.tenant_id) &&
-            Number(p.unit_id) === Number(inv.unit_id) &&
-            String(p.month || '') === String(inv.period || '')
+  const paymentRows = useMemo(() => {
+    const sorted = [...payments].sort((a, b) => {
+      const ad = new Date(a.created_at || a.updated_at || a.paid_date || 0).getTime();
+      const bd = new Date(b.created_at || b.updated_at || b.paid_date || 0).getTime();
+      if (ad !== bd) return ad - bd;
+      return Number(a.id || 0) - Number(b.id || 0);
+    });
+
+    const paidByInvoice = new Map();
+
+    return sorted.map((p) => {
+      const invoice = p.invoice_id
+        ? invoices.find((inv) => Number(inv.id) === Number(p.invoice_id))
+        : invoices.find((inv) =>
+            Number(inv.tenant_id) === Number(p.tenant_id) &&
+            Number(inv.unit_id) === Number(p.unit_id) &&
+            String(inv.period || '') === String(p.month || '')
           );
-        });
 
-        const paidAmount = linkedPayments
-          .filter((p) => p.status === 'paid')
-          .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const invoiceId = invoice?.id ? Number(invoice.id) : null;
+      const invoiceAmount = invoice ? invoiceTotal(invoice) : Number(p.amount || 0);
+      const paidBefore = invoiceId ? Number(paidByInvoice.get(invoiceId) || 0) : 0;
+      const balanceBefore = Math.max(invoiceAmount - paidBefore, 0);
+      const paymentAmount = Number(p.amount || 0);
+      const variance = paymentAmount - balanceBefore;
 
-        const variance = paidAmount - total;
-        let status = inv.status || 'pending';
-        if (variance > 0) status = 'overpaid';
-        else if (variance < 0 && paidAmount > 0) status = 'partially_paid';
-        else if (paidAmount > 0 && variance === 0) status = 'paid';
+      let derivedStatus = p.status || 'pending';
+      if (invoiceId && p.status === 'paid') {
+        if (variance > 0) derivedStatus = 'overpaid';
+        else if (variance < 0) derivedStatus = 'partially_paid';
+        else derivedStatus = 'paid';
+      }
 
-        const tenant = tenants.find((t) => Number(t.id) === Number(inv.tenant_id)) || null;
-        const unit = units.find((u) => Number(u.id) === Number(inv.unit_id)) || null;
+      if (invoiceId && p.status === 'paid') {
+        paidByInvoice.set(invoiceId, paidBefore + paymentAmount);
+      }
 
-        return {
-          id: `inv-${inv.id}`,
-          invoiceId: inv.id,
-          invoiceNumber: inv.invoice_number || `INV-${inv.id}`,
-          tenant,
-          unit,
-          month: inv.period || '-',
-          invoiceAmount: total,
-          amountPaid: paidAmount,
-          variance,
-          method: linkedPayments[0]?.method || '—',
-          status,
-          date: linkedPayments[0]?.paid_date || inv.issued_date || '—',
-          dueDate: inv.due_date,
-        };
-      });
-  }, [invoices, payments, tenants, units]);
+      const tenant = p.tenant || tenants.find((t) => Number(t.id) === Number(p.tenant_id)) || null;
+      const unit = p.unit || units.find((u) => Number(u.id) === Number(p.unit_id)) || null;
+      const invoiceUnit = unit || resolveInvoiceUnit(invoice);
+      const currency = getInvoiceCurrency(invoice, invoiceUnit);
 
-  const standalonePayments = useMemo(() => {
-    return payments
-      .filter((p) => !p.invoice_id)
-      .map((p) => ({
+      return {
         id: `p-${p.id}`,
-        invoiceId: null,
-        invoiceNumber: '—',
-        tenant: p.tenant,
-        unit: p.unit,
-        month: p.month || '-',
-        invoiceAmount: Number(p.amount || 0),
-        amountPaid: Number(p.amount || 0),
-        variance: 0,
+        paymentId: p.id,
+        invoiceId: invoiceId,
+        invoiceNumber: invoice?.invoice_number || '—',
+        tenant,
+        unit,
+        month: p.month || invoice?.period || '-',
+        invoiceAmount,
+        amountPaid: paymentAmount,
+        variance: invoiceId ? variance : 0,
+        currency,
         method: p.method || '—',
-        status: p.status || 'paid',
-        date: p.paid_date || '—',
-        dueDate: p.paid_date,
-      }));
-  }, [payments]);
-
-  const ledgerRows = [...invoiceLedger, ...standalonePayments];
+        status: derivedStatus,
+        date: p.paid_date || p.date || p.created_at || '—',
+        dueDate: invoice?.due_date || p.paid_date,
+      };
+    }).reverse();
+  }, [invoices, payments, tenants, units]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return ledgerRows.filter((row) => {
+    return paymentRows.filter((row) => {
       const matchFilter = filter === 'all' || row.status === filter;
       const matchMonth = !month || row.month === month;
       const matchSearch =
@@ -131,84 +171,147 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
         String(row.invoiceNumber || '').toLowerCase().includes(q);
       return matchFilter && matchMonth && matchSearch;
     });
-  }, [ledgerRows, filter, month, search]);
+  }, [paymentRows, filter, month, search]);
 
   const filterCounts = useMemo(() => {
     const counts = {
-      all: ledgerRows.length,
+      all: paymentRows.length,
       paid: 0,
       overpaid: 0,
       partially_paid: 0,
       overdue: 0,
       pending: 0,
     };
-    ledgerRows.forEach((row) => {
+    paymentRows.forEach((row) => {
       if (counts[row.status] !== undefined) counts[row.status] += 1;
     });
     return counts;
-  }, [ledgerRows]);
+  }, [paymentRows]);
 
-  const thisMonth = useMemo(() => ledgerRows.filter((r) => r.month === 'Mar 2026'), [ledgerRows]);
+  const thisMonth = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
 
-  const shortfall = ledgerRows
-    .filter((r) => r.status === 'partially_paid')
-    .reduce((sum, r) => sum + Math.abs(Math.min(r.variance, 0)), 0);
+    return paymentRows.filter((row) => {
+      const parsed = new Date(row.date);
+      if (Number.isNaN(parsed.getTime())) return false;
+      return parsed.getFullYear() === currentYear && parsed.getMonth() === currentMonth;
+    });
+  }, [paymentRows]);
 
-  const partialCt = ledgerRows.filter((r) => r.status === 'partially_paid').length;
-  const overdueAmt = ledgerRows
-    .filter((r) => r.status === 'overdue')
-    .reduce((sum, r) => sum + Math.max(r.invoiceAmount - r.amountPaid, 0), 0);
-  const overdueCt = ledgerRows.filter((r) => r.status === 'overdue').length;
-  const collected = thisMonth
-    .filter((r) => ['paid', 'overpaid', 'partially_paid'].includes(r.status))
-    .reduce((sum, r) => sum + r.amountPaid, 0);
+  const toCurrencyTotals = (rows, getAmount) => rows.reduce((acc, row) => {
+    const money = normalizeCurrency(row.currency);
+    acc[money] += Number(getAmount(row) || 0);
+    return acc;
+  }, { USD: 0, TZS: 0 });
+
+  const formatTotals = (totals, options = {}) => {
+    const parts = ['USD', 'TZS']
+      .filter((money) => totals[money] > 0)
+      .map((money) => formatAmount(totals[money], money, options));
+    return parts.length ? parts.join(' + ') : '—';
+  };
+
+  const paidByInvoice = useMemo(() => {
+    const map = new Map();
+    payments
+      .filter((p) => p.invoice_id && p.status === 'paid')
+      .forEach((p) => {
+        const invoiceId = Number(p.invoice_id);
+        const current = Number(map.get(invoiceId) || 0);
+        map.set(invoiceId, current + Number(p.amount || 0));
+      });
+    return map;
+  }, [payments]);
+
+  const partialInvoiceBalances = useMemo(() => {
+    return invoices
+      .filter((inv) => inv.type !== 'proforma' && inv.status === 'partially_paid')
+      .map((inv) => {
+        const paid = Number(paidByInvoice.get(Number(inv.id)) || 0);
+        const due = Math.max(invoiceTotal(inv) - paid, 0);
+        const currency = getInvoiceCurrency(inv);
+
+        return {
+          id: inv.id,
+          due,
+          currency,
+        };
+      })
+      .filter((entry) => entry.due > 0);
+  }, [invoices, paidByInvoice]);
+
+  const shortfallTotals = toCurrencyTotals(partialInvoiceBalances, (entry) => entry.due);
+  const partialCt = partialInvoiceBalances.length;
+  const overdueTotals = toCurrencyTotals(
+    paymentRows.filter((r) => r.status === 'overdue'),
+    (r) => Math.max(r.invoiceAmount - r.amountPaid, 0)
+  );
+  const overdueCt = paymentRows.filter((r) => r.status === 'overdue').length;
+  const collectedTotals = toCurrencyTotals(
+    thisMonth.filter((r) => ['paid', 'overpaid', 'partially_paid'].includes(r.status)),
+    (r) => r.amountPaid
+  );
   const paidCt = thisMonth.filter((r) => ['paid', 'overpaid'].includes(r.status)).length;
   const collectionRate = thisMonth.length ? Math.round((paidCt / thisMonth.length) * 100) : 0;
 
   const creditsByTenant = useMemo(() => {
     const map = new Map();
-    invoiceLedger.forEach((row) => {
+    paymentRows.forEach((row) => {
       if (row.variance <= 0 || !row.tenant?.id) return;
-      const key = row.tenant.id;
+      const key = `${row.tenant.id}:${row.currency}`;
       const current = map.get(key) || {
+        key,
         tenant: row.tenant,
         unit: row.unit,
         amount: 0,
+        currency: row.currency,
       };
       current.amount += row.variance;
       map.set(key, current);
     });
     return Array.from(map.values());
-  }, [invoiceLedger]);
+  }, [paymentRows]);
 
-  const totalCredits = creditsByTenant.reduce((sum, c) => sum + c.amount, 0);
+  const totalCreditTotals = creditsByTenant.reduce((acc, c) => {
+    const money = normalizeCurrency(c.currency);
+    acc[money] += Number(c.amount || 0);
+    return acc;
+  }, { USD: 0, TZS: 0 });
   const creditCt = creditsByTenant.length;
 
   const creditHistory = useMemo(() => {
-    return invoiceLedger
+    return paymentRows
       .filter((row) => row.variance > 0)
       .map((row) => ({
         id: row.id,
         tenant: row.tenant,
         unit: row.unit,
         amount: row.variance,
+        currency: row.currency,
         date: row.date,
         desc: `Overpayment on ${row.invoiceNumber}`,
         type: 'credit',
       }));
-  }, [invoiceLedger]);
+  }, [paymentRows]);
 
   const eligibleInvoices = invoices.filter((i) => ['unpaid', 'overdue', 'partially_paid'].includes(i.status) && i.type !== 'proforma');
   const selectedInvoice = eligibleInvoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
+  const selectedInvoiceUnit = useMemo(() => resolveInvoiceUnit(selectedInvoice), [selectedInvoice, units]);
+  const selectedInvoiceCurrency = useMemo(() => getInvoiceCurrency(selectedInvoice, selectedInvoiceUnit), [selectedInvoice, selectedInvoiceUnit]);
 
   const selectedTenantCredit = useMemo(() => {
     if (!selectedInvoice) return 0;
-    const credit = creditsByTenant.find((c) => Number(c.tenant?.id) === Number(selectedInvoice.tenant_id));
+    const credit = creditsByTenant.find(
+      (c) => Number(c.tenant?.id) === Number(selectedInvoice.tenant_id) && normalizeCurrency(c.currency) === selectedInvoiceCurrency
+    );
     return Number(credit?.amount || 0);
-  }, [selectedInvoice, creditsByTenant]);
+  }, [selectedInvoice, creditsByTenant, selectedInvoiceCurrency]);
 
   const selectedInvoiceNet = selectedInvoice ? invoiceTotal(selectedInvoice) : 0;
-  const selectedBalanceDue = Math.max(0, selectedInvoiceNet - selectedTenantCredit);
+  const selectedInvoicePaid = selectedInvoice ? invoicePaidTotal(selectedInvoice.id) : 0;
+  const selectedBalanceDue = Math.max(0, selectedInvoiceNet - selectedInvoicePaid - selectedTenantCredit);
   const received = Number(data.amount || 0);
   const reconcileVariance = received - selectedBalanceDue;
 
@@ -234,11 +337,22 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
     const inv = eligibleInvoices.find((x) => String(x.id) === String(invoiceId));
     if (!inv) return;
 
-    const tenantCredit = creditsByTenant.find((c) => Number(c.tenant?.id) === Number(inv.tenant_id));
-    const due = Math.max(invoiceTotal(inv) - Number(tenantCredit?.amount || 0), 0);
+    const tenantFallback = tenants.find(
+      (t) => String(t.name || '').trim().toLowerCase() === String(inv.tenant_name || '').trim().toLowerCase()
+    );
+    const unitFallback = units.find(
+      (u) => String(u.unit_number || '').trim().toLowerCase() === String(inv.unit_ref || '').trim().toLowerCase()
+    );
 
-    setData('tenant_id', String(inv.tenant_id || ''));
-    setData('unit_id', String(inv.unit_id || ''));
+    const invoiceCurrency = getInvoiceCurrency(inv, unitFallback || null);
+    const tenantCredit = creditsByTenant.find(
+      (c) => Number(c.tenant?.id) === Number(inv.tenant_id) && normalizeCurrency(c.currency) === invoiceCurrency
+    );
+    const invoicePaid = invoicePaidTotal(inv.id);
+    const due = Math.max(invoiceTotal(inv) - invoicePaid - Number(tenantCredit?.amount || 0), 0);
+
+    setData('tenant_id', String(inv.tenant_id || tenantFallback?.id || ''));
+    setData('unit_id', String(inv.unit_id || unitFallback?.id || ''));
     setData('month', String(inv.period || 'Mar 2026'));
     setData('amount', due ? String(due) : String(invoiceTotal(inv)));
     setData('reference', inv.invoice_number || '');
@@ -251,11 +365,30 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
     setSubmitError('');
     setSubmitMessage({ type: '', text: '' });
 
+    const selectedInv = eligibleInvoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
+    const tenantFallback = selectedInv
+      ? tenants.find(
+          (t) => String(t.name || '').trim().toLowerCase() === String(selectedInv.tenant_name || '').trim().toLowerCase()
+        )
+      : null;
+    const unitFallback = selectedInv
+      ? units.find(
+          (u) => String(u.unit_number || '').trim().toLowerCase() === String(selectedInv.unit_ref || '').trim().toLowerCase()
+        )
+      : null;
+
+    const payload = {
+      ...data,
+      status: 'paid',
+      invoice_id: data.invoice_id || selectedInvoiceId || '',
+      tenant_id: data.tenant_id || selectedInv?.tenant_id || tenantFallback?.id || '',
+      unit_id: data.unit_id || selectedInv?.unit_id || unitFallback?.id || '',
+      month: data.month || selectedInv?.period || 'Mar 2026',
+      reference: data.reference || selectedInv?.invoice_number || '',
+    };
+
     post('/payments', {
-      data: {
-        ...data,
-        status: 'paid',
-      },
+      data: payload,
       preserveScroll: true,
       onSuccess: () => {
         setSubmitMessage({ type: 'success', text: 'Payment recorded successfully.' });
@@ -282,7 +415,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
             <div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg></div>
             <span className="stat-delta up">{collectionRate}% collection rate</span>
           </div>
-          <div className="stat-value">{formatCompactTzsFromUsd(collected)}</div>
+          <div className="stat-value">{formatTotals(collectedTotals, { compact: true })}</div>
           <div className="stat-label">Collected This Month</div>
         </div>
 
@@ -291,7 +424,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
             <div className="stat-icon red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg></div>
             <span className="stat-delta down">{overdueCt} tenant{overdueCt !== 1 ? 's' : ''}</span>
           </div>
-          <div className="stat-value">{formatCompactTzsFromUsd(overdueAmt)}</div>
+          <div className="stat-value">{formatTotals(overdueTotals, { compact: true })}</div>
           <div className="stat-label">Overdue Balance</div>
         </div>
 
@@ -300,7 +433,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
             <div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" /></svg></div>
             <span className="stat-delta">{partialCt} partial</span>
           </div>
-          <div className="stat-value">{formatCompactTzsFromUsd(shortfall)}</div>
+          <div className="stat-value">{formatTotals(shortfallTotals, { compact: true })}</div>
           <div className="stat-label">Outstanding Shortfall</div>
         </div>
 
@@ -309,7 +442,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
             <div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5" /><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" /></svg></div>
             <span className="stat-delta up">{creditCt} tenant{creditCt !== 1 ? 's' : ''}</span>
           </div>
-          <div className="stat-value">{formatCompactTzsFromUsd(totalCredits)}</div>
+          <div className="stat-value">{formatTotals(totalCreditTotals, { compact: true })}</div>
           <div className="stat-label">Credits on Account</div>
         </div>
       </div>
@@ -361,45 +494,75 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
           </div>
 
           <div className="card" style={{ overflow: 'hidden' }}>
-            <table className="ledger-table">
-              <thead><tr><th style={{ paddingLeft: 20 }}>Tenant</th><th>Unit</th><th>Invoice</th><th>Invoice Amount</th><th>Amount Paid</th><th>Variance</th><th>Method</th><th>Status</th><th>Date</th></tr></thead>
-              <tbody>
-                {filteredRows.length === 0 ? (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No payments found</td></tr>
-                ) : (
-                  filteredRows.map((row) => {
-                    const statusConfig = PAY_STATUS[row.status] || PAY_STATUS.pending;
-                    const varianceColor = row.variance > 0 ? 'var(--green)' : row.variance < 0 ? 'var(--red)' : 'var(--text-muted)';
+            {filteredRows.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>No payments found</div>
+            ) : (
+              <table className="units-list-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', paddingLeft: 20, whiteSpace: 'nowrap' }}>TENANT</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>UNIT</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>INVOICE</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>INVOICE AMOUNT</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>AMOUNT PAID</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>VARIANCE</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>METHOD</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>STATUS</th>
+                    <th style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', whiteSpace: 'nowrap' }}>DATE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row) => {
+                    const variance = row.amountPaid - row.invoiceAmount;
+                    const varianceColor = variance > 0 ? 'var(--green)' : variance < 0 ? 'var(--red)' : 'var(--text-muted)';
+                    const varianceText = variance > 0 ? `+${formatAmount(variance, row.currency)}` : variance < 0 ? `(${formatAmount(Math.abs(variance), row.currency)})` : '—';
+                    const statusInfo = PAY_STATUS[row.status] || PAY_STATUS.pending;
+                    const tenantPeriod = row.month || '—';
+                    const paymentRef = `P${String(row.paymentId || '').padStart(3, '0')}`;
+                    
+                    let statusDisplay = statusInfo.label;
+                    if (row.status === 'partially_paid') {
+                      const shortfall = Math.max(0, row.invoiceAmount - row.amountPaid);
+                      statusDisplay = `${statusInfo.label} — ${formatAmount(shortfall, row.currency, { compact: true })} short`;
+                    }
+
+                    const tenantColor = row.tenant?.color || 'rgba(59, 130, 246, 0.18)';
+                    const tenantTextColor = row.tenant?.text_color || 'var(--accent)';
+                    const tenantInitials = row.tenant?.initials || toInitials(row.tenant?.name);
+
                     return (
-                      <tr key={row.id}>
-                        <td>
-                          <div className="tenant-cell">
-                            <div className="t-avatar">{row.tenant?.initials || toInitials(row.tenant?.name)}</div>
+                      <tr key={row.id} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', transition: 'background .1s' }} onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseOut={(e) => e.currentTarget.style.background = ''}>
+                        <td style={{ padding: '11px 14px', paddingLeft: 20, fontSize: 13.5, verticalAlign: 'middle' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                            <div style={{ width: 26, height: 26, borderRadius: '50%', backgroundColor: tenantColor, color: tenantTextColor, fontSize: 10.5, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              {tenantInitials}
+                            </div>
                             <div>
                               <div style={{ fontWeight: 600 }}>{row.tenant?.name || '—'}</div>
-                              <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{row.invoiceNumber || row.id} · {row.month}</div>
+                              <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{paymentRef} · {tenantPeriod}</div>
                             </div>
                           </div>
                         </td>
-                        <td style={{ fontWeight: 600 }}>{row.unit?.unit_number || '—'}</td>
-                        <td style={{ fontSize: '12.5px', color: 'var(--accent)', fontWeight: 500 }}>{row.invoiceNumber || '—'}</td>
-                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTzsFromUsd(row.invoiceAmount)}</td>
-                        <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatTzsFromUsd(row.amountPaid)}</td>
-                        <td style={{ fontWeight: 600, color: varianceColor, fontVariantNumeric: 'tabular-nums' }}>{fmtVariance(row.variance, formatTzsFromUsd)}</td>
-                        <td style={{ fontSize: '12.5px', color: 'var(--text-secondary)' }}>{row.method || '—'}</td>
-                        <td>
-                          <span style={{ fontSize: 12, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: statusConfig.bg, color: statusConfig.color }}>
-                            {statusConfig.label}
-                            {row.status === 'partially_paid' ? ` — ${formatCompactTzsFromUsd(Math.abs(row.variance))} short` : ''}
-                          </span>
+                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontWeight: 600 }}>{row.unit?.unit_number || '—'}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 12.5, verticalAlign: 'middle', color: 'var(--accent)', fontWeight: 500, cursor: 'pointer' }}>{row.invoiceNumber}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums' }}>{formatAmount(row.invoiceAmount, row.currency)}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatAmount(row.amountPaid, row.currency)}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', color: varianceColor, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{varianceText}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 12.5, verticalAlign: 'middle', color: 'var(--text-secondary)' }}>{row.method}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle' }}>
+                          <div style={{ background: statusInfo.bg, color: statusInfo.color, padding: '2px 9px', borderRadius: 20, fontSize: 12, fontWeight: 600, display: 'inline-block' }}>
+                            {statusDisplay}
+                          </div>
                         </td>
-                        <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{row.date || row.dueDate || '—'}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 12, verticalAlign: 'middle', color: 'var(--text-muted)' }}>
+                          {row.date || '—'}
+                        </td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </>
       )}
@@ -420,14 +583,25 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                   <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>No credit balances on account</div>
                 ) : (
                   creditsByTenant.map((entry) => (
-                    <div key={entry.tenant.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
-                      <div className="t-avatar" style={{ width: 32, height: 32, fontSize: 12 }}>{entry.tenant.initials || toInitials(entry.tenant.name)}</div>
+                    <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
+                      <div
+                        className="t-avatar"
+                        style={{
+                          width: 32,
+                          height: 32,
+                          fontSize: 12,
+                          background: entry.tenant?.color || 'var(--accent-dim)',
+                          color: entry.tenant?.text_color || 'var(--accent)',
+                        }}
+                      >
+                        {entry.tenant.initials || toInitials(entry.tenant.name)}
+                      </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{entry.tenant.name}</div>
                         <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{entry.unit?.unit_number || '—'} · Credit from overpayment</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>{formatTzsFromUsd(entry.amount)}</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>{formatAmount(entry.amount, entry.currency)}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>will apply to next invoice</div>
                       </div>
                     </div>
@@ -447,15 +621,24 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                 {creditHistory.length === 0 ? (
                   <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>No credit events yet</div>
                 ) : (
-                  creditHistory.map((entry) => (
+                  creditHistory.map((entry) => {
+                    const deltaColor = entry.type === 'credit'
+                      ? 'var(--green)'
+                      : entry.type === 'apply'
+                        ? 'var(--accent)'
+                        : 'var(--text-muted)';
+                    const deltaSign = entry.type === 'credit' ? '+' : '-';
+
+                    return (
                     <div key={entry.id} style={{ padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                         <div style={{ fontSize: 13, fontWeight: 500 }}>{entry.tenant?.name || '—'}</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>+{formatTzsFromUsd(entry.amount)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: deltaColor }}>{deltaSign}{formatAmount(entry.amount, entry.currency)}</div>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{entry.desc} · {entry.date || '—'}</div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -463,8 +646,8 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
         </>
       )}
 
-      <div className={`modal-overlay ${showModal ? 'open' : ''}`} style={{ alignItems: 'flex-start', padding: '12px 0', overflowY: 'auto' }} onClick={(e) => e.target === e.currentTarget && !processing && setShowModal(false)}>
-        <div className="modal" style={{ width: 560, maxHeight: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column', margin: '0 auto' }}>
+      <div className={`modal-overlay ${showModal ? 'open' : ''}`} style={{ alignItems: 'center', padding: '12px', overflowY: 'auto' }} onClick={(e) => e.target === e.currentTarget && !processing && setShowModal(false)}>
+        <div className="modal" style={{ width: 560, maxHeight: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column' }}>
           <div className="modal-header" style={{ flexShrink: 0 }}><div className="modal-title">Record Payment</div><button className="modal-close" onClick={() => setShowModal(false)}>X</button></div>
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -479,9 +662,12 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                   <label className="form-label">Invoice *</label>
                   <select className="form-input form-select" value={selectedInvoiceId} onChange={(e) => onSelectInvoice(e.target.value)} required>
                     <option value="">Select invoice...</option>
-                    {eligibleInvoices.map((inv) => (
-                      <option key={inv.id} value={inv.id}>{`${inv.invoice_number} — ${inv.tenant_name} (${inv.unit_ref || 'Unit'}) — ${formatTzsFromUsd(invoiceTotal(inv))}`}</option>
-                    ))}
+                    {eligibleInvoices.map((inv) => {
+                      const invoiceCurrency = getInvoiceCurrency(inv);
+                      return (
+                        <option key={inv.id} value={inv.id}>{`${inv.invoice_number} — ${inv.tenant_name} (${inv.unit_ref || 'Unit'}) — ${formatAmount(invoiceTotal(inv), invoiceCurrency)}`}</option>
+                      );
+                    })}
                   </select>
                   {errors.invoice_id && <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)' }}>{errors.invoice_id}</div>}
                 </div>
@@ -506,13 +692,13 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Net Payable</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{formatTzsFromUsd(selectedInvoiceNet)}</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{formatAmount(selectedInvoiceNet, selectedInvoiceCurrency)}</div>
                     </div>
                   </div>
                   {selectedTenantCredit > 0 && (
                     <div style={{ background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
                       <span style={{ color: 'var(--green)', fontWeight: 600 }}>Credit on account: </span>
-                      <span>{formatTzsFromUsd(selectedTenantCredit)} will be applied automatically</span>
+                      <span>{formatAmount(selectedTenantCredit, selectedInvoiceCurrency)} will be applied automatically</span>
                     </div>
                   )}
                 </div>
@@ -520,7 +706,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
 
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Amount Received (TZS) *</label>
+                  <label className="form-label">Amount Received ({selectedInvoiceCurrency}) *</label>
                   <input className="form-input" type="number" value={data.amount} onChange={(e) => setData('amount', e.target.value)} placeholder="Enter amount" required />
                   {errors.amount && <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)' }}>{errors.amount}</div>}
                 </div>
@@ -547,19 +733,19 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                 <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 4 }}>
                   <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Reconciliation Preview</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Invoice net payable</span><span>{formatTzsFromUsd(selectedInvoiceNet)}</span></div>
-                    {selectedTenantCredit > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--green)' }}>Less: credit on account</span><span style={{ color: 'var(--green)' }}>({formatTzsFromUsd(selectedTenantCredit)})</span></div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Balance due</span><span>{formatTzsFromUsd(selectedBalanceDue)}</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Amount received</span><span>{formatTzsFromUsd(received)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Invoice net payable</span><span>{formatAmount(selectedInvoiceNet, selectedInvoiceCurrency)}</span></div>
+                    {selectedTenantCredit > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--green)' }}>Less: credit on account</span><span style={{ color: 'var(--green)' }}>({formatAmount(selectedTenantCredit, selectedInvoiceCurrency)})</span></div>}
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Balance due</span><span>{formatAmount(selectedBalanceDue, selectedInvoiceCurrency)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Amount received</span><span>{formatAmount(received, selectedInvoiceCurrency)}</span></div>
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2, display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700 }}>
                       <span>{reconcileVariance > 0 ? 'Overpayment' : reconcileVariance < 0 ? 'Shortfall' : 'Variance'}</span>
-                      <span style={{ color: reconcileVariance > 0 ? '#a78bfa' : reconcileVariance < 0 ? 'var(--red)' : 'var(--green)' }}>{reconcileVariance === 0 ? 'Exact — TZS 0' : fmtVariance(reconcileVariance, formatTzsFromUsd)}</span>
+                      <span style={{ color: reconcileVariance > 0 ? '#a78bfa' : reconcileVariance < 0 ? 'var(--red)' : 'var(--green)' }}>{reconcileVariance === 0 ? `Exact — ${selectedInvoiceCurrency} 0` : fmtVariance(reconcileVariance, (value) => formatAmount(value, selectedInvoiceCurrency))}</span>
                     </div>
                   </div>
                   <div style={{ marginTop: 12, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 600, background: reconcileVariance > 0 ? 'rgba(167,139,250,.12)' : reconcileVariance < 0 ? 'var(--red-dim)' : 'var(--green-dim)', color: reconcileVariance > 0 ? '#a78bfa' : reconcileVariance < 0 ? 'var(--red)' : 'var(--green)' }}>
                     {reconcileVariance === 0 && '✓ Exact payment — invoice will be marked PAID'}
-                    {reconcileVariance > 0 && `Overpaid by ${formatTzsFromUsd(reconcileVariance)} — invoice marked PAID, excess credited to tenant account`}
-                    {reconcileVariance < 0 && `Underpayment of ${formatTzsFromUsd(Math.abs(reconcileVariance))} — invoice marked PARTIALLY PAID, shortfall remains outstanding`}
+                    {reconcileVariance > 0 && `Overpaid by ${formatAmount(reconcileVariance, selectedInvoiceCurrency)} — invoice marked PAID, excess credited to tenant account`}
+                    {reconcileVariance < 0 && `Underpayment of ${formatAmount(Math.abs(reconcileVariance), selectedInvoiceCurrency)} — invoice marked PARTIALLY PAID, shortfall remains outstanding`}
                   </div>
                 </div>
               )}

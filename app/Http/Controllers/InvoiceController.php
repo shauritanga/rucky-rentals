@@ -137,7 +137,11 @@ class InvoiceController extends Controller
             abort_if((int) $invoice->property_id !== (int) $user->property_id, 403);
         }
 
-        $invoice->update($request->only(['status']));
+        $data = $request->validate([
+            'status' => 'required|in:draft,proforma,unpaid,partially_paid,paid,overdue',
+        ]);
+
+        $invoice->update($data);
         return back()->with('success', 'Invoice updated.');
     }
 

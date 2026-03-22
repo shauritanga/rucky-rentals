@@ -86,6 +86,7 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .badge.maintenance{background:var(--accent-dim);color:var(--accent)}
 .badge.paid{background:var(--green-dim);color:var(--green)}
 .badge.unpaid{background:var(--accent-dim);color:var(--accent)}
+.badge.partially_paid{background:var(--amber-dim);color:var(--amber)}
 .badge.pending{background:var(--bg-elevated);color:var(--text-muted)}
 .badge.active{background:var(--green-dim);color:var(--green)}
 .badge.expiring{background:var(--amber-dim);color:var(--amber)}

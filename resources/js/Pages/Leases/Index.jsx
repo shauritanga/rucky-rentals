@@ -175,6 +175,8 @@ export default function LeasesIndex({ leases, tenants, units }) {
     tenant_mode:'existing',
     tenant_id:'', unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
+    possession_date:'2026-04-01', rent_start_date:'2026-04-01', fitout_enabled:false, fitout_to_date:'', fitout_days:0,
+    wht_rate:10, service_charge_rate:5, vat_rate:18,
     new_tenant_name:'', new_tenant_email:'', new_tenant_phone:'', new_tenant_national_id:''
   });
 
@@ -336,6 +338,17 @@ export default function LeasesIndex({ leases, tenants, units }) {
   const submit = (e) => {
     e.preventDefault();
     post('/leases', {
+      data: {
+        ...data,
+        possession_date: possessionDate || data.start_date,
+        rent_start_date: rentStartDate || data.start_date,
+        fitout_enabled: fitoutEnabled,
+        fitout_to_date: fitoutEnabled ? fitoutToDate : null,
+        fitout_days: summary.fitoutDays || 0,
+        wht_rate: Number(whtRate || 0),
+        service_charge_rate: Number(scRate || 0),
+        vat_rate: Number(vatRate || 0),
+      },
       onSuccess: () => {
         reset();
         setShowModal(false);
