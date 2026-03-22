@@ -44,9 +44,13 @@ class Unit extends Model
     {
         return $this->hasMany(MeterReading::class);
     }
+    public function maintenanceRecords()
+    {
+        return $this->hasMany(MaintenanceRecord::class);
+    }
     public function maintenanceTickets()
     {
-        return $this->hasMany(MaintenanceTicket::class);
+        return $this->maintenanceRecords();
     }
     public function documents()
     {

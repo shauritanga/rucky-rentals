@@ -70,6 +70,10 @@ function normalizeWorkflowStatus(ticket) {
   return 'pending_accountant';
 }
 
+function buildRecordNumber(item) {
+  return item.record_number || item.ticket_number || `MR-${String(item.id).padStart(3, '0')}`;
+}
+
 function workflowToDbStatus(workflowStatus) {
   if (workflowStatus === 'completed') return 'resolved';
   if (workflowStatus === 'in_progress') return 'in-progress';
@@ -153,8 +157,10 @@ export default function MaintenanceIndex({ tickets, units }) {
       const workflowStatus = workflowStatusByTicket[ticket.id] || normalizeWorkflowStatus(ticket);
       const labour = Number(ticket.cost || 0);
       const materialCost = 0;
+      const recordNumber = buildRecordNumber(ticket);
       return {
         ...ticket,
+        record_number: recordNumber,
         workflow_status: workflowStatus,
         labour,
         material_cost: materialCost,
@@ -211,7 +217,7 @@ export default function MaintenanceIndex({ tickets, units }) {
         !q ||
         String(ticket.title || '').toLowerCase().includes(q) ||
         String(ticket.unit_ref || '').toLowerCase().includes(q) ||
-        String(ticket.ticket_number || '').toLowerCase().includes(q);
+        String(ticket.record_number || '').toLowerCase().includes(q);
       return matchFilter && matchCategory && matchSearch;
     });
   }, [normalizedTickets, filter, catFilter, search]);
@@ -279,7 +285,7 @@ export default function MaintenanceIndex({ tickets, units }) {
     normalizedTickets.forEach((r) => {
       (r.materials || []).forEach((m) => {
         rows.push({
-          reqId: r.ticket_number,
+          reqId: r.record_number || buildRecordNumber(r),
           unit: r.unit_ref,
           matName: m.name,
           qty: Number(m.qty || 0),
@@ -452,6 +458,7 @@ export default function MaintenanceIndex({ tickets, units }) {
               <thead>
                 <tr>
                   <th>Request</th>
+                  <th>Record</th>
                   <th>Unit / Tenant</th>
                   <th>Category</th>
                   <th>Priority</th>
@@ -464,7 +471,7 @@ export default function MaintenanceIndex({ tickets, units }) {
                 </tr>
               </thead>
               <tbody>
-                {filteredTickets.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No requests match your filters</td></tr>}
+                {filteredTickets.length === 0 && <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No maintenance records match your filters</td></tr>}
                 {requestPageRows.map((t) => {
                   const statusMeta = STATUS_META[t.workflow_status] || STATUS_META.draft;
                   const pri = PRIORITY_META[t.priority] || PRIORITY_META.low;
@@ -475,10 +482,11 @@ export default function MaintenanceIndex({ tickets, units }) {
                           <span style={{ fontSize: 18 }}>{CAT_ICONS[t.category] || '🔧'}</span>
                           <div>
                             <div style={{ fontWeight: 600, fontSize: '13.5px' }}>{t.title}</div>
-                            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{t.ticket_number} · {t.assignee || '—'}</div>
+                            <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{t.record_number} · {t.assignee || '—'}</div>
                           </div>
                         </div>
                       </td>
+                      <td style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--accent)' }}>{t.record_number}</td>
                       <td><div style={{ fontWeight: 600 }}>{t.unit_ref}</div><div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{tenantByUnit[String(t.unit_ref)] || '—'}</div></td>
                       <td style={{ fontSize: 13 }}>{t.category}</td>
                       <td><span style={{ fontSize: 12, fontWeight: 600, color: pri.color }}>{pri.label}</span></td>
@@ -553,9 +561,9 @@ export default function MaintenanceIndex({ tickets, units }) {
             <div className="card"><div className="card-header"><div className="card-title">Top Cost Items</div><div className="card-sub">Materials driving most spend</div></div><div style={{ padding: '0 8px 8px' }}>{materialUsageItems.length ? materialUsageItems.slice(0,5).map(([name, usage]) => { const maxVal = materialUsageItems[0][1].total || 1; return <div key={`top-${name}`} style={{padding:'10px 12px',borderBottom:'1px solid var(--border-subtle)'}}><div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}><div style={{fontSize:13,fontWeight:500}}>{name}</div><div style={{fontWeight:700}}>{formatTzsFromUsd(usage.total)}</div></div><div style={{height:4,borderRadius:20,background:'var(--border)',overflow:'hidden'}}><div style={{height:'100%',width:`${Math.round((usage.total/maxVal)*100)}%`,background:'var(--red)',borderRadius:20}} /></div></div>; }) : <div style={{padding:20,fontSize:13,color:'var(--text-muted)',textAlign:'center'}}>No data</div>}</div></div>
           </div>
           <div className="card">
-            <div className="card-header"><div className="card-title">Materials by Request</div><div className="card-sub">Price entered by staff at market rate at time of submission</div></div>
+            <div className="card-header"><div className="card-title">Materials by Record</div><div className="card-sub">Price entered by staff at market rate at time of submission</div></div>
             <table className="data-table">
-              <thead><tr><th>Request</th><th>Unit</th><th>Material</th><th>Qty</th><th>Price/Unit (Market)</th><th>Total</th></tr></thead>
+                <thead><tr><th>Record</th><th>Unit</th><th>Material</th><th>Qty</th><th>Price/Unit (Market)</th><th>Total</th></tr></thead>
               <tbody>{materialsByRequestRows.length ? materialsPageRows.map((row, idx) => <tr key={`mat-${row.reqId}-${materialsCurrentPage}-${idx}`}><td style={{fontSize:'12.5px'}}>{row.reqId}</td><td>{row.unit}</td><td style={{fontSize:13}}>{row.matName}</td><td style={{textAlign:'center'}}>{row.qty} {row.unitQty}</td><td style={{fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.unitPrice)}</td><td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatTzsFromUsd(row.total)}</td></tr>) : <tr><td colSpan={6} style={{textAlign:'center',padding:30,color:'var(--text-muted)'}}>No material usage recorded</td></tr>}</tbody>
             </table>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px 12px', borderTop: '1px solid var(--border-subtle)' }}>
@@ -608,7 +616,7 @@ export default function MaintenanceIndex({ tickets, units }) {
                     <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-.3px' }}>{selected.title}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5, display: 'flex', gap: 8 }}>
                       <span style={{ color: (PRIORITY_META[selected.priority] || PRIORITY_META.low).color }}>{(PRIORITY_META[selected.priority] || PRIORITY_META.low).label} priority</span>
-                      <span>·</span><span>{selected.category}</span><span>·</span><span>{selected.ticket_number}</span>
+                      <span>·</span><span>{selected.category}</span><span>·</span><span>{selected.record_number || buildRecordNumber(selected)}</span>
                     </div>
                   </div>
                 </div>

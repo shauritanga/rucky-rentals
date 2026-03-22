@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\AccountingEvent;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Models\MaintenanceTicket;
+use App\Models\MaintenanceRecord;
 use App\Models\ExchangeRate;
 use App\Support\AccountingAutoPoster;
 use Illuminate\Support\Carbon;
@@ -368,63 +368,63 @@ class AccountingService
      * 
      * Transaction: Dr:5000 (Maintenance Expense) / Cr:2000 (Accounts Payable)
      */
-    public function postMaintenanceTicket(MaintenanceTicket $ticket): void
+    public function postMaintenanceRecord(MaintenanceRecord $record): void
     {
         // Only post if resolved and has cost
-        if ($ticket->status !== 'resolved' || $ticket->cost <= 0) {
+        if ($record->status !== 'resolved' || $record->cost <= 0) {
             return;
         }
 
-        DB::transaction(function () use ($ticket) {
-            $reference = 'MAINT-' . $ticket->id;
+        DB::transaction(function () use ($record) {
+            $reference = 'MAINT-' . $record->id;
 
             try {
                 $lines = [
                     [
                         'account_code' => '5000',
-                        'debit' => (float) $ticket->cost,
+                        'debit' => (float) $record->cost,
                         'credit' => 0,
                     ],
                     [
                         'account_code' => '2000',
                         'debit' => 0,
-                        'credit' => (float) $ticket->cost,
+                        'credit' => (float) $record->cost,
                     ],
                 ];
 
                 $journalEntry = $this->poster->post(
-                    propertyId: $ticket->property_id,
-                    entryDate: $ticket->resolved_date ?? now(),
-                    description: 'Maintenance: ' . $ticket->description,
+                    propertyId: $record->property_id,
+                    entryDate: $record->resolved_date ?? now(),
+                    description: 'Maintenance: ' . $record->description,
                     reference: $reference,
                     lines: $lines
                 );
 
                 AccountingEvent::logSuccess(
-                    propertyId: $ticket->property_id,
+                    propertyId: $record->property_id,
                     eventType: 'maintenance_posted',
-                    entityType: 'MaintenanceTicket',
-                    entityId: $ticket->id,
+                    entityType: 'MaintenanceRecord',
+                    entityId: $record->id,
                     reference: $reference,
                     description: 'Maintenance expense posted',
                     data: [
-                        'ticket_id' => $ticket->id,
-                        'amount' => $ticket->cost,
-                        'description' => $ticket->description,
+                        'record_id' => $record->id,
+                        'amount' => $record->cost,
+                        'description' => $record->description,
                     ],
                     postedEntries: [$journalEntry->id],
                 );
             } catch (\Exception $e) {
                 AccountingEvent::logFailure(
-                    propertyId: $ticket->property_id,
+                    propertyId: $record->property_id,
                     eventType: 'maintenance_posted',
-                    entityType: 'MaintenanceTicket',
-                    entityId: $ticket->id,
+                    entityType: 'MaintenanceRecord',
+                    entityId: $record->id,
                     reference: $reference,
                     description: 'Maintenance posting failed',
                     data: [
-                        'ticket_id' => $ticket->id,
-                        'amount' => $ticket->cost,
+                        'record_id' => $record->id,
+                        'amount' => $record->cost,
                     ],
                     errorMessage: $e->getMessage(),
                 );
@@ -437,37 +437,37 @@ class AccountingService
     /**
      * Void maintenance ticket entry
      */
-    public function voidMaintenanceTicket(MaintenanceTicket $ticket): void
+    public function voidMaintenanceRecord(MaintenanceRecord $record): void
     {
-        DB::transaction(function () use ($ticket) {
-            $reference = 'MAINT-' . $ticket->id;
+        DB::transaction(function () use ($record) {
+            $reference = 'MAINT-' . $record->id;
 
             try {
-                $this->poster->voidByReference($ticket->property_id, $reference);
+                $this->poster->voidByReference($record->property_id, $reference);
 
                 AccountingEvent::logReversal(
-                    propertyId: $ticket->property_id,
+                    propertyId: $record->property_id,
                     eventType: 'maintenance_voided',
-                    entityType: 'MaintenanceTicket',
-                    entityId: $ticket->id,
+                    entityType: 'MaintenanceRecord',
+                    entityId: $record->id,
                     reference: $reference,
                     description: 'Maintenance expense reversed',
                     data: [
-                        'ticket_id' => $ticket->id,
-                        'amount' => $ticket->cost,
+                        'record_id' => $record->id,
+                        'amount' => $record->cost,
                     ],
                 );
             } catch (\Exception $e) {
                 AccountingEvent::logFailure(
-                    propertyId: $ticket->property_id,
+                    propertyId: $record->property_id,
                     eventType: 'maintenance_voided',
-                    entityType: 'MaintenanceTicket',
-                    entityId: $ticket->id,
+                    entityType: 'MaintenanceRecord',
+                    entityId: $record->id,
                     reference: $reference,
                     description: 'Maintenance void failed',
                     data: [
-                        'ticket_id' => $ticket->id,
-                        'amount' => $ticket->cost,
+                        'record_id' => $record->id,
+                        'amount' => $record->cost,
                     ],
                     errorMessage: $e->getMessage(),
                 );
@@ -475,6 +475,18 @@ class AccountingService
                 throw $e;
             }
         });
+    }
+
+    // Backward compatibility for older callers
+    public function postMaintenanceTicket(MaintenanceRecord $record): void
+    {
+        $this->postMaintenanceRecord($record);
+    }
+
+    // Backward compatibility for older callers
+    public function voidMaintenanceTicket(MaintenanceRecord $record): void
+    {
+        $this->voidMaintenanceRecord($record);
     }
 
     /**

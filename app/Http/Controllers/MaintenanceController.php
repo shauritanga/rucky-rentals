@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MaintenanceTicket;
+use App\Models\MaintenanceRecord;
 use App\Models\Property;
 use App\Models\Unit;
 use App\Support\AccountingAutoPoster;
@@ -14,14 +14,16 @@ class MaintenanceController extends Controller
 {
     public function index(Request $request)
     {
-        if (MockRentalData::shouldUse()) {
+        $user = $request->user();
+
+        if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Maintenance/Index', [
                 'tickets' => MockRentalData::maintenanceTickets(),
                 'units' => MockRentalData::units(),
             ]);
         }
 
-        $tickets = MaintenanceTicket::with('unit')->orderByDesc('reported_date');
+        $tickets = MaintenanceRecord::with('unit')->orderByDesc('reported_date');
         $units   = Unit::query()->orderBy('unit_number');
 
         $this->scopeByUserProperty($tickets, $request);
@@ -35,6 +37,8 @@ class MaintenanceController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user();
+
         $data = $request->validate([
             'title'       => 'required|string',
             'description' => 'nullable|string',
@@ -46,9 +50,17 @@ class MaintenanceController extends Controller
         $unit = Unit::where('unit_number', $data['unit_ref'])->first();
         $this->authorizeUnitProperty($request, $unit);
 
-        $count = MaintenanceTicket::count() + 1;
-        MaintenanceTicket::create([
+        $propertyId = $unit?->property_id;
+        if ($propertyId === null && $user?->role === 'manager') {
+            $propertyId = $user->property_id;
+        }
+
+        abort_if(empty($propertyId), 422, 'Unable to determine property for this ticket.');
+
+        $count = MaintenanceRecord::count() + 1;
+        MaintenanceRecord::create([
             ...$data,
+            'property_id'   => $propertyId,
             'unit_id'       => $unit?->id,
             'ticket_number' => 'TK-' . str_pad($count, 3, '0', STR_PAD_LEFT),
             'status'        => 'open',
@@ -58,7 +70,7 @@ class MaintenanceController extends Controller
         return back()->with('success', 'Ticket created.');
     }
 
-    public function update(Request $request, MaintenanceTicket $maintenanceTicket, AccountingAutoPoster $poster)
+    public function update(Request $request, MaintenanceRecord $maintenanceTicket, AccountingAutoPoster $poster)
     {
         $this->authorizeTicketProperty($request, $maintenanceTicket);
 
@@ -74,7 +86,7 @@ class MaintenanceController extends Controller
             $maintenanceTicket->update($request->only($allowed));
 
             $currentCost = (float) ($maintenanceTicket->cost ?? 0);
-            $propertyId = $maintenanceTicket->unit?->property_id;
+            $propertyId = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
             $reference = 'MAINT-' . $maintenanceTicket->id;
 
             if ($maintenanceTicket->status === 'resolved' && $currentCost > 0) {
@@ -120,7 +132,7 @@ class MaintenanceController extends Controller
         return back()->with('success', 'Ticket updated.');
     }
 
-    public function destroy(Request $request, MaintenanceTicket $maintenanceTicket)
+    public function destroy(Request $request, MaintenanceRecord $maintenanceTicket)
     {
         $this->authorizeTicketProperty($request, $maintenanceTicket);
         $maintenanceTicket->delete();
@@ -137,7 +149,7 @@ class MaintenanceController extends Controller
                 return;
             }
 
-            $query->whereHas('unit', fn($u) => $u->where('property_id', $user->property_id));
+            $query->where('property_id', $user->property_id);
         }
     }
 
@@ -155,14 +167,14 @@ class MaintenanceController extends Controller
         }
     }
 
-    private function authorizeTicketProperty(Request $request, MaintenanceTicket $ticket): void
+    private function authorizeTicketProperty(Request $request, MaintenanceRecord $ticket): void
     {
         $user = $request->user();
         if ($user?->role !== 'manager') {
             return;
         }
 
-        $ticketPropertyId = $ticket->unit?->property_id;
+        $ticketPropertyId = $ticket->property_id;
         abort_if((int) $ticketPropertyId !== (int) $user->property_id, 403);
     }
 

@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Unit;
 use App\Models\Tenant;
 use App\Models\Payment;
-use App\Models\MaintenanceTicket;
+use App\Models\MaintenanceRecord;
 use App\Models\Lease;
 use App\Support\MockRentalData;
 use Illuminate\Support\Facades\Auth;
@@ -54,7 +54,7 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
-        $maintenanceItems = MaintenanceTicket::whereIn('status', ['open', 'in-progress'])
+        $maintenanceItems = MaintenanceRecord::whereIn('status', ['open', 'in-progress'])
             ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
             ->orderByDesc('reported_date')
             ->limit(4)
