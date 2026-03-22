@@ -104,6 +104,16 @@ function calcLeaseProgress(lease) {
 }
 
 function buildPaymentSchedule(lease, isPending) {
+  if (Array.isArray(lease?.installments) && lease.installments.length > 0) {
+    return lease.installments.map((inst, idx) => ({
+      installNum: Number(inst.sequence) || idx + 1,
+      dueDate: fmtDateLong(inst.due_date),
+      period: `${fmtDateShort(inst.period_start)} - ${fmtDateShort(inst.period_end)}`,
+      amount: Number(inst.amount || 0),
+      status: inst.status || 'unpaid',
+    }));
+  }
+
   const start = new Date(`${lease?.start_date}T00:00:00`);
   const end = new Date(`${lease?.end_date}T00:00:00`);
   const cycle = Number(lease?.payment_cycle) || 3;
@@ -555,8 +565,18 @@ export default function LeasesIndex({ leases, tenants, units }) {
                           <td style={{fontSize:'12px',color:'var(--text-muted)'}}>{row.period}</td>
                           <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatMoney(row.amount, selectedLeaseCurrency)}</td>
                           <td>
-                            <span style={{fontSize:'11.5px',fontWeight:600,color:row.status==='paid'?'var(--green)':row.status==='overdue'?'var(--red)':row.status==='upcoming'?'var(--amber)':'var(--text-muted)'}}>
-                              {row.status === 'paid' ? 'Paid' : row.status === 'overdue' ? 'Overdue' : row.status === 'upcoming' ? 'Due Soon' : 'Scheduled'}
+                            <span style={{fontSize:'11.5px',fontWeight:600,color:row.status==='paid'?'var(--green)':row.status==='overdue'?'var(--red)':row.status==='partially_paid'?'var(--amber)':row.status==='upcoming'?'var(--amber)':row.status==='unpaid'?'var(--text-secondary)':'var(--text-muted)'}}>
+                              {row.status === 'paid'
+                                ? 'Paid'
+                                : row.status === 'overdue'
+                                  ? 'Overdue'
+                                  : row.status === 'partially_paid'
+                                    ? 'Partially Paid'
+                                    : row.status === 'unpaid'
+                                      ? 'Unpaid'
+                                      : row.status === 'upcoming'
+                                        ? 'Due Soon'
+                                        : 'Scheduled'}
                             </span>
                           </td>
                         </tr>

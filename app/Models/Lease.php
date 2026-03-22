@@ -48,4 +48,9 @@ class Lease extends Model
     {
         return $this->hasMany(Invoice::class);
     }
+
+    public function installments()
+    {
+        return $this->hasMany(LeaseInstallment::class)->orderBy('sequence');
+    }
 }

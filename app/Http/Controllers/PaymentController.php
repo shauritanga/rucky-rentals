@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Payment;
 use App\Models\Property;
 use App\Models\Invoice;
+use App\Models\LeaseInstallment;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Support\MockRentalData;
@@ -159,6 +160,34 @@ class PaymentController extends Controller
         }
 
         $invoice->save();
+        $this->reconcileInstallmentStatus($invoice, $paidTotal, $invoiceTotal);
+    }
+
+    private function reconcileInstallmentStatus(Invoice $invoice, float $paidTotal, float $invoiceTotal): void
+    {
+        if (empty($invoice->lease_id) || $invoice->type === 'proforma') {
+            return;
+        }
+
+        $installment = LeaseInstallment::where('invoice_id', $invoice->id)->first();
+        if (!$installment) {
+            return;
+        }
+
+        if ($invoiceTotal > 0 && $paidTotal + 0.00001 >= $invoiceTotal) {
+            $status = 'paid';
+        } elseif ($paidTotal > 0) {
+            $status = 'partially_paid';
+        } else {
+            $status = Carbon::today()->gt(Carbon::parse($installment->due_date)->startOfDay())
+                ? 'overdue'
+                : 'unpaid';
+        }
+
+        $installment->update([
+            'status' => $status,
+            'paid_amount' => max(0, round($paidTotal, 2)),
+        ]);
     }
 
     private function scopeByUserProperty($query, Request $request, string $column): void

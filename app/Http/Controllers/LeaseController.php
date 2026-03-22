@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lease;
+use App\Models\LeaseInstallment;
 use App\Models\Property;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Support\MockRentalData;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class LeaseController extends Controller
@@ -25,7 +28,11 @@ class LeaseController extends Controller
             ]);
         }
 
-        $leasesQuery = Lease::with(['tenant', 'unit'])->orderByDesc('created_at');
+        $leasesQuery = Lease::with([
+            'tenant',
+            'unit',
+            'installments' => fn($q) => $q->orderBy('sequence'),
+        ])->orderByDesc('created_at');
         $tenantsQuery = Tenant::query()->orderBy('name');
         $unitsQuery = Unit::query()->orderBy('floor')->orderBy('unit_number');
 
@@ -177,7 +184,10 @@ class LeaseController extends Controller
         } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 2, 'action' => 'approved', 'by' => 'James Mwangi (Property Manager)', 'date' => now()->toDateString(), 'text' => 'Final approval. Lease activated.'];
-            $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
+            DB::transaction(function () use ($lease, $log) {
+                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
+                $this->ensureInstallmentsGenerated($lease->fresh());
+            });
         } elseif ($action === 'reject') {
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 0, 'action' => 'rejected', 'by' => 'James Mwangi', 'date' => now()->toDateString(), 'reason' => $request->input('reason', ''), 'text' => 'Lease rejected.'];
@@ -213,6 +223,53 @@ class LeaseController extends Controller
             }
 
             $query->where($column, $user->property_id);
+        }
+    }
+
+    private function ensureInstallmentsGenerated(Lease $lease): void
+    {
+        if ($lease->installments()->exists()) {
+            return;
+        }
+
+        $cycleMonths = (int) ($lease->payment_cycle ?: 1);
+        $monthlyRent = (float) ($lease->monthly_rent ?: 0);
+        $currency = in_array(strtoupper((string) $lease->currency), ['USD', 'TZS'], true)
+            ? strtoupper((string) $lease->currency)
+            : 'USD';
+
+        $start = Carbon::parse($lease->rent_start_date ?: $lease->start_date)->startOfDay();
+        $end = Carbon::parse($lease->end_date)->startOfDay();
+        $today = Carbon::today();
+
+        $sequence = 1;
+        $cursor = $start->copy();
+
+        while ($cursor->lt($end) && $sequence <= 120) {
+            $periodStart = $cursor->copy();
+            $nextCursor = $cursor->copy()->addMonths($cycleMonths);
+            $periodClose = $nextCursor->lte($end) ? $nextCursor : $end->copy();
+            $periodEnd = $periodClose->copy()->subDay();
+
+            $monthsInPeriod = max(1, $periodStart->diffInMonths($periodClose));
+            $amount = round($monthlyRent * $monthsInPeriod, 2);
+            $status = $periodStart->lt($today) ? 'overdue' : 'unpaid';
+
+            LeaseInstallment::create([
+                'property_id' => $lease->property_id,
+                'lease_id' => $lease->id,
+                'sequence' => $sequence,
+                'period_start' => $periodStart->toDateString(),
+                'period_end' => $periodEnd->toDateString(),
+                'due_date' => $periodStart->toDateString(),
+                'amount' => $amount,
+                'currency' => $currency,
+                'status' => $status,
+                'paid_amount' => 0,
+            ]);
+
+            $cursor = $nextCursor;
+            $sequence += 1;
         }
     }
 }

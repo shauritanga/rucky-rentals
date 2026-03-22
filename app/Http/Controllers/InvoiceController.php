@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lease;
+use App\Models\LeaseInstallment;
 use App\Models\Property;
 use App\Models\Tenant;
 use App\Models\Unit;
@@ -125,6 +126,8 @@ class InvoiceController extends Controller
             ]);
         }
 
+        $this->attachInvoiceToInstallment($invoice);
+
         return back()
             ->with('success', 'Invoice created.')
             ->with('created_invoice_id', $invoice->id);
@@ -167,6 +170,33 @@ class InvoiceController extends Controller
             }
 
             $query->where($column, $user->property_id);
+        }
+    }
+
+    private function attachInvoiceToInstallment(Invoice $invoice): void
+    {
+        if (empty($invoice->lease_id) || $invoice->type === 'proforma') {
+            return;
+        }
+
+        $base = LeaseInstallment::where('lease_id', $invoice->lease_id)
+            ->whereNull('invoice_id');
+
+        $installment = null;
+
+        if (!empty($invoice->due_date)) {
+            $installment = (clone $base)
+                ->whereDate('due_date', $invoice->due_date)
+                ->orderBy('sequence')
+                ->first();
+        }
+
+        if (!$installment) {
+            $installment = (clone $base)->orderBy('sequence')->first();
+        }
+
+        if ($installment) {
+            $installment->update(['invoice_id' => $invoice->id]);
         }
     }
 }
