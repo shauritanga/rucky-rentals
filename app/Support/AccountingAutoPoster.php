@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use InvalidArgumentException;
 use Illuminate\Support\Facades\DB;
 
 class AccountingAutoPoster
@@ -31,6 +32,8 @@ class AccountingAutoPoster
         ?int $sourceId = null
     ): JournalEntry {
         return DB::transaction(function () use ($propertyId, $entryDate, $description, $reference, $lines, $sourceType, $sourceId) {
+            $this->assertBalancedLines($lines);
+
             $existing = JournalEntry::query()
                 ->where('reference', $reference)
                 ->where('property_id', $propertyId)
@@ -73,6 +76,28 @@ class AccountingAutoPoster
 
             return $entry;
         });
+    }
+
+    private function assertBalancedLines(array $lines): void
+    {
+        $debit = 0.0;
+        $credit = 0.0;
+
+        foreach ($lines as $line) {
+            $lineDebit = (float) ($line['debit'] ?? 0);
+            $lineCredit = (float) ($line['credit'] ?? 0);
+
+            if (($lineDebit > 0 && $lineCredit > 0) || ($lineDebit <= 0 && $lineCredit <= 0)) {
+                throw new InvalidArgumentException('Each journal line must have exactly one side: debit or credit.');
+            }
+
+            $debit += $lineDebit;
+            $credit += $lineCredit;
+        }
+
+        if (abs($debit - $credit) > 0.01) {
+            throw new InvalidArgumentException('Journal entry is not balanced. Total debit must equal total credit.');
+        }
     }
 
     public function applyBalances(JournalEntry $entry, bool $reverse = false): void

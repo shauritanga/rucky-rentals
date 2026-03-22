@@ -19,6 +19,9 @@ class Invoice extends Model
         'period',
         'status',
         'notes',
+        'currency',
+        'exchange_rate',
+        'total_in_base',
     ];
 
     public function lease()
@@ -32,5 +35,13 @@ class Invoice extends Model
     public function items()
     {
         return $this->hasMany(InvoiceItem::class);
+    }
+
+    /**
+     * Calculate invoice total from line items
+     */
+    public function getTotal(): float
+    {
+        return (float) ($this->items()->sum('total') ?? 0.0);
     }
 }

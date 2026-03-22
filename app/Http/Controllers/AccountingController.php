@@ -86,6 +86,25 @@ class AccountingController extends Controller
             'lines.*.credit'       => 'required|numeric|min:0',
         ]);
 
+        $totalDebit = collect($data['lines'])->sum(fn($line) => (float) $line['debit']);
+        $totalCredit = collect($data['lines'])->sum(fn($line) => (float) $line['credit']);
+
+        if (abs($totalDebit - $totalCredit) > 0.01) {
+            return back()->withErrors([
+                'lines' => 'Journal entry is not balanced. Total debit must equal total credit.',
+            ]);
+        }
+
+        foreach ($data['lines'] as $line) {
+            $debit = (float) $line['debit'];
+            $credit = (float) $line['credit'];
+            if (($debit > 0 && $credit > 0) || ($debit <= 0 && $credit <= 0)) {
+                return back()->withErrors([
+                    'lines' => 'Each journal line must have exactly one side: debit or credit.',
+                ]);
+            }
+        }
+
         DB::transaction(function () use ($data, $propertyId, $poster) {
             $count = JournalEntry::count() + 1;
             $je = JournalEntry::create([

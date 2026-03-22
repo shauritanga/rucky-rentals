@@ -19,6 +19,9 @@ class Payment extends Model
         'reference',
         'date',
         'notes',
+        'currency',
+        'exchange_rate',
+        'amount_in_base',
     ];
 
     public function property()

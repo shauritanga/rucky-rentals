@@ -8,10 +8,12 @@ use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
 use App\Models\Tenant;
-use App\Models\Unit;
+use App\Models\ExchangeRate;
+use App\Services\AccountingService;
 use App\Support\MockRentalData;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class InvoiceController extends Controller
@@ -48,7 +50,7 @@ class InvoiceController extends Controller
         return Inertia::render('Invoices/Index', compact('invoices', 'leases', 'tenants'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, AccountingService $accountingService)
     {
         $user = $request->user();
         $managerPropertyId = null;
@@ -108,29 +110,71 @@ class InvoiceController extends Controller
             abort_if((int) $propertyId !== $managerPropertyId, 403);
         }
 
-        $invoice = Invoice::create([
-            ...$data,
-            'property_id' => $propertyId,
-            'invoice_number' => $prefix . '-' . str_pad($count, 4, '0', STR_PAD_LEFT),
-            'status'         => $status,
-        ]);
+        $createdInvoiceId = null;
 
-        foreach ($data['items'] as $item) {
-            InvoiceItem::create([
-                'invoice_id'      => $invoice->id,
-                'description'     => $item['description'],
-                'sub_description' => $item['sub_description'] ?? null,
-                'quantity'        => $item['quantity'],
-                'unit_price'      => $item['unit_price'],
-                'total'           => $item['quantity'] * $item['unit_price'],
+        DB::transaction(function () use ($data, $propertyId, $prefix, $count, $status, $accountingService, &$createdInvoiceId) {
+            $invoice = Invoice::create([
+                ...$data,
+                'property_id' => $propertyId,
+                'invoice_number' => $prefix . '-' . str_pad($count, 4, '0', STR_PAD_LEFT),
+                'status'         => $status,
             ]);
-        }
+            $createdInvoiceId = $invoice->id;
 
-        $this->attachInvoiceToInstallment($invoice);
+            // Set currency from lease if invoice is lease-linked
+            if ($invoice->lease_id) {
+                $lease = Lease::find($invoice->lease_id);
+                if ($lease) {
+                    $currency = $lease->currency ?? 'TZS';
+                    $invoice->update(['currency' => $currency]);
+
+                    // Pre-populate exchange rate for audit trail
+                    if ($currency !== 'TZS') {
+                        $rate = ExchangeRate::getRate(
+                            propertyId: $propertyId,
+                            fromCurrency: $currency,
+                            toCurrency: 'TZS',
+                            date: $invoice->issued_date ?? now()
+                        );
+
+                        if ($rate) {
+                            // Will be recalculated during postInvoice, but store for reference
+                            $invoice->update(['exchange_rate' => $rate]);
+                        }
+                    }
+                }
+            }
+
+            $invoiceTotal = 0.0;
+            foreach ($data['items'] as $item) {
+                $lineTotal = (float) $item['quantity'] * (float) $item['unit_price'];
+                $invoiceTotal += $lineTotal;
+
+                InvoiceItem::create([
+                    'invoice_id'      => $invoice->id,
+                    'description'     => $item['description'],
+                    'sub_description' => $item['sub_description'] ?? null,
+                    'quantity'        => $item['quantity'],
+                    'unit_price'      => $item['unit_price'],
+                    'total'           => $lineTotal,
+                ]);
+            }
+
+            $this->attachInvoiceToInstallment($invoice);
+
+            // Refresh invoice to load newly created items
+            $invoice->load('items');
+
+            // Delegate accounting posting to service layer
+            // Service handles: idempotency, validation, event logging, atomicity
+            if ($invoice->type === 'invoice' && $invoice->status !== 'draft' && $invoiceTotal > 0) {
+                $accountingService->postInvoice($invoice);
+            }
+        });
 
         return back()
             ->with('success', 'Invoice created.')
-            ->with('created_invoice_id', $invoice->id);
+            ->with('created_invoice_id', $createdInvoiceId);
     }
 
     public function update(Request $request, Invoice $invoice)
@@ -145,6 +189,9 @@ class InvoiceController extends Controller
         ]);
 
         $invoice->update($data);
+
+        // Observer handles status transitions (post/void as appropriate)
+
         return back()->with('success', 'Invoice updated.');
     }
 
@@ -155,6 +202,7 @@ class InvoiceController extends Controller
             abort_if((int) $invoice->property_id !== (int) $user->property_id, 403);
         }
 
+        // Observer will handle voiding before deletion
         $invoice->delete();
         return back()->with('success', 'Invoice deleted.');
     }
