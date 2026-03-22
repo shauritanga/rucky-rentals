@@ -2,6 +2,8 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use AshAllenDesign\LaravelExchangeRates\Classes\ExchangeRate;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\UnitController;
@@ -68,7 +70,26 @@ Route::middleware('auth')->group(function () {
             $base = strtoupper($request->query('base', 'USD'));
             $target = strtoupper($request->query('target', 'TZS'));
 
-            $rate = $exchangeRate->exchangeRate($base, $target);
+            $cacheKey = sprintf('exchange_rate:%s:%s', $base, $target);
+            $fallbackRate = (float) config('app.fx_fallback_rate', 2650);
+
+            try {
+                $rate = (float) $exchangeRate->exchangeRate($base, $target);
+                if ($rate <= 0) {
+                    throw new \RuntimeException('Invalid exchange rate value returned by provider.');
+                }
+
+                Cache::put($cacheKey, $rate, now()->addDay());
+            } catch (\Throwable $e) {
+                $rate = (float) Cache::get($cacheKey, $fallbackRate);
+
+                Log::warning('Exchange rate provider unavailable, using cached/fallback value.', [
+                    'base' => $base,
+                    'target' => $target,
+                    'error' => $e->getMessage(),
+                    'fallback_used' => true,
+                ]);
+            }
 
             return response()->json([
                 'base' => $base,

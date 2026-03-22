@@ -9,6 +9,21 @@ const VAT_RATE = 0.18;
 function InvoiceDoc({ inv }) {
   const { formatTzsFromUsd } = useExchangeRate();
   const total = (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
+  const rentAmount = (inv.items || [])
+    .filter((i) => String(i.description || '').toLowerCase().includes('rent') && !String(i.description || '').toLowerCase().includes('service charge'))
+    .reduce((s, i) => s + Number(i.total || 0), 0);
+  const serviceChargeAmount = (inv.items || [])
+    .filter((i) => String(i.description || '').toLowerCase().includes('service charge'))
+    .reduce((s, i) => s + Number(i.total || 0), 0);
+  const explicitVat = (inv.items || [])
+    .filter((i) => String(i.description || '').toLowerCase().includes('vat'))
+    .reduce((s, i) => s + Number(i.total || 0), 0);
+  const subtotal = rentAmount + serviceChargeAmount;
+  const vatAmount = explicitVat || Math.round(subtotal * VAT_RATE);
+  const grossTotal = subtotal + vatAmount;
+  const whtRate = 0.1;
+  const whtAmount = rentAmount > 0 ? Math.round(rentAmount * whtRate) : 0;
+  const netPayable = rentAmount > 0 ? grossTotal - whtAmount : total;
   const isPaid = inv.status === 'paid';
   const isOver = inv.status === 'overdue';
   return (
@@ -36,10 +51,29 @@ function InvoiceDoc({ inv }) {
         <thead><tr>{['Description','Qty','Unit Price','Amount'].map(h=><th key={h} style={{textAlign:h==='Amount'||h==='Unit Price'||h==='Qty'?'right':'left',fontSize:'10.5px',fontWeight:700,letterSpacing:'.5px',textTransform:'uppercase',color:'var(--text-muted)',padding:'8px 10px',borderBottom:'2px solid var(--border)'}}>{h}</th>)}</tr></thead>
         <tbody>{(inv.items||[]).map((item,i)=><tr key={i}><td style={{padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}><div style={{fontWeight:500}}>{item.description}</div>{item.sub_description&&<div style={{fontSize:'11.5px',color:'var(--text-muted)',marginTop:2}}>{item.sub_description}</div>}</td><td style={{textAlign:'center',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{item.quantity}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13}}>{formatTzsFromUsd(item.unit_price)}</td><td style={{textAlign:'right',padding:'10px 10px',borderBottom:'1px solid var(--border-subtle)',fontSize:13,fontWeight:600}}>{formatTzsFromUsd(item.total)}</td></tr>)}</tbody>
       </table>
-      <div style={{marginLeft:'auto',width:220}}>
-        {[['Subtotal',formatTzsFromUsd(total)],['VAT (0%)',formatTzsFromUsd(0)]].map(([l,v])=><div key={l} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{l}</span><span>{v}</span></div>)}
-        <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatTzsFromUsd(total)}</span></div>
+      <div style={{marginLeft:'auto',width:320}}>
+        {rentAmount > 0 ? (
+          <>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Rent</span><span>{formatTzsFromUsd(rentAmount)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Service Charge</span><span>{formatTzsFromUsd(serviceChargeAmount)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:600}}><span>Subtotal</span><span>{formatTzsFromUsd(subtotal)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>VAT (18%)</span><span>{formatTzsFromUsd(vatAmount)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:700}}><span>Gross Total</span><span>{formatTzsFromUsd(grossTotal)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--red)',borderTop:'1px solid var(--border-subtle)'}}><span>Less: WHT (10% of rent)</span><span>({formatTzsFromUsd(whtAmount)})</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Net Payable by Tenant</span><span style={{color:'var(--accent)'}}>{formatTzsFromUsd(netPayable)}</span></div>
+          </>
+        ) : (
+          <>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatTzsFromUsd(total)}</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatTzsFromUsd(total)}</span></div>
+          </>
+        )}
       </div>
+      {rentAmount > 0 && (
+        <div style={{marginTop:10,padding:'10px 14px',background:'var(--amber-dim)',borderRadius:8,fontSize:12,color:'var(--amber)'}}>
+          <strong>WHT Reminder:</strong> Tenant to remit <strong>{formatTzsFromUsd(whtAmount)}</strong> directly to TRA. Ref: {inv.invoice_number}.
+        </div>
+      )}
       {inv.notes && <div style={{marginTop:28,paddingTop:16,borderTop:'1px solid var(--border-subtle)',fontSize:'11.5px',color:'var(--text-muted)',lineHeight:1.7}}>{inv.notes.split('\n').map((l,i)=><div key={i}>{l}</div>)}</div>}
     </div>
   );
