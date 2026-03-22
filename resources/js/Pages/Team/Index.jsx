@@ -2,20 +2,27 @@ import { useMemo, useState } from 'react';
 import { Head, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
-const TEAM_MODULES = [
-  { key:'dashboard', label:'Dashboard', icon:'📊' },
-  { key:'units', label:'Units', icon:'🏢' },
-  { key:'tenants', label:'Tenants', icon:'👥' },
-  { key:'leases', label:'Leases', icon:'📄' },
-  { key:'payments', label:'Payments', icon:'💳' },
-  { key:'invoices', label:'Invoices', icon:'🧾' },
-  { key:'maintenance', label:'Maintenance', icon:'🔧' },
-  { key:'documents', label:'Documents', icon:'📁' },
-  { key:'electricity', label:'Electricity', icon:'⚡' },
-  { key:'accounting', label:'Accounting', icon:'💰' },
-  { key:'reports', label:'Reports', icon:'📈' },
-  { key:'team', label:'Team Management', icon:'👤' },
+const RESOURCES = [
+  { key:'units', label:'Units', icon:'🏢', actions:['read','update'], desc:'View and edit unit records' },
+  { key:'tenants', label:'Tenants', icon:'👥', actions:['create','read','update','delete'], desc:'Manage tenant profiles' },
+  { key:'leases', label:'Leases', icon:'📄', actions:['create','read','update'], desc:'Create and manage lease agreements' },
+  { key:'invoices', label:'Invoices', icon:'🧾', actions:['create','read','update'], desc:'Issue and manage invoices' },
+  { key:'payments', label:'Payments', icon:'💳', actions:['create','read'], desc:'Record and view payments' },
+  { key:'maintenance', label:'Maintenance', icon:'🔧', actions:['create','read','update','delete'], desc:'Submit and manage maintenance requests' },
+  { key:'documents', label:'Documents', icon:'📁', actions:['create','read','delete'], desc:'Upload, view and remove documents' },
+  { key:'electricity', label:'Electricity', icon:'⚡', actions:['create','read','update'], desc:'Post readings and manage billing' },
+  { key:'accounting', label:'Accounting', icon:'💰', actions:['create','read'], desc:'Post journal entries, view accounts' },
+  { key:'reports', label:'Reports', icon:'📈', actions:['read'], desc:'View financial and operational reports' },
+  { key:'team', label:'Team Management', icon:'👤', actions:['create','read','update','delete'], desc:'Add, edit and remove staff members' },
+  { key:'audit', label:'Audit Trail', icon:'📋', actions:['read'], desc:'View activity log (always read-only)' },
 ];
+
+const ACTION_CFG = {
+  create: { label:'C', full:'Create', color:'var(--green)', tip:'Create new records' },
+  read: { label:'R', full:'Read', color:'var(--accent)', tip:'View records' },
+  update: { label:'U', full:'Update', color:'var(--amber)', tip:'Edit existing records' },
+  delete: { label:'D', full:'Delete', color:'var(--red)', tip:'Permanently delete records' },
+};
 
 const ROLE_LABELS = {
   accountant: 'Accountant',
@@ -41,13 +48,74 @@ function initials(name) {
     .toUpperCase() || 'U';
 }
 
-export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
-  const [team, setTeam] = useState(teamMembers);
+function normalizePermissions(rawPermissions = {}) {
+  return RESOURCES.reduce((acc, resource) => {
+    const value = rawPermissions?.[resource.key];
+
+    if (typeof value === 'boolean') {
+      // Backward compatibility: legacy bool=true maps to full access on that resource.
+      acc[resource.key] = value
+        ? Object.fromEntries(resource.actions.map((action) => [action, true]))
+        : {};
+      return acc;
+    }
+
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      acc[resource.key] = Object.fromEntries(
+        resource.actions.map((action) => [action, !!value[action]]),
+      );
+      return acc;
+    }
+
+    acc[resource.key] = {};
+    return acc;
+  }, {});
+}
+
+function grantedActionCount(permissions = {}) {
+  return RESOURCES.reduce((count, resource) => {
+    const granted = resource.actions.filter((action) => !!permissions?.[resource.key]?.[action]).length;
+    return count + granted;
+  }, 0);
+}
+
+function accessTag(permissions = {}, resource) {
+  const granted = resource.actions.filter((action) => !!permissions?.[resource.key]?.[action]);
+  if (!granted.length) return null;
+  if (granted.length === resource.actions.length) return 'Manage';
+  return granted.map((action) => ACTION_CFG[action].label).join('');
+}
+
+export default function TeamIndex({ teamMembers = [], archivedMembers = [], roleDefaults = {} }) {
+  const normalizedRoleDefaults = useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(roleDefaults || {}).map(([role, defaults]) => [role, normalizePermissions(defaults)]),
+    );
+  }, [roleDefaults]);
+
+  const [team, setTeam] = useState(
+    teamMembers.map((member) => ({
+      ...member,
+      permissions: normalizePermissions(member.permissions || {}),
+    })),
+  );
+  const [archived, setArchived] = useState(
+    archivedMembers.map((member) => ({
+      ...member,
+      permissions: normalizePermissions(member.permissions || {}),
+    })),
+  );
   const [teamFilter, setTeamFilter] = useState('all');
+  const [viewTab, setViewTab] = useState('active');
   const [showModal, setShowModal] = useState(false);
   const [showPermDrawer, setShowPermDrawer] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [permDraft, setPermDraft] = useState({});
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [restoreSubmittingId, setRestoreSubmittingId] = useState(null);
 
   const { data, setData, post, processing, reset } = useForm({
     name: '', email: '', phone: '', role: '', password: '', permissions: {},
@@ -66,7 +134,7 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
 
   const onRoleChange = (role) => {
     setData('role', role);
-    setData('permissions', roleDefaults?.[role] || {});
+    setData('permissions', normalizedRoleDefaults?.[role] || {});
   };
 
   const submit = (e) => {
@@ -75,22 +143,67 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
       onSuccess: () => {
         reset();
         setShowModal(false);
-        router.reload({ only: ['teamMembers'] });
+        router.reload({ only: ['teamMembers', 'archivedMembers'] });
       },
     });
   };
 
-  const removeMember = (member) => {
-    if (!window.confirm(`Remove ${member.name} from the team?`)) return;
-    router.delete(`/team/${member.id}`, {
-      onSuccess: () => setTeam((prev) => prev.filter((m) => m.id !== member.id)),
+  const openDeleteDialog = (member) => {
+    setDeleteTarget(member);
+    setDeleteConfirmName('');
+    setShowDeleteDialog(true);
+  };
+
+  const closeDeleteDialog = () => {
+    setShowDeleteDialog(false);
+    setDeleteTarget(null);
+    setDeleteConfirmName('');
+    setDeleteSubmitting(false);
+  };
+
+  const confirmDeleteMember = () => {
+    if (!deleteTarget || deleteSubmitting) return;
+    setDeleteSubmitting(true);
+    router.delete(`/team/${deleteTarget.id}`, {
+      data: {
+        confirm_name: deleteConfirmName,
+      },
+      onSuccess: () => {
+        setTeam((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+        setArchived((prev) => [{ ...deleteTarget, deleted_at: 'just now' }, ...prev]);
+        closeDeleteDialog();
+      },
+      onError: () => {
+        setDeleteSubmitting(false);
+      },
+      onFinish: () => {
+        setDeleteSubmitting(false);
+      },
     });
   };
 
   const openPerms = (member) => {
     setSelectedMember(member);
-    setPermDraft({ ...(member.permissions || roleDefaults?.[member.role] || {}) });
+    setPermDraft({ ...(member.permissions || normalizedRoleDefaults?.[member.role] || {}) });
     setShowPermDrawer(true);
+  };
+
+  const togglePermission = (draft, resourceKey, action) => {
+    const next = { ...(draft || {}) };
+    const current = { ...(next[resourceKey] || {}) };
+    current[action] = !current[action];
+    next[resourceKey] = current;
+    return next;
+  };
+
+  const toggleManagePermissions = (draft, resourceKey) => {
+    const resource = RESOURCES.find((item) => item.key === resourceKey);
+    if (!resource) return draft;
+    const current = draft?.[resourceKey] || {};
+    const allOn = resource.actions.every((action) => !!current[action]);
+    const next = { ...(draft || {}) };
+    next[resourceKey] = Object.fromEntries(resource.actions.map((action) => [action, !allOn]));
+    return next;
   };
 
   const toggleStatus = (member) => {
@@ -118,6 +231,20 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
     });
   };
 
+  const restoreMember = (member) => {
+    if (restoreSubmittingId) return;
+    setRestoreSubmittingId(member.id);
+    router.patch(`/team/${member.id}/restore`, {}, {
+      onSuccess: () => {
+        setArchived((prev) => prev.filter((m) => m.id !== member.id));
+        setTeam((prev) => [{ ...member, status: 'active', deleted_at: null }, ...prev]);
+      },
+      onFinish: () => {
+        setRestoreSubmittingId(null);
+      },
+    });
+  };
+
   return (
     <AppLayout title="Team" subtitle="Staff and access control">
       <Head title="Team" />
@@ -133,8 +260,31 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
         </button>
       </div>
 
-      <div className="toolbar" style={{marginBottom:18}}>
-        <div className="filters">
+      <div className="team-tabs">
+        <button
+          className={`team-tab ${viewTab==='active'?'active':''}`}
+          onClick={() => setViewTab('active')}
+        >
+          Active Team <span className="team-tab-count">{team.length}</span>
+        </button>
+        <button
+          className={`team-tab ${viewTab==='archived'?'active':''}`}
+          onClick={() => setViewTab('archived')}
+        >
+          Archived Members <span className="team-tab-count">{archived.length}</span>
+        </button>
+        <button
+          className={`team-tab ${viewTab==='permissions'?'active':''}`}
+          onClick={() => setViewTab('permissions')}
+        >
+          Permissions Reference
+        </button>
+      </div>
+
+      {viewTab === 'active' && (
+      <>
+      <div className="units-toolbar" style={{marginBottom:18}}>
+        <div className="units-filters">
           <button className={`filter-pill ${teamFilter==='all'?'active':''}`} onClick={() => setTeamFilter('all')}>All <span className="pill-count">{counts.all}</span></button>
           <button className={`filter-pill ${teamFilter==='accountant'?'active':''}`} onClick={() => setTeamFilter('accountant')}>Accountant <span className="pill-count">{counts.accountant}</span></button>
           <button className={`filter-pill ${teamFilter==='lease_manager'?'active':''}`} onClick={() => setTeamFilter('lease_manager')}>Lease Manager <span className="pill-count">{counts.lease_manager}</span></button>
@@ -144,16 +294,19 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
       </div>
 
       <div className="card" style={{marginBottom:20}}>
-        <table className="data-table">
-          <thead><tr><th>Staff Member</th><th>Role</th><th>Module Access</th><th>Status</th><th>Last Active</th><th></th></tr></thead>
+        <table className="units-list-table">
+          <thead><tr><th>Staff Member</th><th>Role</th><th>Resource Access</th><th style={{textAlign:'center'}}>Actions</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {!rows.length && (
-              <tr><td colSpan={6} style={{textAlign:'center',padding:40,color:'var(--text-muted)'}}>No team members yet - add your first staff member</td></tr>
+              <tr><td colSpan={6} style={{textAlign:'center',padding:40,color:'var(--text-muted)'}}>No team members yet — add your first staff member</td></tr>
             )}
             {rows.map((m) => {
               const colors = ROLE_COLORS[m.role] || ROLE_COLORS.viewer;
-              const activeModules = TEAM_MODULES.filter((mod) => (m.permissions || {})[mod.key]);
+              const activeResources = RESOURCES.filter((resource) => accessTag(m.permissions, resource));
+              const topResources = activeResources.slice(0, 4);
+              const moreCount = Math.max(0, activeResources.length - 4);
               const isActive = (m.status || 'active') === 'active';
+              const granted = grantedActionCount(m.permissions || {});
               return (
                 <tr key={m.id}>
                   <td>
@@ -167,24 +320,30 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
                   </td>
                   <td><span style={{fontSize:12,fontWeight:600,padding:'3px 10px',borderRadius:20,background:colors.bg,color:colors.color}}>{ROLE_LABELS[m.role] || m.role}</span></td>
                   <td>
-                    <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                      {activeModules.slice(0, 5).map((mod) => <span key={mod.key} style={{fontSize:11,background:'var(--bg-elevated)',borderRadius:5,padding:'2px 7px',color:'var(--text-secondary)'}}>{mod.icon} {mod.label}</span>)}
-                      {activeModules.length > 5 && <span style={{fontSize:11,color:'var(--text-muted)'}}>+{activeModules.length - 5} more</span>}
+                    <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                      {topResources.map((resource) => (
+                        <span key={resource.key} title={resource.label} style={{fontSize:11,background:'var(--bg-elevated)',border:'1px solid var(--border-subtle)',borderRadius:5,padding:'2px 7px',color:'var(--text-secondary)'}}>
+                          {resource.icon} {resource.label} <span style={{fontWeight:700,letterSpacing:'.5px'}}>{accessTag(m.permissions, resource)}</span>
+                        </span>
+                      ))}
+                      {moreCount > 0 && <span style={{fontSize:11,color:'var(--text-muted)'}}>+{moreCount} more</span>}
                     </div>
                   </td>
+                  <td>
+                    <div style={{fontSize:12.5,color:'var(--text-muted)',textAlign:'center'}}>{granted} actions</div>
+                  </td>
                   <td><span style={{fontSize:12,fontWeight:600,color:isActive ? 'var(--green)' : 'var(--red)'}}>{isActive ? '● Active' : '● Suspended'}</span></td>
-                  <td style={{fontSize:12.5,color:'var(--text-muted)'}}>{m.last_active || 'Recently'}</td>
                   <td>
                     <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
                       <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => openPerms(m)}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                         Permissions
                       </button>
-                      <button className="btn-danger" style={{fontSize:12,padding:'5px 10px'}} onClick={() => removeMember(m)}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-                      </button>
                       <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => toggleStatus(m)}>
                         {isActive ? 'Suspend' : 'Activate'}
+                      </button>
+                      <button className="btn-danger" style={{fontSize:12,padding:'5px 10px'}} onClick={() => openDeleteDialog(m)}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                       </button>
                     </div>
                   </td>
@@ -194,39 +353,123 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
           </tbody>
         </table>
       </div>
+      </>
+      )}
 
+      {viewTab === 'archived' && (
+      <div className="card" style={{marginBottom:20}}>
+        <div className="card-header">
+          <div>
+            <div className="card-title">Archived Team Members</div>
+            <div className="card-sub">Soft-deleted team members can be restored here</div>
+          </div>
+          <div style={{fontSize:12,color:'var(--text-muted)',fontWeight:600}}>{archived.length} archived</div>
+        </div>
+        <div style={{overflowX:'auto'}}>
+          <table className="units-list-table">
+            <thead>
+              <tr>
+                <th>Staff Member</th>
+                <th>Role</th>
+                <th>Archived</th>
+                <th style={{textAlign:'right'}}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!archived.length && (
+                <tr>
+                  <td colSpan={4} style={{textAlign:'center',padding:30,color:'var(--text-muted)'}}>
+                    No archived team members.
+                  </td>
+                </tr>
+              )}
+              {archived.map((m) => {
+                const colors = ROLE_COLORS[m.role] || ROLE_COLORS.viewer;
+                return (
+                  <tr key={`archived-${m.id}`}>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <div style={{width:30,height:30,borderRadius:'50%',background:'var(--bg-elevated)',color:'var(--text-muted)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{initials(m.name)}</div>
+                        <div>
+                          <div style={{fontWeight:600,fontSize:13.5}}>{m.name}</div>
+                          <div style={{fontSize:12,color:'var(--text-muted)'}}>{m.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span style={{fontSize:12,fontWeight:600,padding:'3px 10px',borderRadius:20,background:colors.bg,color:colors.color}}>{ROLE_LABELS[m.role] || m.role}</span></td>
+                    <td style={{fontSize:12.5,color:'var(--text-muted)'}}>{m.deleted_at || 'recently'}</td>
+                    <td>
+                      <div style={{display:'flex',justifyContent:'flex-end'}}>
+                        <button
+                          className="btn-secondary"
+                          style={{fontSize:12,padding:'6px 11px'}}
+                          disabled={restoreSubmittingId === m.id}
+                          onClick={() => restoreMember(m)}
+                        >
+                          {restoreSubmittingId === m.id ? 'Restoring…' : 'Restore'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
+
+      {viewTab === 'permissions' && (
       <div className="card">
         <div className="card-header">
           <div>
             <div className="card-title">Role Permissions Reference</div>
-            <div className="card-sub">Default access levels by role - customise per user when adding</div>
+            <div className="card-sub">Default access levels by role — customise per user when adding</div>
           </div>
         </div>
         <div style={{overflowX:'auto',padding:'0 20px 20px'}}>
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                <th style={{textAlign:'left',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Module</th>
+                <th style={{textAlign:'left',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Resource</th>
                 <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Accountant</th>
                 <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Lease Manager</th>
-                <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Maintenance</th>
+                <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Maintenance Staff</th>
                 <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Viewer</th>
               </tr>
             </thead>
             <tbody>
-              {TEAM_MODULES.map((mod) => (
-                <tr key={mod.key} style={{borderBottom:'1px solid var(--border-subtle)'}}>
-                  <td style={{padding:'9px 12px',fontSize:13}}>{mod.icon} {mod.label}</td>
-                  <td style={{textAlign:'center',padding:'9px 12px'}}>{roleDefaults?.accountant?.[mod.key] ? '✓' : '—'}</td>
-                  <td style={{textAlign:'center',padding:'9px 12px'}}>{roleDefaults?.lease_manager?.[mod.key] ? '✓' : '—'}</td>
-                  <td style={{textAlign:'center',padding:'9px 12px'}}>{roleDefaults?.maintenance_staff?.[mod.key] ? '✓' : '—'}</td>
-                  <td style={{textAlign:'center',padding:'9px 12px'}}>{roleDefaults?.viewer?.[mod.key] ? '✓' : '—'}</td>
+              {RESOURCES.map((resource) => (
+                <tr key={resource.key} style={{borderBottom:'1px solid var(--border-subtle)'}}>
+                  <td style={{padding:'8px 12px'}}>
+                    <div style={{fontSize:13,fontWeight:500}}>{resource.icon} {resource.label}</div>
+                    <div style={{fontSize:11,color:'var(--text-muted)',marginTop:1}}>
+                      {resource.actions.map((action) => (
+                        <span key={action} title={ACTION_CFG[action].tip} style={{fontSize:10,fontWeight:600,color:ACTION_CFG[action].color,marginRight:4}}>{ACTION_CFG[action].full}</span>
+                      ))}
+                    </div>
+                  </td>
+                  {['accountant','lease_manager','maintenance_staff','viewer'].map((role) => {
+                    const defaults = normalizedRoleDefaults?.[role]?.[resource.key] || {};
+                    const badges = resource.actions
+                      .filter((action) => defaults[action])
+                      .map((action) => (
+                        <span key={action} title={ACTION_CFG[action].tip} style={{fontSize:10,fontWeight:700,color:ACTION_CFG[action].color,background:`${ACTION_CFG[action].color}18`,padding:'1px 5px',borderRadius:4,margin:1}}>{ACTION_CFG[action].label}</span>
+                      ));
+
+                    return (
+                      <td key={role} style={{textAlign:'center',padding:'7px 10px'}}>
+                        {badges.length ? badges : <span style={{color:'var(--text-muted)',fontSize:12}}>—</span>}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+      )}
 
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
         <div className="modal" style={{width:640,maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
@@ -260,19 +503,44 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
               <div style={{borderTop:'1px solid var(--border-subtle)',paddingTop:18,marginTop:6}}>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
                   <div style={{fontSize:10.5,fontWeight:700,letterSpacing:'.6px',textTransform:'uppercase',color:'var(--text-muted)'}}>Module Permissions</div>
-                  <div style={{fontSize:12,color:'var(--text-muted)'}}>Auto-filled from role</div>
+                  <div style={{fontSize:12,color:'var(--text-muted)'}}>Auto-filled from role — customise below</div>
                 </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                  {TEAM_MODULES.map((mod) => {
-                    const on = !!data.permissions?.[mod.key];
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  {RESOURCES.map((resource) => {
+                    const current = data.permissions?.[resource.key] || {};
+                    const isManage = resource.actions.every((action) => !!current[action]);
                     return (
-                      <div key={mod.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--bg-elevated)',borderRadius:8,padding:'10px 12px'}}>
-                        <div style={{fontSize:13}}>{mod.icon} {mod.label}</div>
-                        <button
-                          type="button"
-                          className={`pref-toggle ${on ? 'on' : 'off'}`}
-                          onClick={() => setData('permissions', { ...data.permissions, [mod.key]: !on })}
-                        ></button>
+                      <div key={resource.key} style={{background:'var(--bg-elevated)',border:'1px solid var(--border-subtle)',borderRadius:10,padding:'12px 14px'}}>
+                        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:600}}>{resource.icon} {resource.label}</div>
+                            <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{resource.desc}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setData('permissions', toggleManagePermissions(data.permissions, resource.key))}
+                            style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,border:`1px solid ${isManage ? '#a78bfa' : 'var(--border)'}`,background:isManage ? 'rgba(167,139,250,.15)' : 'transparent',color:isManage ? '#a78bfa' : 'var(--text-muted)',cursor:'pointer',transition:'all .15s',whiteSpace:'nowrap'}}
+                          >
+                            ★ Manage
+                          </button>
+                        </div>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                          {resource.actions.map((action) => {
+                            const cfg = ACTION_CFG[action];
+                            const on = !!current[action];
+                            return (
+                              <label key={action} style={{display:'flex',alignItems:'center',gap:5,cursor:'pointer',padding:'5px 10px',borderRadius:7,border:`1px solid ${on ? cfg.color : 'var(--border-subtle)'}`,background:on ? `${cfg.color}18` : 'var(--bg-surface)',transition:'all .12s',userSelect:'none'}}>
+                                <input
+                                  type="checkbox"
+                                  checked={on}
+                                  onChange={() => setData('permissions', togglePermission(data.permissions, resource.key, action))}
+                                  style={{accentColor:cfg.color,width:13,height:13,cursor:'pointer'}}
+                                />
+                                <span style={{fontSize:12,fontWeight:600,color:on ? cfg.color : 'var(--text-muted)'}}>{cfg.full}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   })}
@@ -291,7 +559,7 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
       </div>
 
       <div className={`modal-overlay ${showPermDrawer ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowPermDrawer(false)}>
-        <div className="modal" style={{width:520,maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
+        <div className="modal" style={{width:620,maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
           <div className="modal-header" style={{flexShrink:0}}>
             <div>
               <div className="modal-title">{selectedMember?.name || 'Edit Permissions'}</div>
@@ -300,13 +568,42 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
             <button className="modal-close" onClick={() => setShowPermDrawer(false)}>✕</button>
           </div>
           <div className="modal-body" style={{flex:1,overflowY:'auto'}}>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,paddingTop:4}}>
-              {TEAM_MODULES.map((mod) => {
-                const on = !!permDraft?.[mod.key];
+            <div style={{display:'flex',flexDirection:'column',gap:8,paddingTop:4}}>
+              {RESOURCES.map((resource) => {
+                const current = permDraft?.[resource.key] || {};
+                const isManage = resource.actions.every((action) => !!current[action]);
                 return (
-                  <div key={mod.key} style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--bg-elevated)',borderRadius:8,padding:'10px 12px'}}>
-                    <div style={{fontSize:13}}>{mod.icon} {mod.label}</div>
-                    <button type="button" className={`pref-toggle ${on ? 'on' : 'off'}`} onClick={() => setPermDraft((prev) => ({ ...prev, [mod.key]: !on }))}></button>
+                  <div key={resource.key} style={{background:'var(--bg-elevated)',border:'1px solid var(--border-subtle)',borderRadius:10,padding:'12px 14px'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:600}}>{resource.icon} {resource.label}</div>
+                        <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{resource.desc}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPermDraft((prev) => toggleManagePermissions(prev, resource.key))}
+                        style={{fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,border:`1px solid ${isManage ? '#a78bfa' : 'var(--border)'}`,background:isManage ? 'rgba(167,139,250,.15)' : 'transparent',color:isManage ? '#a78bfa' : 'var(--text-muted)',cursor:'pointer',transition:'all .15s',whiteSpace:'nowrap'}}
+                      >
+                        ★ Manage
+                      </button>
+                    </div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                      {resource.actions.map((action) => {
+                        const cfg = ACTION_CFG[action];
+                        const on = !!current[action];
+                        return (
+                          <label key={action} style={{display:'flex',alignItems:'center',gap:5,cursor:'pointer',padding:'5px 10px',borderRadius:7,border:`1px solid ${on ? cfg.color : 'var(--border-subtle)'}`,background:on ? `${cfg.color}18` : 'var(--bg-surface)',transition:'all .12s',userSelect:'none'}}>
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => setPermDraft((prev) => togglePermission(prev, resource.key, action))}
+                              style={{accentColor:cfg.color,width:13,height:13,cursor:'pointer'}}
+                            />
+                            <span style={{fontSize:12,fontWeight:600,color:on ? cfg.color : 'var(--text-muted)'}}>{cfg.full}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
@@ -315,6 +612,52 @@ export default function TeamIndex({ teamMembers = [], roleDefaults = {} }) {
           <div className="modal-footer" style={{flexShrink:0}}>
             <button className="btn-ghost" onClick={() => setShowPermDrawer(false)}>Cancel</button>
             <button className="btn-primary" onClick={savePerms}>Save Permissions</button>
+          </div>
+        </div>
+      </div>
+
+      <div className={`modal-overlay ${showDeleteDialog ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeDeleteDialog()}>
+        <div className="modal" style={{width:560,maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
+          <div className="modal-header" style={{flexShrink:0}}>
+            <div>
+              <div className="modal-title" style={{color:'var(--red)'}}>Confirm Team Member Deletion</div>
+              <div style={{fontSize:12,color:'var(--text-muted)',marginTop:3}}>This action will archive the account and remove team access.</div>
+            </div>
+            <button className="modal-close" onClick={closeDeleteDialog}>✕</button>
+          </div>
+          <div className="modal-body" style={{flex:1,overflowY:'auto'}}>
+            <div style={{background:'var(--red-dim)',border:'1px solid color-mix(in srgb, var(--red) 40%, transparent)',borderRadius:10,padding:'12px 14px',marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:'var(--red)',marginBottom:4}}>Warning</div>
+              <div style={{fontSize:12.5,color:'var(--text-secondary)'}}>
+                The team member will be soft deleted. Their account will no longer appear in active team lists and they will lose access.
+              </div>
+            </div>
+
+            <div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:8}}>
+              To confirm, type the full name of the user:
+            </div>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>{deleteTarget?.name || '—'}</div>
+
+            <div className="form-group" style={{marginBottom:0}}>
+              <label className="form-label">Type user name to confirm</label>
+              <input
+                className="form-input"
+                value={deleteConfirmName}
+                onChange={(e) => setDeleteConfirmName(e.target.value)}
+                placeholder="Enter full name exactly"
+              />
+            </div>
+          </div>
+          <div className="modal-footer" style={{flexShrink:0}}>
+            <button className="btn-ghost" onClick={closeDeleteDialog} disabled={deleteSubmitting}>Cancel</button>
+            <button
+              className="btn-danger"
+              onClick={confirmDeleteMember}
+              disabled={deleteSubmitting || !deleteTarget || deleteConfirmName.trim() !== deleteTarget?.name}
+              style={{opacity:(deleteSubmitting || !deleteTarget || deleteConfirmName.trim() !== deleteTarget?.name) ? .6 : 1,cursor:(deleteSubmitting || !deleteTarget || deleteConfirmName.trim() !== deleteTarget?.name) ? 'not-allowed' : 'pointer'}}
+            >
+              {deleteSubmitting ? 'Deleting…' : 'Delete Team Member'}
+            </button>
           </div>
         </div>
       </div>

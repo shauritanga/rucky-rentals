@@ -48,6 +48,7 @@ Route::middleware('auth')->group(function () {
         Route::post('team', [TeamController::class, 'store'])->name('team.store');
         Route::patch('team/{user}/permissions', [TeamController::class, 'updatePermissions'])->name('team.permissions.update');
         Route::patch('team/{user}/status', [TeamController::class, 'toggleStatus'])->name('team.status.toggle');
+        Route::patch('team/{userId}/restore', [TeamController::class, 'restore'])->name('team.restore');
         Route::delete('team/{user}', [TeamController::class, 'destroy'])->name('team.destroy');
         Route::get('audit', [AuditTrailController::class, 'index'])->name('audit.index');
 

@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\TeamInviteMail;
 use App\Models\AuditLog;
 use App\Models\Property;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 
 class TeamController extends Controller
@@ -76,35 +78,21 @@ class TeamController extends Controller
     {
         $user = $request->user();
 
-        $query = User::query()->whereIn('role', self::STAFF_ROLES);
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-            } else {
-                $query->where('property_id', $user->property_id);
-            }
-        }
-
-        $teamMembers = $query
+        $teamMembers = $this->teamQueryFor($user)
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'created_at', 'updated_at'])
-            ->map(function (User $member) {
-                return [
-                    'id' => $member->id,
-                    'name' => $member->name,
-                    'email' => $member->email,
-                    'phone' => null,
-                    'role' => $member->role,
-                    'status' => $member->status ?: 'active',
-                    'last_active' => optional($member->updated_at)->diffForHumans(),
-                    'permissions' => self::ROLE_DEFAULTS[$member->role] ?? self::ROLE_DEFAULTS['viewer'],
-                ];
-            })
+            ->map(fn(User $member) => $this->mapTeamMember($member))
+            ->values();
+
+        $archivedMembers = $this->teamQueryFor($user, true)
+            ->orderByDesc('deleted_at')
+            ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'created_at', 'updated_at', 'deleted_at'])
+            ->map(fn(User $member) => $this->mapTeamMember($member))
             ->values();
 
         return Inertia::render('Team/Index', [
             'teamMembers' => $teamMembers,
+            'archivedMembers' => $archivedMembers,
             'roleDefaults' => self::ROLE_DEFAULTS,
         ]);
     }
@@ -123,10 +111,12 @@ class TeamController extends Controller
 
         $propertyId = $this->resolvePropertyIdForActor($actor);
 
+        $initialPassword = $data['password'];
+
         $member = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
-            'password' => Hash::make($data['password']),
+            'password' => Hash::make($initialPassword),
             'role' => $data['role'],
             'property_id' => $propertyId,
             'status' => 'active',
@@ -134,15 +124,39 @@ class TeamController extends Controller
         ]);
 
         $propertyName = $propertyId ? Property::where('id', $propertyId)->value('name') : null;
+        $inviteMailSent = true;
+
+        try {
+            Mail::to($member->email)->send(new TeamInviteMail(
+                memberName: $member->name,
+                email: $member->email,
+                initialPassword: $initialPassword,
+                loginUrl: url('/login'),
+                roleLabel: $this->roleLabel($member->role),
+                propertyName: $propertyName,
+            ));
+        } catch (\Throwable $e) {
+            $inviteMailSent = false;
+        }
+
         $this->logAudit(
             request: $request,
             action: 'Team member added',
             resource: sprintf('%s (%s)', $member->name, $member->role),
             propertyName: $propertyName,
             category: 'team',
+            result: $inviteMailSent ? 'success' : 'failed',
+            metadata: [
+                'invite_email_sent' => $inviteMailSent,
+                'invite_email' => $member->email,
+            ],
         );
 
-        return back()->with('success', 'Staff member added successfully.');
+        if (!$inviteMailSent) {
+            return back()->with('warning', 'Staff member created, but invite email could not be sent.');
+        }
+
+        return back()->with('success', 'Staff member added and invite email sent.');
     }
 
     public function updatePermissions(Request $request, User $user)
@@ -187,6 +201,16 @@ class TeamController extends Controller
     {
         $this->authorizeTeamMember($request, $user);
 
+        $data = $request->validate([
+            'confirm_name' => 'required|string|max:120',
+        ]);
+
+        if (trim($data['confirm_name']) !== $user->name) {
+            return back()->withErrors([
+                'confirm_name' => 'Name confirmation does not match the selected team member.',
+            ]);
+        }
+
         $propertyName = $user->property_id ? Property::where('id', $user->property_id)->value('name') : null;
         $resource = sprintf('%s (%s)', $user->name, $user->role);
 
@@ -198,9 +222,31 @@ class TeamController extends Controller
             resource: $resource,
             propertyName: $propertyName,
             category: 'team',
+            metadata: ['soft_deleted' => true],
         );
 
         return back()->with('success', 'Staff member removed.');
+    }
+
+    public function restore(Request $request, int $userId)
+    {
+        $member = User::onlyTrashed()->whereIn('role', self::STAFF_ROLES)->findOrFail($userId);
+        $this->authorizeTeamMember($request, $member);
+
+        $member->restore();
+        $member->update(['status' => 'active']);
+
+        $propertyName = $member->property_id ? Property::where('id', $member->property_id)->value('name') : null;
+        $this->logAudit(
+            request: $request,
+            action: 'Team member restored',
+            resource: sprintf('%s (%s)', $member->name, $member->role),
+            propertyName: $propertyName,
+            category: 'team',
+            metadata: ['restored' => true],
+        );
+
+        return back()->with('success', 'Staff member restored.');
     }
 
     private function resolvePropertyIdForActor(?User $actor): ?int
@@ -225,6 +271,48 @@ class TeamController extends Controller
         if ($actor?->role === 'manager') {
             abort_if((int) $teamMember->property_id !== (int) $actor->property_id, 403);
         }
+    }
+
+    private function teamQueryFor(?User $user, bool $onlyTrashed = false)
+    {
+        $query = $onlyTrashed ? User::onlyTrashed() : User::query();
+        $query->whereIn('role', self::STAFF_ROLES);
+
+        if ($user?->role === 'manager') {
+            if (empty($user->property_id)) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->where('property_id', $user->property_id);
+            }
+        }
+
+        return $query;
+    }
+
+    private function mapTeamMember(User $member): array
+    {
+        return [
+            'id' => $member->id,
+            'name' => $member->name,
+            'email' => $member->email,
+            'phone' => null,
+            'role' => $member->role,
+            'status' => $member->status ?: 'active',
+            'last_active' => optional($member->updated_at)->diffForHumans(),
+            'deleted_at' => $member->deleted_at ? $member->deleted_at->diffForHumans() : null,
+            'permissions' => self::ROLE_DEFAULTS[$member->role] ?? self::ROLE_DEFAULTS['viewer'],
+        ];
+    }
+
+    private function roleLabel(string $role): string
+    {
+        return match ($role) {
+            'accountant' => 'Accountant',
+            'lease_manager' => 'Lease Manager',
+            'maintenance_staff' => 'Maintenance Staff',
+            'viewer' => 'Viewer',
+            default => ucfirst(str_replace('_', ' ', $role)),
+        };
     }
 
     private function logAudit(Request $request, string $action, ?string $resource, ?string $propertyName, string $category, string $result = 'success', array $metadata = []): void

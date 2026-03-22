@@ -113,11 +113,26 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .data-table tr:last-child td{border-bottom:none}
 .toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
 .filters{display:flex;gap:6px;flex-wrap:wrap}
+.units-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap}
+.units-filters{display:flex;gap:6px;flex-wrap:wrap}
+.team-tabs{display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border-subtle);margin-bottom:16px}
+.team-tab{position:relative;display:flex;align-items:center;gap:6px;padding:10px 12px;border-radius:8px 8px 0 0;border:1px solid transparent;border-bottom:none;background:transparent;color:var(--text-secondary);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.team-tab:hover{color:var(--text-primary);background:color-mix(in srgb, var(--bg-elevated) 70%, transparent)}
+.team-tab.active{color:var(--accent);background:transparent;border-color:transparent}
+.team-tab.active::after{content:'';position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:999px;background:var(--accent)}
+.team-tab-count{background:var(--bg-elevated);border-radius:999px;padding:0 7px;min-width:20px;line-height:18px;text-align:center;font-size:11px;font-weight:700;color:var(--text-muted)}
+.team-tab.active .team-tab-count{background:var(--accent-glow);color:var(--accent)}
 .filter-pill{display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-secondary);font-size:12.5px;font-weight:500;font-family:inherit;cursor:pointer;transition:all .15s}
 .filter-pill:hover{border-color:var(--accent);color:var(--accent)}
 .filter-pill.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
 .pill-count{background:var(--bg-elevated);border-radius:10px;padding:0 6px;font-size:11px;font-weight:600;color:var(--text-muted)}
 .filter-pill.active .pill-count{background:var(--accent-glow);color:var(--accent)}
+.units-list-table{width:100%;border-collapse:collapse}
+.units-list-table th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-muted);padding:10px 20px;border-bottom:1px solid var(--border-subtle);white-space:nowrap}
+.units-list-table td{padding:12px 20px;border-bottom:1px solid var(--border-subtle);font-size:13.5px;vertical-align:middle}
+.units-list-table tbody tr{transition:background .12s;cursor:pointer}
+.units-list-table tbody tr:hover{background:var(--bg-hover)}
+.units-list-table tr:last-child td{border-bottom:none}
 .tenant-cell{display:flex;align-items:center;gap:8px}
 .t-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
 .action-dots{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:5px;transition:background .12s,color .12s}
