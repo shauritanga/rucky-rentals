@@ -7,10 +7,24 @@ use Illuminate\Database\Eloquent\Model;
 class MaintenanceTicket extends Model
 {
     protected $fillable = [
-        'unit_id', 'title', 'description', 'priority', 'status', 'notes',
+        'ticket_number',
+        'title',
+        'description',
+        'unit_ref',
+        'unit_id',
+        'category',
+        'priority',
+        'status',
+        'assignee',
+        'cost',
+        'reported_date',
+        'notes',
     ];
 
     protected $casts = ['notes' => 'array'];
 
-    public function unit() { return $this->belongsTo(Unit::class); }
+    public function unit()
+    {
+        return $this->belongsTo(Unit::class);
+    }
 }

@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\LeaseInstallment;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -47,7 +48,7 @@ class PaymentController extends Controller
         return Inertia::render('Payments/Index', compact('payments', 'tenants', 'units', 'invoices'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, AccountingAutoPoster $poster)
     {
         $user = $request->user();
         $managerPropertyId = null;
@@ -104,11 +105,39 @@ class PaymentController extends Controller
 
         $data['property_id'] = $propertyId;
 
-        DB::transaction(function () use ($data) {
+        DB::transaction(function () use ($data, $poster) {
             $payment = Payment::create($data);
 
             if ($data['status'] === 'paid') {
                 Unit::find($data['unit_id'])?->update(['status' => 'occupied']);
+
+                $entryDate = $data['paid_date'] ?? now()->toDateString();
+                $poster->post(
+                    propertyId: $payment->property_id,
+                    entryDate: $entryDate,
+                    description: 'Rent payment received',
+                    reference: 'PAY-' . $payment->id,
+                    sourceType: 'payment',
+                    sourceId: $payment->id,
+                    lines: [
+                        [
+                            'account_code' => '1000',
+                            'account_name' => 'Cash at Bank',
+                            'type' => 'asset',
+                            'category' => 'Current Assets',
+                            'debit' => (float) $payment->amount,
+                            'credit' => 0,
+                        ],
+                        [
+                            'account_code' => '4000',
+                            'account_name' => 'Rental Income',
+                            'type' => 'revenue',
+                            'category' => 'Operating Revenue',
+                            'debit' => 0,
+                            'credit' => (float) $payment->amount,
+                        ],
+                    ]
+                );
             }
 
             $this->reconcileInvoiceStatus($payment->invoice_id);
@@ -117,10 +146,44 @@ class PaymentController extends Controller
         return back()->with('success', 'Payment recorded.');
     }
 
-    public function update(Request $request, Payment $payment)
+    public function update(Request $request, Payment $payment, AccountingAutoPoster $poster)
     {
         $this->authorizePaymentProperty($request, $payment);
+        $previousStatus = $payment->status;
         $payment->update($request->only(['status', 'method', 'paid_date']));
+
+        if ($previousStatus !== 'paid' && $payment->status === 'paid') {
+            $poster->post(
+                propertyId: $payment->property_id,
+                entryDate: $payment->paid_date ?? now()->toDateString(),
+                description: 'Rent payment received',
+                reference: 'PAY-' . $payment->id,
+                sourceType: 'payment',
+                sourceId: $payment->id,
+                lines: [
+                    [
+                        'account_code' => '1000',
+                        'account_name' => 'Cash at Bank',
+                        'type' => 'asset',
+                        'category' => 'Current Assets',
+                        'debit' => (float) $payment->amount,
+                        'credit' => 0,
+                    ],
+                    [
+                        'account_code' => '4000',
+                        'account_name' => 'Rental Income',
+                        'type' => 'revenue',
+                        'category' => 'Operating Revenue',
+                        'debit' => 0,
+                        'credit' => (float) $payment->amount,
+                    ],
+                ]
+            );
+        }
+
+        if ($previousStatus === 'paid' && $payment->status !== 'paid') {
+            $poster->voidByReference($payment->property_id, 'PAY-' . $payment->id);
+        }
 
         $this->reconcileInvoiceStatus($payment->invoice_id);
 
@@ -130,6 +193,10 @@ class PaymentController extends Controller
     public function destroy(Payment $payment)
     {
         $this->authorizePaymentProperty(request(), $payment);
+
+        if ($payment->status === 'paid') {
+            app(AccountingAutoPoster::class)->voidByReference($payment->property_id, 'PAY-' . $payment->id);
+        }
 
         $invoiceId = $payment->invoice_id;
         $payment->delete();
