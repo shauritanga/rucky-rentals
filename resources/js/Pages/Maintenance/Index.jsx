@@ -420,11 +420,11 @@ export default function MaintenanceIndex({ tickets, units }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 0, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 11, padding: 3, marginBottom: 18, width: 'fit-content' }}>
-        <button className={`prof-tab ${tab === 'requests' ? 'active' : ''}`} onClick={() => setTab('requests')} style={{ padding: '7px 18px' }}>Requests</button>
-        <button className={`prof-tab ${tab === 'schedule' ? 'active' : ''}`} onClick={() => setTab('schedule')} style={{ padding: '7px 18px' }}>Schedule</button>
-        <button className={`prof-tab ${tab === 'materials' ? 'active' : ''}`} onClick={() => setTab('materials')} style={{ padding: '7px 18px' }}>Materials</button>
-        <button className={`prof-tab ${tab === 'analytics' ? 'active' : ''}`} onClick={() => setTab('analytics')} style={{ padding: '7px 18px' }}>Analytics</button>
+      <div className="team-tabs" style={{ marginBottom: 18 }}>
+        <button className={`team-tab ${tab === 'requests' ? 'active' : ''}`} onClick={() => setTab('requests')}>Requests</button>
+        <button className={`team-tab ${tab === 'schedule' ? 'active' : ''}`} onClick={() => setTab('schedule')}>Schedule</button>
+        <button className={`team-tab ${tab === 'materials' ? 'active' : ''}`} onClick={() => setTab('materials')}>Materials</button>
+        <button className={`team-tab ${tab === 'analytics' ? 'active' : ''}`} onClick={() => setTab('analytics')}>Analytics</button>
       </div>
 
       {tab === 'requests' && (

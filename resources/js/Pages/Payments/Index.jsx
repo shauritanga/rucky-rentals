@@ -447,9 +447,9 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 0, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 11, padding: 3, marginBottom: 18, width: 'fit-content' }}>
-        <button className={`prof-tab ${activeTab === 'pay-ledger' ? 'active' : ''}`} onClick={() => setActiveTab('pay-ledger')} style={{ padding: '7px 18px' }}>Payment Ledger</button>
-        <button className={`prof-tab ${activeTab === 'pay-credits' ? 'active' : ''}`} onClick={() => setActiveTab('pay-credits')} style={{ padding: '7px 18px' }}>Tenant Credits</button>
+      <div className="team-tabs" style={{ marginBottom: 18 }}>
+        <button className={`team-tab ${activeTab === 'pay-ledger' ? 'active' : ''}`} onClick={() => setActiveTab('pay-ledger')}>Payment Ledger</button>
+        <button className={`team-tab ${activeTab === 'pay-credits' ? 'active' : ''}`} onClick={() => setActiveTab('pay-credits')}>Tenant Credits</button>
       </div>
 
       {submitMessage.type === 'success' && (
