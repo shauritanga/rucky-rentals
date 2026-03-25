@@ -4,24 +4,31 @@ namespace App\Http\Controllers;
 
 use App\Models\MaintenanceRecord;
 use App\Models\Property;
+use App\Models\ScheduledMaintenance;
 use App\Models\Unit;
+use App\Models\User;
+use App\Notifications\MaintenanceApprovalNotification;
 use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 
 class MaintenanceController extends Controller
 {
     use LogsAudit;
+
     public function index(Request $request)
     {
         $user = $request->user();
 
         if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Maintenance/Index', [
-                'tickets' => MockRentalData::maintenanceTickets(),
-                'units' => MockRentalData::units(),
+                'tickets'        => MockRentalData::maintenanceTickets(),
+                'units'          => MockRentalData::units(),
+                'scheduledTasks' => [],
+                'approvalCount'  => 0,
             ]);
         }
 
@@ -32,9 +39,25 @@ class MaintenanceController extends Controller
         $this->scopeUnitsByUserProperty($units, $request);
 
         $tickets = $tickets->get();
-        $units = $units->get();
+        $units   = $units->get();
 
-        return Inertia::render('Maintenance/Index', compact('tickets', 'units'));
+        $scheduledTasks = ScheduledMaintenance::query()
+            ->when($user?->role === 'manager', fn ($q) => $q->where('property_id', $user->property_id))
+            ->orderBy('next_due')
+            ->get();
+
+        $approvalCount = 0;
+        if ($user?->role === 'accountant') {
+            $approvalCount = MaintenanceRecord::where('workflow_status', 'submitted')
+                ->when(!empty($user->property_id), fn ($q) => $q->where('property_id', $user->property_id))
+                ->count();
+        } elseif ($user?->role === 'manager') {
+            $approvalCount = MaintenanceRecord::where('workflow_status', 'pending_manager')
+                ->when(!empty($user->property_id), fn ($q) => $q->where('property_id', $user->property_id))
+                ->count();
+        }
+
+        return Inertia::render('Maintenance/Index', compact('tickets', 'units', 'scheduledTasks', 'approvalCount'));
     }
 
     public function store(Request $request)
@@ -49,6 +72,7 @@ class MaintenanceController extends Controller
             'priority'    => 'required|in:high,med,low',
             'assignee'    => 'nullable|string',
         ]);
+
         $unit = Unit::where('unit_number', $data['unit_ref'])->first();
         $this->authorizeUnitProperty($request, $unit);
 
@@ -59,16 +83,25 @@ class MaintenanceController extends Controller
 
         abort_if(empty($propertyId), 422, 'Unable to determine property for this ticket.');
 
-        $count = MaintenanceRecord::count() + 1;
-        MaintenanceRecord::create([
+        $count  = MaintenanceRecord::count() + 1;
+        $ticket = MaintenanceRecord::create([
             ...$data,
-            'property_id'   => $propertyId,
-            'unit_id'       => $unit?->id,
-            'ticket_number' => 'TK-' . str_pad($count, 3, '0', STR_PAD_LEFT),
-            'status'        => 'open',
-            'reported_date' => now()->toDateString(),
-            'notes'         => json_encode([]),
+            'property_id'     => $propertyId,
+            'unit_id'         => $unit?->id,
+            'ticket_number'   => 'TK-' . str_pad($count, 3, '0', STR_PAD_LEFT),
+            'status'          => 'open',
+            'workflow_status' => 'submitted',
+            'reported_by'     => $user?->name ?? 'System',
+            'reported_date'   => now()->toDateString(),
+            'notes'           => json_encode([]),
         ]);
+
+        // Notify accountants for this property
+        $accountants = User::where('role', 'accountant')
+            ->when(!empty($propertyId), fn ($q) => $q->where('property_id', $propertyId))
+            ->get();
+        Notification::send($accountants, new MaintenanceApprovalNotification($ticket, 'submitted'));
+
         $propertyName = Property::where('id', $propertyId)->value('name');
         $this->logAudit(
             request: $request,
@@ -87,19 +120,57 @@ class MaintenanceController extends Controller
         $this->authorizeTicketProperty($request, $maintenanceTicket);
 
         $previousStatus = $maintenanceTicket->status;
-        $previousCost = (float) ($maintenanceTicket->cost ?? 0);
+        $previousCost   = (float) ($maintenanceTicket->cost ?? 0);
 
-        $allowed = ['status', 'assignee', 'cost'];
         if ($request->has('note')) {
-            $notes = json_decode($maintenanceTicket->notes ?? '[]', true);
-            $notes[] = ['author' => 'James Mwangi', 'av' => 'JM', 'date' => now()->format('M d'), 'text' => $request->input('note')];
+            $notes        = json_decode($maintenanceTicket->notes ?? '[]', true);
+            $noteUser     = $request->user();
+            $noteName     = $noteUser?->name ?? 'System';
+            $noteWords    = explode(' ', trim($noteName));
+            $noteInitials = strtoupper(substr($noteWords[0], 0, 1) . (isset($noteWords[1]) ? substr($noteWords[1], 0, 1) : ''));
+            $notes[]      = [
+                'author' => $noteName,
+                'av'     => $noteInitials,
+                'date'   => now()->format('M d'),
+                'text'   => $request->input('note'),
+            ];
             $maintenanceTicket->update(['notes' => json_encode($notes)]);
+        } elseif ($request->has('workflow_status')) {
+            $next = $request->input('workflow_status');
+
+            // Sync base status to match workflow stage
+            $newStatus = match ($next) {
+                'in_progress' => 'in-progress',
+                'resolved'    => 'resolved',
+                default       => 'open',
+            };
+
+            $maintenanceTicket->update([
+                'workflow_status' => $next,
+                'status'          => $newStatus,
+            ]);
+
+            $propertyId = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
+
+            // Send notifications based on transition
+            if ($next === 'pending_manager') {
+                $managers = User::where('role', 'manager')
+                    ->when(!empty($propertyId), fn ($q) => $q->where('property_id', $propertyId))
+                    ->get();
+                Notification::send($managers, new MaintenanceApprovalNotification($maintenanceTicket, 'pending_manager'));
+            } elseif ($next === 'approved') {
+                $reporter = User::where('name', $maintenanceTicket->reported_by)->first();
+                if ($reporter) {
+                    $reporter->notify(new MaintenanceApprovalNotification($maintenanceTicket, 'approved'));
+                }
+            }
         } else {
+            $allowed = ['status', 'assignee', 'cost'];
             $maintenanceTicket->update($request->only($allowed));
 
             $currentCost = (float) ($maintenanceTicket->cost ?? 0);
-            $propertyId = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
-            $reference = 'MAINT-' . $maintenanceTicket->id;
+            $propertyId  = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
+            $reference   = 'MAINT-' . $maintenanceTicket->id;
 
             if ($maintenanceTicket->status === 'resolved' && $currentCost > 0) {
                 if ($previousStatus === 'resolved' && abs($previousCost - $currentCost) > 0.00001) {
@@ -118,18 +189,18 @@ class MaintenanceController extends Controller
                             [
                                 'account_code' => '5000',
                                 'account_name' => 'Maintenance Expense',
-                                'type' => 'expense',
-                                'category' => 'Operating Expenses',
-                                'debit' => $currentCost,
-                                'credit' => 0,
+                                'type'         => 'expense',
+                                'category'     => 'Operating Expenses',
+                                'debit'        => $currentCost,
+                                'credit'       => 0,
                             ],
                             [
                                 'account_code' => '2000',
                                 'account_name' => 'Accounts Payable',
-                                'type' => 'liability',
-                                'category' => 'Current Liabilities',
-                                'debit' => 0,
-                                'credit' => $currentCost,
+                                'type'         => 'liability',
+                                'category'     => 'Current Liabilities',
+                                'debit'        => 0,
+                                'credit'       => $currentCost,
                             ],
                         ]
                     );
@@ -187,7 +258,6 @@ class MaintenanceController extends Controller
                 $query->whereRaw('1 = 0');
                 return;
             }
-
             $query->where('property_id', $user->property_id);
         }
     }
@@ -201,7 +271,6 @@ class MaintenanceController extends Controller
                 $query->whereRaw('1 = 0');
                 return;
             }
-
             $query->where('property_id', $user->property_id);
         }
     }
@@ -212,7 +281,6 @@ class MaintenanceController extends Controller
         if ($user?->role !== 'manager') {
             return;
         }
-
         $ticketPropertyId = $ticket->property_id;
         abort_if((int) $ticketPropertyId !== (int) $user->property_id, 403);
     }
@@ -223,7 +291,6 @@ class MaintenanceController extends Controller
         if ($user?->role !== 'manager' || !$unit) {
             return;
         }
-
         abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
         abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
         abort_if((int) $unit->property_id !== (int) $user->property_id, 403);

@@ -12,17 +12,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Seed default exchange rates for testing
-        // Assumes property_id = 1 exists
+        // Use the first available property — skip silently if none exist yet
+        $propertyId = DB::table('properties')->value('id');
+        if (! $propertyId) return;
+
         DB::table('exchange_rates')->insertOrIgnore([
             [
-                'property_id' => 1,
-                'from_currency' => 'USD',
-                'to_currency' => 'TZS',
-                'rate' => 2500.00, // 1 USD = 2,500 TZS (example rate)
+                'property_id'    => $propertyId,
+                'from_currency'  => 'USD',
+                'to_currency'    => 'TZS',
+                'rate'           => 2500.00,
                 'effective_date' => now()->toDateString(),
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_at'     => now(),
+                'updated_at'     => now(),
             ],
         ]);
     }
@@ -32,10 +34,13 @@ return new class extends Migration
      */
     public function down(): void
     {
+        $propertyId = DB::table('properties')->value('id');
+        if (! $propertyId) return;
+
         DB::table('exchange_rates')->where([
-            ['property_id', '=', 1],
+            ['property_id',   '=', $propertyId],
             ['from_currency', '=', 'USD'],
-            ['to_currency', '=', 'TZS'],
+            ['to_currency',   '=', 'TZS'],
         ])->delete();
     }
 };

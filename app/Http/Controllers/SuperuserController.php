@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ManagerWelcomeMail;
+use App\Models\AuditLog;
 use App\Models\Property;
 use App\Models\User;
 use App\Traits\LogsAudit;

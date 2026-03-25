@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
@@ -14,24 +14,21 @@ const CAT_ICONS = {
 };
 
 const REQUEST_FILTERS = [
-  ['all', 'All'],
-  ['draft', 'Draft'],
-  ['pending_accountant', 'Pending Accountant'],
+  ['all',             'All'],
+  ['submitted',       'Submitted'],
   ['pending_manager', 'Pending Manager'],
-  ['approved', 'Approved'],
-  ['in_progress', 'In Progress'],
-  ['completed', 'Completed'],
-  ['rejected', 'Rejected'],
+  ['approved',        'Approved'],
+  ['in_progress',     'In Progress'],
+  ['resolved',        'Resolved'],
 ];
 
 const STATUS_META = {
-  draft: { label: 'Draft', bg: 'var(--bg-elevated)', color: 'var(--text-muted)' },
-  pending_accountant: { label: 'Pending Accountant', bg: 'var(--amber-dim)', color: 'var(--amber)' },
-  pending_manager: { label: 'Pending Manager', bg: 'var(--accent-dim)', color: 'var(--accent)' },
-  approved: { label: 'Approved', bg: 'var(--green-dim)', color: 'var(--green)' },
-  in_progress: { label: 'In Progress', bg: 'var(--accent-dim)', color: 'var(--accent)' },
-  completed: { label: 'Completed', bg: 'var(--green-dim)', color: 'var(--green)' },
-  rejected: { label: 'Rejected', bg: 'var(--red-dim)', color: 'var(--red)' },
+  submitted:       { label: 'Submitted',       bg: 'var(--bg-elevated)',  color: 'var(--text-secondary)' },
+  pending_manager: { label: 'Pending Manager', bg: 'var(--amber-dim)',    color: 'var(--amber)'          },
+  approved:        { label: 'Approved',        bg: 'var(--green-dim)',    color: 'var(--green)'          },
+  in_progress:     { label: 'In Progress',     bg: 'var(--accent-dim)',   color: 'var(--accent)'         },
+  resolved:        { label: 'Resolved',        bg: 'var(--green-dim)',    color: 'var(--green)'          },
+  open:            { label: 'Open',            bg: 'var(--amber-dim)',    color: 'var(--amber)'          },
 };
 
 const PRIORITY_META = {
@@ -41,14 +38,6 @@ const PRIORITY_META = {
   low: { label: 'Low', color: 'var(--text-muted)' },
 };
 
-const INITIAL_SCHEDULED_TASKS = [
-  { id: 'SC-001', title: 'Quarterly AC service — all units', unit: 'All units', category: 'HVAC', frequency: 'quarterly', next_due: '2026-04-01', assignee: 'Cool Air Ltd', status: 'upcoming' },
-  { id: 'SC-002', title: 'Monthly fire extinguisher check', unit: 'Common areas', category: 'Security', frequency: 'monthly', next_due: '2026-04-01', assignee: 'Peter Ng.', status: 'upcoming' },
-  { id: 'SC-003', title: 'Annual roof inspection', unit: 'Rooftop', category: 'Structural', frequency: 'annual', next_due: '2026-06-01', assignee: 'In-house', status: 'upcoming' },
-  { id: 'SC-004', title: 'Weekly common area cleaning', unit: 'Common areas', category: 'Cleaning', frequency: 'weekly', next_due: '2026-03-23', assignee: 'Peter Ng.', status: 'upcoming' },
-  { id: 'SC-005', title: 'Generator monthly service', unit: 'Generator room', category: 'General', frequency: 'monthly', next_due: '2026-03-20', assignee: 'In-house', status: 'overdue' },
-  { id: 'SC-006', title: 'Elevator inspection', unit: 'Lift shafts', category: 'Structural', frequency: 'biannual', next_due: '2026-03-15', assignee: 'Otis Ltd', status: 'overdue' },
-];
 
 const MATERIAL_HINTS = {
   Plumbing: [{ name: 'PVC pipe — 1 inch', unit: 'pc', factor: 0.18, qty: 2 }, { name: 'Ball valve — 1/2 inch', unit: 'pc', factor: 0.12, qty: 1 }],
@@ -65,33 +54,23 @@ const REQUESTS_PAGE_SIZE = 10;
 
 function normalizeWorkflowStatus(ticket) {
   if (ticket.workflow_status) return ticket.workflow_status;
-  if (ticket.status === 'resolved') return 'completed';
+  if (ticket.status === 'resolved')    return 'resolved';
   if (ticket.status === 'in-progress') return 'in_progress';
-  return 'pending_accountant';
+  return 'submitted';
 }
 
 function buildRecordNumber(item) {
   return item.record_number || item.ticket_number || `MR-${String(item.id).padStart(3, '0')}`;
 }
 
-function workflowToDbStatus(workflowStatus) {
-  if (workflowStatus === 'completed') return 'resolved';
-  if (workflowStatus === 'in_progress') return 'in-progress';
+function workflowToDbStatus(status) {
+  if (status === 'resolved')    return 'resolved';
+  if (status === 'in_progress') return 'in-progress';
   return 'open';
 }
 
 function statusRank(status) {
-  const order = {
-    draft: 0,
-    pending_accountant: 1,
-    pending_manager: 2,
-    approved: 3,
-    in_progress: 4,
-    completed: 5,
-    rejected: -1,
-  };
-
-  return order[status] ?? 0;
+  return { submitted: 0, pending_manager: 1, approved: 2, in_progress: 3, resolved: 4, open: 0 }[status] ?? 0;
 }
 
 function safeNotes(value) {
@@ -108,7 +87,7 @@ function safeNotes(value) {
   return [];
 }
 
-export default function MaintenanceIndex({ tickets, units }) {
+export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], approvalCount = 0 }) {
   const [tab, setTab] = useState('requests');
   const [filter, setFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('');
@@ -121,16 +100,18 @@ export default function MaintenanceIndex({ tickets, units }) {
   const [images, setImages] = useState([]);
   const [materialsPage, setMaterialsPage] = useState(1);
   const [requestsPage, setRequestsPage] = useState(1);
-  const [scheduleTasks, setScheduleTasks] = useState(INITIAL_SCHEDULED_TASKS);
   const [scheduleForm, setScheduleForm] = useState({
     title: '',
-    unit: '',
+    unit_ref: '',
     category: 'General',
     frequency: 'monthly',
     next_due: '',
     assignee: '',
     notes: '',
   });
+  const [submitMessage, setSubmitMessage] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
   const [workflowStatusByTicket, setWorkflowStatusByTicket] = useState(() => {
     const initial = {};
     tickets.forEach((t) => {
@@ -151,6 +132,12 @@ export default function MaintenanceIndex({ tickets, units }) {
   });
 
   const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
+
+  useEffect(() => {
+    if (!submitMessage) return;
+    const t = setTimeout(() => setSubmitMessage(''), 4000);
+    return () => clearTimeout(t);
+  }, [submitMessage]);
 
   const normalizedTickets = useMemo(() => {
     return tickets.map((ticket) => {
@@ -188,23 +175,13 @@ export default function MaintenanceIndex({ tickets, units }) {
   }, [units]);
 
   const counts = useMemo(() => {
-    const next = {
-      all: normalizedTickets.length,
-      draft: 0,
-      pending_accountant: 0,
-      pending_manager: 0,
-      approved: 0,
-      in_progress: 0,
-      completed: 0,
-      rejected: 0,
-    };
-
+    const next = { all: normalizedTickets.length, submitted: 0, pending_manager: 0, approved: 0, in_progress: 0, resolved: 0 };
     normalizedTickets.forEach((ticket) => {
-      if (Object.prototype.hasOwnProperty.call(next, ticket.workflow_status)) {
-        next[ticket.workflow_status] += 1;
+      const ws = ticket.workflow_status;
+      if (Object.prototype.hasOwnProperty.call(next, ws)) {
+        next[ws] += 1;
       }
     });
-
     return next;
   }, [normalizedTickets]);
 
@@ -235,10 +212,9 @@ export default function MaintenanceIndex({ tickets, units }) {
     ? Math.min(requestsCurrentPage * REQUESTS_PAGE_SIZE, filteredTickets.length)
     : 0;
 
-  const openRequests = counts.draft + counts.pending_accountant + counts.pending_manager + counts.approved + counts.in_progress;
-  const pendingApprovals = counts.pending_accountant + counts.pending_manager;
+  const openRequests = counts.submitted + counts.pending_manager + counts.approved + counts.in_progress;
   const urgentCount = normalizedTickets.filter(
-    (t) => ['high', 'critical'].includes(t.priority) && ['approved', 'in_progress'].includes(t.workflow_status),
+    (t) => ['high', 'critical'].includes(t.priority) && ['submitted', 'pending_manager', 'approved', 'in_progress'].includes(t.workflow_status),
   ).length;
   const totalCostUsd = normalizedTickets.reduce((sum, ticket) => sum + Number(ticket.total_cost || 0), 0);
 
@@ -269,7 +245,7 @@ export default function MaintenanceIndex({ tickets, units }) {
   const materialUsageItems = useMemo(() => {
     const usage = {};
     normalizedTickets
-      .filter((r) => ['completed', 'in_progress', 'approved'].includes(r.workflow_status))
+      .filter((r) => ['resolved', 'in_progress'].includes(r.workflow_status))
       .forEach((r) => {
         (r.materials || []).forEach((m) => {
           if (!usage[m.name]) usage[m.name] = { unit: m.unit || '', qty: 0, total: 0 };
@@ -320,8 +296,9 @@ export default function MaintenanceIndex({ tickets, units }) {
     return Object.entries(acc).sort((a, b) => b[1] - a[1]);
   }, [normalizedTickets, tenantByUnit]);
 
-  const submitRequest = (e, mode = 'pending_accountant') => {
+  const submitRequest = (e) => {
     e.preventDefault();
+    setSubmitError('');
     post('/maintenance', {
       data: {
         title: data.title,
@@ -336,30 +313,35 @@ export default function MaintenanceIndex({ tickets, units }) {
         setMaterials([]);
         setImages([]);
         setShowModal(false);
+        setSubmitMessage('Ticket submitted. Accountants have been notified for review.');
       },
+      onError: () => setSubmitError('Failed to submit ticket. Please check all required fields.'),
     });
-
-    if (mode === 'draft') {
-      setShowModal(false);
-    }
   };
 
   const updateWorkflowStatus = (ticket, nextWorkflowStatus) => {
     setWorkflowStatusByTicket((prev) => ({ ...prev, [ticket.id]: nextWorkflowStatus }));
     router.patch(
       `/maintenance/${ticket.id}`,
-      { status: workflowToDbStatus(nextWorkflowStatus) },
+      { workflow_status: nextWorkflowStatus },
       {
         onSuccess: () => {
           setSelected((s) => (s ? { ...s, workflow_status: nextWorkflowStatus } : null));
+          setSubmitMessage('Status updated successfully.');
         },
+        onError: () => setSubmitMessage(''),
       },
     );
   };
 
   const addNote = () => {
     if (!selected || !note.trim()) return;
-    router.patch(`/maintenance/${selected.id}`, { note }, { onSuccess: () => setNote('') });
+    router.patch(`/maintenance/${selected.id}`, { note }, {
+      onSuccess: () => {
+        setNote('');
+        setSubmitMessage('Note added.');
+      },
+    });
   };
 
   const addMaterialRow = () => {
@@ -390,8 +372,8 @@ export default function MaintenanceIndex({ tickets, units }) {
     });
   };
 
-  const upcomingSchedule = scheduleTasks.filter((task) => task.status === 'upcoming');
-  const overdueSchedule = scheduleTasks.filter((task) => task.status === 'overdue');
+  const upcomingSchedule = scheduledTasks.filter((task) => task.status === 'upcoming');
+  const overdueSchedule = scheduledTasks.filter((task) => task.status === 'overdue');
 
   return (
     <AppLayout title="Maintenance" subtitle={`— ${openRequests} open`}>
@@ -404,14 +386,14 @@ export default function MaintenanceIndex({ tickets, units }) {
           <div className="stat-label">Active Requests</div>
         </div>
         <div className="stat-card">
-          <div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><span className="stat-delta">pending</span></div>
-          <div className="stat-value">{pendingApprovals}</div>
-          <div className="stat-label">Awaiting Approval</div>
+          <div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><span className="stat-delta">active</span></div>
+          <div className="stat-value">{counts.in_progress}</div>
+          <div className="stat-label">In Progress</div>
         </div>
         <div className="stat-card">
           <div className="stat-top"><div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg></div><span className="stat-delta up">this month</span></div>
-          <div className="stat-value">{counts.completed}</div>
-          <div className="stat-label">Completed</div>
+          <div className="stat-value">{counts.resolved}</div>
+          <div className="stat-label">Resolved</div>
         </div>
         <div className="stat-card">
           <div className="stat-top"><div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div><span className="stat-delta down">market rate</span></div>
@@ -419,6 +401,13 @@ export default function MaintenanceIndex({ tickets, units }) {
           <div className="stat-label">Total Cost (Market)</div>
         </div>
       </div>
+
+      {submitMessage && (
+        <div style={{ background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid var(--green)', borderRadius: 9, padding: '10px 14px', fontSize: 13, fontWeight: 500, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          {submitMessage}
+        </div>
+      )}
 
       <div className="team-tabs" style={{ marginBottom: 18 }}>
         <button className={`team-tab ${tab === 'requests' ? 'active' : ''}`} onClick={() => setTab('requests')}>Requests</button>
@@ -429,6 +418,12 @@ export default function MaintenanceIndex({ tickets, units }) {
 
       {tab === 'requests' && (
         <>
+          {approvalCount > 0 && (
+            <div style={{ background: 'var(--amber-dim)', color: 'var(--amber)', border: '1px solid var(--amber)', borderRadius: 9, padding: '10px 14px', fontSize: 13, fontWeight: 500, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              You have <strong>{approvalCount}</strong> ticket{approvalCount > 1 ? 's' : ''} pending your approval — use the filter pills to find them.
+            </div>
+          )}
           <div className="toolbar" style={{ marginBottom: 14 }}>
             <div className="filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {REQUEST_FILTERS.map(([key, label]) => (
@@ -473,7 +468,7 @@ export default function MaintenanceIndex({ tickets, units }) {
               <tbody>
                 {filteredTickets.length === 0 && <tr><td colSpan={11} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No maintenance records match your filters</td></tr>}
                 {requestPageRows.map((t) => {
-                  const statusMeta = STATUS_META[t.workflow_status] || STATUS_META.draft;
+                  const statusMeta = STATUS_META[t.workflow_status] || STATUS_META.open;
                   const pri = PRIORITY_META[t.priority] || PRIORITY_META.low;
                   return (
                     <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => setSelected({ ...t })}>
@@ -537,17 +532,20 @@ export default function MaintenanceIndex({ tickets, units }) {
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-            <div className="card"><div className="card-header"><div className="card-title">Upcoming (30 days)</div></div><div style={{ padding: '0 8px 8px' }}>{upcomingSchedule.length ? upcomingSchedule.map((task) => <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[task.category] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{task.unit} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>Due {task.next_due}</div></div>) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No tasks due in 30 days</div>}</div></div>
-            <div className="card"><div className="card-header"><div className="card-title">Overdue</div></div><div style={{ padding: '0 8px 8px' }}>{overdueSchedule.length ? overdueSchedule.map((task) => <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[task.category] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{task.unit} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--red)' }}>Due {task.next_due}</div></div>) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No overdue tasks</div>}</div></div>
+            <div className="card"><div className="card-header"><div className="card-title">Upcoming (30 days)</div></div><div style={{ padding: '0 8px 8px' }}>{upcomingSchedule.length ? upcomingSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[task.category] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No tasks due in 30 days</div>}</div></div>
+            <div className="card"><div className="card-header"><div className="card-title">Overdue</div></div><div style={{ padding: '0 8px 8px' }}>{overdueSchedule.length ? overdueSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[task.category] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--red)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No overdue tasks</div>}</div></div>
           </div>
           <div className="card">
             <div className="card-header"><div className="card-title">All Scheduled Tasks</div></div>
             <table className="data-table">
               <thead><tr><th>Task</th><th>Unit / Area</th><th>Frequency</th><th>Next Due</th><th>Assigned To</th><th>Status</th><th></th></tr></thead>
-              <tbody>{scheduleTasks.map((task) => {
+              <tbody>{scheduledTasks.length === 0 && <tr><td colSpan={7} style={{textAlign:'center',padding:30,color:'var(--text-muted)'}}>No scheduled tasks. Add one to get started.</td></tr>}{scheduledTasks.map((task) => {
                 const isOverdue = task.status === 'overdue';
+                const isCompleted = task.status === 'completed';
                 const FREQ = { weekly:'Weekly', monthly:'Monthly', quarterly:'Quarterly', biannual:'Every 6 months', annual:'Annual' };
-                return <tr key={task.id}><td><div style={{fontWeight:600}}>{task.title}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{task.id}</div></td><td>{task.unit}</td><td style={{fontSize:13}}>{FREQ[task.frequency] || task.frequency}</td><td style={{color:isOverdue?'var(--red)':'var(--text-secondary)',fontWeight:isOverdue?600:400}}>{task.next_due}</td><td style={{fontSize:13}}>{task.assignee || '—'}</td><td><span style={{fontSize:12,fontWeight:600,color:isOverdue?'var(--red)':'var(--green)'}}>● {isOverdue?'Overdue':'On Track'}</span></td><td><button className="btn-ghost" style={{fontSize:12,padding:'4px 8px'}} onClick={() => setScheduleTasks((prev) => prev.filter((x) => x.id !== task.id))}>Remove</button></td></tr>;
+                const unitRef = task.unit_ref || task.unit || '—';
+                const nextDue = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—';
+                return <tr key={task.id}><td><div style={{fontWeight:600}}>{task.title}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{task.category}</div></td><td>{unitRef}</td><td style={{fontSize:13}}>{FREQ[task.frequency] || task.frequency}</td><td style={{color:isOverdue?'var(--red)':'var(--text-secondary)',fontWeight:isOverdue?600:400}}>{nextDue}</td><td style={{fontSize:13}}>{task.assignee || '—'}</td><td><span style={{fontSize:12,fontWeight:600,color:isOverdue?'var(--red)':isCompleted?'var(--green)':'var(--accent)'}}>● {isOverdue?'Overdue':isCompleted?'Completed':'Upcoming'}</span></td><td style={{display:'flex',gap:6}}>{!isCompleted && <button className="btn-ghost" style={{fontSize:12,padding:'4px 8px'}} onClick={() => router.patch(`/scheduled-maintenance/${task.id}`, { status: 'completed' }, { onSuccess: () => setSubmitMessage('Task marked complete.') })}>Done</button>}<button className="btn-ghost" style={{fontSize:12,padding:'4px 8px',color:'var(--red)'}} onClick={() => router.delete(`/scheduled-maintenance/${task.id}`, {}, { onSuccess: () => setSubmitMessage('Task removed.') })}>Remove</button></td></tr>;
               })}</tbody>
             </table>
           </div>
@@ -626,72 +624,26 @@ export default function MaintenanceIndex({ tickets, units }) {
               <div className="drawer-body">
                 <div className="drawer-section">
                   <div className="drawer-section-title">Approval Workflow</div>
-                  {(selected.workflow_status || normalizeWorkflowStatus(selected)) === 'pending_accountant' && (
-                    <div style={{background:'var(--amber-dim)',border:'1px solid var(--amber)',borderRadius:10,padding:'14px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                      <div><div style={{fontWeight:600,fontSize:'13.5px'}}>Awaiting Accountant Approval</div><div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Review cost estimate and materials</div></div>
-                      <div style={{display:'flex',gap:8}}>
-                        <button className="btn-danger" style={{fontSize:'12.5px',padding:'6px 14px'}} onClick={() => updateWorkflowStatus(selected, 'rejected')}>Reject</button>
-                        <button className="btn-primary" style={{fontSize:'12.5px',padding:'6px 14px',background:'var(--green)'}} onClick={() => updateWorkflowStatus(selected, 'pending_manager')}>✓ Approve Cost</button>
-                      </div>
-                    </div>
-                  )}
-                  {(selected.workflow_status || normalizeWorkflowStatus(selected)) === 'pending_manager' && (
-                    <div style={{background:'var(--accent-dim)',border:'1px solid var(--accent)',borderRadius:10,padding:'14px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                      <div><div style={{fontWeight:600,fontSize:'13.5px'}}>Awaiting Your Approval</div><div style={{fontSize:12,color:'var(--text-muted)',marginTop:2}}>Final approval to proceed with work</div></div>
-                      <div style={{display:'flex',gap:8}}>
-                        <button className="btn-danger" style={{fontSize:'12.5px',padding:'6px 14px'}} onClick={() => updateWorkflowStatus(selected, 'rejected')}>Reject</button>
-                        <button className="btn-primary" style={{fontSize:'12.5px',padding:'6px 14px'}} onClick={() => updateWorkflowStatus(selected, 'approved')}>✓ Approve Work</button>
-                      </div>
-                    </div>
-                  )}
-                  {(selected.workflow_status || normalizeWorkflowStatus(selected)) === 'approved' && (
-                    <div style={{background:'var(--green-dim)',border:'1px solid var(--green)',borderRadius:10,padding:'14px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                      <div><div style={{fontWeight:600,color:'var(--green)'}}>Approved — Work can proceed</div></div>
-                      <button className="btn-primary" style={{fontSize:'12.5px',padding:'6px 14px'}} onClick={() => updateWorkflowStatus(selected, 'in_progress')}>Mark In Progress</button>
-                    </div>
-                  )}
-                  {(selected.workflow_status || normalizeWorkflowStatus(selected)) === 'in_progress' && (
-                    <div style={{background:'var(--accent-dim)',border:'1px solid var(--accent)',borderRadius:10,padding:'14px 16px',marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                      <div><div style={{fontWeight:600}}>Work In Progress</div></div>
-                      <button className="btn-primary" style={{fontSize:'12.5px',padding:'6px 14px',background:'var(--green)'}} onClick={() => updateWorkflowStatus(selected, 'completed')}>✓ Mark Completed</button>
-                    </div>
-                  )}
                   <div style={{ display: 'flex', gap: 0, alignItems: 'center', marginBottom: 16 }}>
-                    {[{ key: 'pending_accountant', label: 'Submitted' }, { key: 'pending_manager', label: 'Accountant' }, { key: 'approved', label: 'Manager' }, { key: 'completed', label: 'Completed' }].map((step, i, arr) => {
-                      const currentStatus = selected.workflow_status || normalizeWorkflowStatus(selected);
+                    {[{ key: 'submitted', label: 'Submitted' }, { key: 'pending_manager', label: 'Pending Mgr' }, { key: 'approved', label: 'Approved' }, { key: 'in_progress', label: 'In Progress' }, { key: 'resolved', label: 'Resolved' }].map((step, i, arr) => {
+                      const currentStatus = normalizeWorkflowStatus(selected);
                       const done = statusRank(currentStatus) >= statusRank(step.key);
                       return (
                         <div key={step.key} style={{ flex: 1, textAlign: 'center', position: 'relative' }}>
                           {i > 0 && <div style={{ position: 'absolute', top: 14, left: 0, right: '50%', height: 2, background: done ? 'var(--green)' : 'var(--border)' }} />}
                           {i < arr.length - 1 && <div style={{ position: 'absolute', top: 14, left: '50%', right: 0, height: 2, background: statusRank(currentStatus) > statusRank(step.key) ? 'var(--green)' : 'var(--border)' }} />}
-                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: done ? 'var(--green)' : 'var(--border)', color: done ? '#fff' : 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, margin: '0 auto 5px', position: 'relative', zIndex: 1 }}>{done ? '✓' : i + 1}</div>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: done ? 'var(--green)' : 'var(--text-muted)' }}>{step.label}</div>
+                          <div style={{ width: 26, height: 26, borderRadius: '50%', background: done ? 'var(--green)' : 'var(--border)', color: done ? '#fff' : 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, margin: '0 auto 4px', position: 'relative', zIndex: 1 }}>{done ? '✓' : i + 1}</div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: done ? 'var(--green)' : 'var(--text-muted)' }}>{step.label}</div>
                         </div>
                       );
                     })}
                   </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6, background: 'var(--bg-elevated)', borderRadius: 10, padding: 6 }}>
-                    {['draft', 'pending_accountant', 'pending_manager', 'approved', 'in_progress', 'completed', 'rejected'].map((s) => {
-                      const currentStatus = selected.workflow_status || normalizeWorkflowStatus(selected);
-                      const active = currentStatus === s;
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4, background: 'var(--bg-elevated)', borderRadius: 10, padding: 6 }}>
+                    {['submitted', 'pending_manager', 'approved', 'in_progress', 'resolved'].map((s) => {
+                      const active = normalizeWorkflowStatus(selected) === s;
                       return (
-                        <button
-                          key={s}
-                          onClick={() => updateWorkflowStatus(selected, s)}
-                          style={{
-                            padding: '7px 8px',
-                            borderRadius: 8,
-                            border: 'none',
-                            fontSize: 11,
-                            fontWeight: 500,
-                            fontFamily: 'inherit',
-                            cursor: 'pointer',
-                            background: active ? (STATUS_META[s]?.bg || 'var(--bg-surface)') : 'none',
-                            color: active ? (STATUS_META[s]?.color || 'var(--text-primary)') : 'var(--text-muted)',
-                          }}
-                        >
-                          {(STATUS_META[s] || { label: s }).label}
+                        <button key={s} onClick={() => updateWorkflowStatus(selected, s)} style={{ padding: '6px 4px', borderRadius: 8, border: 'none', fontSize: 10, fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer', background: active ? (STATUS_META[s]?.bg || 'var(--bg-surface)') : 'none', color: active ? (STATUS_META[s]?.color || 'var(--text-primary)') : 'var(--text-muted)' }}>
+                          {STATUS_META[s]?.label || s}
                         </button>
                       );
                     })}
@@ -701,7 +653,7 @@ export default function MaintenanceIndex({ tickets, units }) {
                 <div className="drawer-section">
                   <div className="drawer-section-title">Details</div>
                   <div className="kv-grid">
-                    <div className="kv"><div className="kv-label">Status</div><div className="kv-value" style={{ color: (STATUS_META[selected.workflow_status || normalizeWorkflowStatus(selected)] || STATUS_META.draft).color }}>{(STATUS_META[selected.workflow_status || normalizeWorkflowStatus(selected)] || STATUS_META.draft).label}</div></div>
+                    <div className="kv"><div className="kv-label">Status</div><div className="kv-value" style={{ color: (STATUS_META[normalizeWorkflowStatus(selected)] || STATUS_META.open).color }}>{(STATUS_META[normalizeWorkflowStatus(selected)] || STATUS_META.open).label}</div></div>
                     <div className="kv"><div className="kv-label">Unit</div><div className="kv-value accent">{selected.unit_ref}</div></div>
                     <div className="kv"><div className="kv-label">Reported</div><div className="kv-value" style={{ fontSize: '12.5px' }}>{selected.reported_date}</div></div>
                     <div className="kv"><div className="kv-label">Category</div><div className="kv-value" style={{ fontSize: 13 }}>{selected.category}</div></div>
@@ -733,7 +685,7 @@ export default function MaintenanceIndex({ tickets, units }) {
                         <span style={{fontSize:13,fontWeight:600}}>{selected.assignee || 'Staff'}</span>
                         <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{selected.reported_date}</span>
                       </div>
-                      <div style={{fontSize:12,color:'var(--text-muted)',textTransform:'capitalize'}}>{(selected.workflow_status || normalizeWorkflowStatus(selected)).replaceAll('_', ' ')}</div>
+                      <div style={{fontSize:12,color:'var(--text-muted)',textTransform:'capitalize'}}>{normalizeWorkflowStatus(selected).replaceAll('_', ' ')}</div>
                     </div>
                   </div>
                 </div>
@@ -764,10 +716,10 @@ export default function MaintenanceIndex({ tickets, units }) {
               </div>
 
               <div className="drawer-footer">
-                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => updateWorkflowStatus(selected, (selected.workflow_status || normalizeWorkflowStatus(selected)) === 'completed' ? 'in_progress' : 'completed')}>
-                  {(selected.workflow_status || normalizeWorkflowStatus(selected)) === 'completed' ? '↺ Reopen' : '✓ Mark Completed'}
+                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => updateWorkflowStatus(selected, normalizeWorkflowStatus(selected) === 'resolved' ? 'in_progress' : 'resolved')}>
+                  {normalizeWorkflowStatus(selected) === 'resolved' ? '↺ Reopen' : '✓ Mark Resolved'}
                 </button>
-                <button className="btn-danger" onClick={() => { router.delete(`/maintenance/${selected.id}`); setSelected(null); }}>
+                <button className="btn-danger" onClick={() => { router.delete(`/maintenance/${selected.id}`, {}, { onSuccess: () => { setSelected(null); setSubmitMessage('Ticket deleted.'); } }); }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                 </button>
               </div>
@@ -779,8 +731,11 @@ export default function MaintenanceIndex({ tickets, units }) {
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
         <div className="modal" style={{ width: 660, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
           <div className="modal-header" style={{ flexShrink: 0 }}><div className="modal-title">New Maintenance Request</div><button className="modal-close" onClick={() => setShowModal(false)}>✕</button></div>
-          <form onSubmit={(e) => submitRequest(e, 'pending_accountant')} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <form onSubmit={submitRequest} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
+              {submitError && (
+                <div style={{ background: 'var(--red-dim, #fef2f2)', color: 'var(--red)', border: '1px solid var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 12 }}>{submitError}</div>
+              )}
               <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Request Details</div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Unit *</label><select className="form-input form-select" value={data.unit_ref} onChange={(e) => setData('unit_ref', e.target.value)} required><option value="">Select unit…</option><option value="Common">Common Area</option>{units.map((u) => <option key={u.id || u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
@@ -858,7 +813,7 @@ export default function MaintenanceIndex({ tickets, units }) {
             </div>
             <div className="modal-footer" style={{ flexShrink: 0 }}>
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
-              <button type="button" className="btn-secondary" onClick={(e) => submitRequest(e, 'draft')} disabled={processing}>Save Draft</button>
+
               <button type="submit" className="btn-primary" disabled={processing}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
                 Submit for Approval
@@ -874,7 +829,7 @@ export default function MaintenanceIndex({ tickets, units }) {
           <div className="modal-body">
             <div className="form-row">
               <div className="form-group"><label className="form-label">Task Title *</label><input className="form-input" type="text" placeholder="e.g. Quarterly AC service" value={scheduleForm.title} onChange={(e) => setScheduleForm((s) => ({ ...s, title: e.target.value }))} /></div>
-              <div className="form-group"><label className="form-label">Unit / Area *</label><input className="form-input" type="text" placeholder="e.g. All units, Rooftop" value={scheduleForm.unit} onChange={(e) => setScheduleForm((s) => ({ ...s, unit: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">Unit / Area</label><select className="form-input form-select" value={scheduleForm.unit_ref} onChange={(e) => setScheduleForm((s) => ({ ...s, unit_ref: e.target.value }))}><option value="">Common / All</option>{units.map((u) => <option key={u.id} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
             </div>
             <div className="form-row">
               <div className="form-group"><label className="form-label">Category</label><select className="form-input form-select" value={scheduleForm.category} onChange={(e) => setScheduleForm((s) => ({ ...s, category: e.target.value }))}>{Object.keys(CAT_ICONS).map((c) => <option key={c}>{c}</option>)}</select></div>
@@ -886,21 +841,32 @@ export default function MaintenanceIndex({ tickets, units }) {
             </div>
             <div className="form-group"><label className="form-label">Notes</label><textarea className="form-input" rows={2} style={{ resize: 'vertical' }} value={scheduleForm.notes} onChange={(e) => setScheduleForm((s) => ({ ...s, notes: e.target.value }))} /></div>
           </div>
-          <div className="modal-footer"><button className="btn-ghost" onClick={() => setShowScheduleModal(false)}>Cancel</button><button className="btn-primary" onClick={() => {
-            if (!scheduleForm.title.trim() || !scheduleForm.unit.trim() || !scheduleForm.next_due) return;
-            setScheduleTasks((prev) => [...prev, {
-              id: `SC-${String(prev.length + 1).padStart(3, '0')}`,
-              title: scheduleForm.title.trim(),
-              unit: scheduleForm.unit.trim(),
-              category: scheduleForm.category,
-              frequency: scheduleForm.frequency,
-              next_due: scheduleForm.next_due,
-              assignee: scheduleForm.assignee.trim(),
-              status: 'upcoming',
-            }]);
-            setScheduleForm({ title: '', unit: '', category: 'General', frequency: 'monthly', next_due: '', assignee: '', notes: '' });
-            setShowScheduleModal(false);
-          }}>Schedule Task</button></div>
+          <div className="modal-footer">
+            <button className="btn-ghost" onClick={() => setShowScheduleModal(false)}>Cancel</button>
+            <button className="btn-primary" disabled={scheduleSubmitting} onClick={() => {
+              if (!scheduleForm.title.trim() || !scheduleForm.next_due) return;
+              setScheduleSubmitting(true);
+              router.post('/scheduled-maintenance', {
+                title: scheduleForm.title.trim(),
+                unit_ref: scheduleForm.unit_ref || null,
+                category: scheduleForm.category,
+                frequency: scheduleForm.frequency,
+                next_due: scheduleForm.next_due,
+                assignee: scheduleForm.assignee.trim() || null,
+                notes: scheduleForm.notes.trim() || null,
+              }, {
+                onSuccess: () => {
+                  setScheduleForm({ title: '', unit_ref: '', category: 'General', frequency: 'monthly', next_due: '', assignee: '', notes: '' });
+                  setShowScheduleModal(false);
+                  setSubmitMessage('Task scheduled successfully.');
+                  setScheduleSubmitting(false);
+                },
+                onError: () => setScheduleSubmitting(false),
+              });
+            }}>
+              {scheduleSubmitting ? 'Scheduling…' : 'Schedule Task'}
+            </button>
+          </div>
         </div>
       </div>
     </AppLayout>

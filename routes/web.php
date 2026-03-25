@@ -21,6 +21,7 @@ use App\Http\Controllers\SuperuserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\AuditTrailController;
+use App\Http\Controllers\ScheduledMaintenanceController;
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -42,6 +43,7 @@ Route::middleware('auth')->group(function () {
         Route::resource('leases', LeaseController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('payments', PaymentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('maintenance', MaintenanceController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::resource('scheduled-maintenance', ScheduledMaintenanceController::class)->only(['store', 'update', 'destroy']);
         Route::resource('documents', DocumentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('invoices', InvoiceController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
