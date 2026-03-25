@@ -472,7 +472,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
       )}
 
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
-        <div className="modal" style={{width:640,maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
+        <div className="modal" style={{width:'min(640px, calc(100vw - 24px))',height:'min(720px, 82dvh)',maxHeight:'min(92vh, calc(100dvh - 20px))',display:'flex',flexDirection:'column'}}>
           <div className="modal-header" style={{flexShrink:0}}>
             <div className="modal-title">Add Staff Member</div>
             <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
