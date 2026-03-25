@@ -66,6 +66,10 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/properties', [SuperuserController::class, 'storeProperty'])->name('superuser.properties.store');
         Route::post('superuser/managers', [SuperuserController::class, 'storeManager'])->name('superuser.managers.store');
         Route::patch('superuser/properties/{property}/assign-manager', [SuperuserController::class, 'assignManager'])->name('superuser.properties.assign-manager');
+        Route::patch('superuser/settings', [SuperuserController::class, 'updateSettings'])->name('superuser.settings.update');
+        Route::patch('superuser/roles', [SuperuserController::class, 'updateRoles'])->name('superuser.roles.update');
+        Route::patch('superuser/password', [SuperuserController::class, 'changePassword'])->name('superuser.password.change');
+        Route::patch('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password.change');
         Route::post('accounting/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');
         Route::post('accounting/journal-entries', [AccountingController::class, 'storeJournalEntry'])->name('accounting.journal.store');
         Route::patch('accounting/journal-entries/{journalEntry}', [AccountingController::class, 'updateJournalEntry'])->name('accounting.journal.update');

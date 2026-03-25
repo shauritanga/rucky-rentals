@@ -15,15 +15,26 @@ const SYSTEM_HEALTH = [
   { name: 'Backup Service', sub: 'Daily automated backup', status: 'Operational', uptime: 100, color: 'green' },
 ];
 
-const RECENT_ACTIVITY = [
-  { dot: 'purple', text: 'James Mwangi - Lease approved', meta: 'Lease L-B202-NEW · 14:32' },
-  { dot: 'green', text: 'Grace Wanjiru - Payment recorded', meta: 'Invoice INV-1042 · 13:58' },
-  { dot: 'amber', text: 'Super Admin - User created', meta: 'User Patrick Kimani · 12:44' },
-  { dot: 'red', text: 'Super Admin - Settings changed', meta: 'Lease policy defaults · 10:30' },
-  { dot: 'blue', text: 'James Mwangi - Login', meta: 'Session start · 09:32' },
-];
+const DOT_COLOR_MAP = {
+  settings: 'red',
+  user:     'amber',
+  lease:    'purple',
+  payment:  'green',
+  finance:  'green',
+  default:  'accent',
+};
 
-export default function OverviewPage({ properties = [], managers = [] }) {
+function dotColor(log) {
+  return DOT_COLOR_MAP[log.category] ?? DOT_COLOR_MAP.default;
+}
+
+function formatLogTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+export default function OverviewPage({ properties = [], managers = [], auditLogs = [] }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState('all');
 
   const selectedProperty = useMemo(
@@ -160,12 +171,15 @@ export default function OverviewPage({ properties = [], managers = [] }) {
         <div className="card">
           <div className="card-header"><div><div className="card-title">Recent Activity</div></div></div>
           <div style={{ padding: '4px 16px' }}>
-            {RECENT_ACTIVITY.map((a, idx) => (
-              <div key={idx} className="act-item">
-                <div className={`act-dot ${a.dot}`}></div>
+            {auditLogs.length === 0 && (
+              <div style={{ padding: '16px 0', color: 'var(--text-muted)', fontSize: 13 }}>No activity recorded yet.</div>
+            )}
+            {auditLogs.slice(0, 8).map((log) => (
+              <div key={log.id} className="act-item">
+                <div className={`act-dot ${dotColor(log)}`}></div>
                 <div>
-                  <div className="act-text">{a.text}</div>
-                  <div className="act-meta">{a.meta}</div>
+                  <div className="act-text">{log.user_name} — {log.action}</div>
+                  <div className="act-meta">{log.resource}{log.property_name ? ` · ${log.property_name}` : ''} · {formatLogTime(log.created_at)}</div>
                 </div>
               </div>
             ))}

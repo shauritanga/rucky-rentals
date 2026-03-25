@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, router, usePage, useForm } from '@inertiajs/react';
 import SuperuserLayout from '@/Layouts/SuperuserLayout';
 
 const NOTIF_PREFS_SEED = [
@@ -67,10 +67,13 @@ export default function Profile() {
   const [twofaEnabled, setTwofaEnabled] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState(NOTIF_PREFS_SEED);
   const [sessions, setSessions] = useState(SESSION_SEED);
-  const [curPw, setCurPw] = useState('');
-  const [newPw, setNewPw] = useState('');
-  const [confirmPw, setConfirmPw] = useState('');
   const [toast, setToast] = useState('');
+
+  const pwForm = useForm({
+    current_password:      '',
+    password:              '',
+    password_confirmation: '',
+  });
 
   const displayName = useMemo(() => {
     const full = `${firstName} ${lastName}`.trim();
@@ -83,7 +86,7 @@ export default function Profile() {
     return (a + b).toUpperCase() || 'JM';
   }, [firstName, lastName]);
 
-  const strength = pwdStrength(newPw);
+  const strength = pwdStrength(pwForm.data.password);
 
   const showToast = (message) => {
     setToast(message);
@@ -105,13 +108,18 @@ export default function Profile() {
   const onSaveProfile = () => showToast('Profile saved successfully');
 
   const onChangePassword = () => {
-    if (!curPw) return showToast('Enter your current password');
-    if (!newPw || newPw.length < 8) return showToast('New password must be at least 8 characters');
-    if (newPw !== confirmPw) return showToast('Passwords do not match');
-    setCurPw('');
-    setNewPw('');
-    setConfirmPw('');
-    showToast('Password updated successfully');
+    if (!pwForm.data.current_password) return showToast('Enter your current password');
+    if (!pwForm.data.password || pwForm.data.password.length < 8) return showToast('New password must be at least 8 characters');
+    if (pwForm.data.password !== pwForm.data.password_confirmation) return showToast('Passwords do not match');
+
+    pwForm.patch('/superuser/password', {
+      preserveScroll: true,
+      onSuccess: () => {
+        pwForm.reset();
+        showToast('Password updated successfully');
+      },
+      onError: () => showToast('Current password is incorrect'),
+    });
   };
 
   const onToggle2FA = () => {
@@ -233,17 +241,21 @@ export default function Profile() {
               <div className="card" style={{ marginBottom: 14 }}>
                 <div className="profile-card-header-row"><div style={{ fontSize: 14, fontWeight: 600 }}>Change Password</div></div>
                 <div className="profile-form-grid">
-                  <div style={{ gridColumn: '1 / -1' }}><label className="form-label">Current Password</label><input className="form-input" type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} placeholder="Enter current password" /></div>
+                  <div style={{ gridColumn: '1 / -1' }}><label className="form-label">Current Password</label><input className="form-input" type="password" value={pwForm.data.current_password} onChange={(e) => pwForm.setData('current_password', e.target.value)} placeholder="Enter current password" /></div>
                   <div>
                     <label className="form-label">New Password</label>
-                    <input className="form-input" type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="Min 8 characters" />
+                    <input className="form-input" type="password" value={pwForm.data.password} onChange={(e) => pwForm.setData('password', e.target.value)} placeholder="Min 8 characters" />
                     <div style={{ height: 3, borderRadius: 20, marginTop: 6, background: 'var(--border)', overflow: 'hidden' }}>
                       <div style={{ height: '100%', width: strength.width, borderRadius: 20, transition: 'width .3s,background .3s', background: strength.color }}></div>
                     </div>
                     <div style={{ fontSize: 11, color: strength.color, marginTop: 3 }}>{strength.text}</div>
                   </div>
-                  <div><label className="form-label">Confirm New Password</label><input className="form-input" type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} placeholder="Repeat new password" /></div>
-                  <div style={{ gridColumn: '1 / -1' }}><button className="btn-ghost" onClick={onChangePassword}>Update Password</button></div>
+                  <div><label className="form-label">Confirm New Password</label><input className="form-input" type="password" value={pwForm.data.password_confirmation} onChange={(e) => pwForm.setData('password_confirmation', e.target.value)} placeholder="Repeat new password" /></div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <button className="btn-ghost" onClick={onChangePassword} disabled={pwForm.processing}>
+                      {pwForm.processing ? <><span className="btn-spinner" />Updating…</> : 'Update Password'}
+                    </button>
+                  </div>
                 </div>
               </div>
 

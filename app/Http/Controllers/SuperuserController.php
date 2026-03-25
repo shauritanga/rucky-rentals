@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
 use App\Models\Property;
+use App\Models\SystemSetting;
 use App\Models\User;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
@@ -41,10 +42,13 @@ class SuperuserController extends Controller
             ->limit(200)
             ->get();
 
+        $settings = SystemSetting::pluck('value', 'key');
+
         return Inertia::render('Superuser/Index', [
             'properties' => $properties,
-            'managers' => $managers,
-            'auditLogs' => $auditLogs,
+            'managers'   => $managers,
+            'auditLogs'  => $auditLogs,
+            'settings'   => $settings,
         ]);
     }
 
@@ -190,6 +194,65 @@ class SuperuserController extends Controller
         }
 
         return back()->with('success', 'User created successfully.');
+    }
+
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => ['required', 'current_password'],
+            'password'         => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $request->user()->update([
+            'password' => Hash::make($request->password),
+        ]);
+
+        return back()->with('success', 'Password updated successfully.');
+    }
+
+    public function updateSettings(Request $request)
+    {
+        $allowed = [
+            'company_name', 'company_registration', 'vat_number', 'default_currency',
+            'default_country', 'support_email', 'min_lease_months', 'deposit_multiplier',
+            'late_fee_days', 'late_fee_percent', 'expiry_warning_days', 'auto_renew',
+            'notif_new_property', 'notif_manager_changes', 'notif_failed_logins',
+            'notif_lease_approved', 'notif_overdue_rent', 'notif_system_errors',
+            'require_2fa', 'allow_sso', 'session_timeout', 'audit_logging', 'failed_login_alerts',
+        ];
+
+        foreach ($allowed as $key) {
+            if ($request->has($key)) {
+                SystemSetting::set($key, $request->input($key));
+            }
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: 'Settings updated',
+            resource: 'System settings',
+            propertyName: 'All',
+            category: 'settings',
+        );
+
+        return back()->with('success', 'Settings saved.');
+    }
+
+    public function updateRoles(Request $request)
+    {
+        $request->validate(['permissions' => 'required|array']);
+
+        SystemSetting::set('role_permissions', json_encode($request->permissions));
+
+        $this->logAudit(
+            request: $request,
+            action: 'Role permissions updated',
+            resource: 'Roles & Permissions',
+            propertyName: 'All',
+            category: 'settings',
+        );
+
+        return back()->with('success', 'Role permissions saved.');
     }
 
 }

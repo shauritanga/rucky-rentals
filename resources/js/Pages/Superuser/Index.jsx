@@ -8,73 +8,6 @@ import RolesPage from '@/Pages/Superuser/Pages/RolesPage';
 import AuditPage from '@/Pages/Superuser/Pages/AuditPage';
 import SettingsPage from '@/Pages/Superuser/Pages/SettingsPage';
 
-const DEMO_PROPERTIES = [
-  {
-    id: 'P001',
-    name: 'Rucky Heights',
-    code: 'P001',
-    address: '14 Msasani Rd, Masaki',
-    city: 'Dar es Salaam',
-    country: 'Tanzania',
-    unit_count: 32,
-    occupied_units: 28,
-    status: 'active',
-    monthly_rent: 56000000,
-    manager_user_id: 2,
-    manager: { id: 2, name: 'James Mwangi', email: 'james@ruckyrentals.co.tz' },
-  },
-  {
-    id: 'P002',
-    name: 'Rucky Gardens',
-    code: 'P002',
-    address: '8 Ali Hassan Mwinyi Rd, Upanga',
-    city: 'Dar es Salaam',
-    country: 'Tanzania',
-    unit_count: 48,
-    occupied_units: 42,
-    status: 'active',
-    monthly_rent: 78400000,
-    manager_user_id: 3,
-    manager: { id: 3, name: 'Grace Wanjiru', email: 'grace@ruckyrentals.co.tz' },
-  },
-  {
-    id: 'P003',
-    name: 'Rucky Towers',
-    code: 'P003',
-    address: '22 Haile Selassie Rd, Oyster Bay',
-    city: 'Dar es Salaam',
-    country: 'Tanzania',
-    unit_count: 30,
-    occupied_units: 24,
-    status: 'active',
-    monthly_rent: 67200000,
-    manager_user_id: 4,
-    manager: { id: 4, name: 'Kevin Otieno', email: 'kevin@ruckyrentals.co.tz' },
-  },
-  {
-    id: 'P004',
-    name: 'Rucky Court',
-    code: 'P004',
-    address: '5 New Bagamoyo Rd, Mikocheni',
-    city: 'Dar es Salaam',
-    country: 'Tanzania',
-    unit_count: 17,
-    occupied_units: 14,
-    status: 'trial',
-    monthly_rent: 29400000,
-    manager_user_id: 2,
-    manager: { id: 2, name: 'James Mwangi', email: 'james@ruckyrentals.co.tz' },
-  },
-];
-
-const DEMO_MANAGERS = [
-  { id: 1, name: 'Super Admin', email: 'admin@ruckyrentals.co.tz', role: 'superuser', property_name: 'All Properties', property_id: null, lastActive: 'Just now', twoFA: true, status: 'active', online: true },
-  { id: 2, name: 'James Mwangi', email: 'james@ruckyrentals.co.tz', role: 'manager', property_name: 'Rucky Heights, Rucky Court', property_id: 'P001', lastActive: '2 min ago', twoFA: true, status: 'active', online: true },
-  { id: 3, name: 'Grace Wanjiru', email: 'grace@ruckyrentals.co.tz', role: 'manager', property_name: 'Rucky Gardens', property_id: 'P002', lastActive: '14 min ago', twoFA: true, status: 'active', online: true },
-  { id: 4, name: 'Kevin Otieno', email: 'kevin@ruckyrentals.co.tz', role: 'manager', property_name: 'Rucky Towers', property_id: 'P003', lastActive: '1 hour ago', twoFA: false, status: 'active', online: false },
-  { id: 5, name: 'Diana Ochieng', email: 'diana@ruckyrentals.co.tz', role: 'accountant', property_name: 'All Properties', property_id: null, lastActive: 'Yesterday 16:20', twoFA: true, status: 'active', online: false },
-  { id: 6, name: 'Patrick Kimani', email: 'patrick@ruckyrentals.co.tz', role: 'viewer', property_name: 'Rucky Heights', property_id: 'P001', lastActive: '3 days ago', twoFA: false, status: 'active', online: false },
-];
 
 const VIEW_META = {
   overview: { title: 'Overview', subtitle: 'Superuser Console', actionLabel: 'Add Property' },
@@ -85,7 +18,7 @@ const VIEW_META = {
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
 
-export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [] }) {
+export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {} }) {
   const [activeView, setActiveView] = useState('overview');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
@@ -114,8 +47,8 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     total_floors: 7,
   });
 
-  const effectiveProperties = properties.length > 0 ? properties : DEMO_PROPERTIES;
-  const effectiveManagers = managers.length > 0 ? managers : DEMO_MANAGERS;
+  const effectiveProperties = properties ?? [];
+  const effectiveManagers   = managers   ?? [];
 
   const stats = useMemo(() => {
     const total = effectiveProperties.length;
@@ -200,6 +133,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         <OverviewPage
           properties={effectiveProperties}
           managers={effectiveManagers}
+          auditLogs={auditLogs}
         />
       )}
 
@@ -217,9 +151,9 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       )}
 
       {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} onOpenManagerModal={() => setShowManagerModal(true)} />}
-      {activeView === 'roles' && <RolesPage />}
+      {activeView === 'roles' && <RolesPage settings={settings} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
-      {activeView === 'settings' && <SettingsPage />}
+      {activeView === 'settings' && <SettingsPage settings={settings} />}
 
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
         <div className="modal" style={{ width: 540 }}>
