@@ -8,6 +8,7 @@ use App\Models\Property;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Support\MockRentalData;
+use App\Traits\LogsAudit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,6 +17,7 @@ use Inertia\Inertia;
 
 class LeaseController extends Controller
 {
+    use LogsAudit;
     public function index(Request $request)
     {
         $user = $request->user();
@@ -163,8 +165,19 @@ class LeaseController extends Controller
             ]),
         ];
 
-        Lease::create($data);
+        $lease = Lease::create($data);
         $unit->update(['status' => 'occupied']);
+
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Lease created',
+            resource: sprintf('%s - %s', $unit->unit_number, $tenant->name ?? 'N/A'),
+            propertyName: $propertyName,
+            category: 'lease',
+            propertyId: (int) $propertyId,
+        );
+
         return back()->with('success', 'Lease created and submitted for approval.');
     }
 
@@ -198,6 +211,17 @@ class LeaseController extends Controller
             $lease->update(['status' => 'pending_accountant', 'approval_log' => json_encode($log)]);
         }
 
+        $propertyName = Property::where('id', $lease->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Lease status updated',
+            resource: sprintf('Lease #%d → %s', $lease->id, $lease->fresh()->status),
+            propertyName: $propertyName,
+            category: 'lease',
+            metadata: ['action' => $action, 'new_status' => $lease->fresh()->status],
+            propertyId: $lease->property_id ? (int) $lease->property_id : null,
+        );
+
         return back()->with('success', 'Lease updated.');
     }
 
@@ -208,7 +232,21 @@ class LeaseController extends Controller
             abort_if((int) $lease->property_id !== (int) $user->property_id, 403);
         }
 
+        $propertyId   = $lease->property_id;
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $resource     = sprintf('Lease #%d', $lease->id);
+
         $lease->delete();
+
+        $this->logAudit(
+            request: request(),
+            action: 'Lease deleted',
+            resource: $resource,
+            propertyName: $propertyName,
+            category: 'lease',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
         return back()->with('success', 'Lease terminated.');
     }
 

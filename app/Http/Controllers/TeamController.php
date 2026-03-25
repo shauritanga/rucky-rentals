@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Mail\TeamInviteMail;
-use App\Models\AuditLog;
 use App\Models\Property;
 use App\Models\User;
+use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
@@ -13,6 +13,7 @@ use Inertia\Inertia;
 
 class TeamController extends Controller
 {
+    use LogsAudit;
     private const STAFF_ROLES = ['accountant', 'lease_manager', 'maintenance_staff', 'viewer'];
 
     private const ROLE_DEFAULTS = [
@@ -80,13 +81,13 @@ class TeamController extends Controller
 
         $teamMembers = $this->teamQueryFor($user)
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'created_at', 'updated_at'])
+            ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'permissions', 'created_at', 'updated_at'])
             ->map(fn(User $member) => $this->mapTeamMember($member))
             ->values();
 
         $archivedMembers = $this->teamQueryFor($user, true)
             ->orderByDesc('deleted_at')
-            ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'created_at', 'updated_at', 'deleted_at'])
+            ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'permissions', 'created_at', 'updated_at', 'deleted_at'])
             ->map(fn(User $member) => $this->mapTeamMember($member))
             ->values();
 
@@ -107,11 +108,16 @@ class TeamController extends Controller
             'phone' => 'nullable|string|max:30',
             'role' => 'required|in:accountant,lease_manager,maintenance_staff,viewer',
             'password' => 'required|string|min:8',
+            'permissions' => 'nullable|array',
         ]);
 
         $propertyId = $this->resolvePropertyIdForActor($actor);
 
         $initialPassword = $data['password'];
+
+        $permissions = !empty($data['permissions'])
+            ? $data['permissions']
+            : (self::ROLE_DEFAULTS[$data['role']] ?? []);
 
         $member = User::create([
             'name' => $data['name'],
@@ -121,6 +127,7 @@ class TeamController extends Controller
             'property_id' => $propertyId,
             'status' => 'active',
             'must_change_password' => true,
+            'permissions' => $permissions,
         ]);
 
         $propertyName = $propertyId ? Property::where('id', $propertyId)->value('name') : null;
@@ -150,6 +157,7 @@ class TeamController extends Controller
                 'invite_email_sent' => $inviteMailSent,
                 'invite_email' => $member->email,
             ],
+            propertyId: $member->property_id ? (int) $member->property_id : null,
         );
 
         if (!$inviteMailSent) {
@@ -167,6 +175,8 @@ class TeamController extends Controller
             'permissions' => 'required|array',
         ]);
 
+        $user->update(['permissions' => $data['permissions']]);
+
         $this->logAudit(
             request: $request,
             action: 'Permissions updated',
@@ -174,6 +184,7 @@ class TeamController extends Controller
             propertyName: $user->property_id ? Property::where('id', $user->property_id)->value('name') : null,
             category: 'team',
             metadata: ['permissions' => $data['permissions']],
+            propertyId: $user->property_id ? (int) $user->property_id : null,
         );
 
         return back()->with('success', 'Permissions updated.');
@@ -192,6 +203,7 @@ class TeamController extends Controller
             resource: sprintf('%s (%s)', $user->name, $user->role),
             propertyName: $user->property_id ? Property::where('id', $user->property_id)->value('name') : null,
             category: 'team',
+            propertyId: $user->property_id ? (int) $user->property_id : null,
         );
 
         return back()->with('success', sprintf('Member %s.', $nextStatus === 'active' ? 'activated' : 'suspended'));
@@ -223,6 +235,7 @@ class TeamController extends Controller
             propertyName: $propertyName,
             category: 'team',
             metadata: ['soft_deleted' => true],
+            propertyId: $user->property_id ? (int) $user->property_id : null,
         );
 
         return back()->with('success', 'Staff member removed.');
@@ -244,6 +257,7 @@ class TeamController extends Controller
             propertyName: $propertyName,
             category: 'team',
             metadata: ['restored' => true],
+            propertyId: $member->property_id ? (int) $member->property_id : null,
         );
 
         return back()->with('success', 'Staff member restored.');
@@ -300,7 +314,7 @@ class TeamController extends Controller
             'status' => $member->status ?: 'active',
             'last_active' => optional($member->updated_at)->diffForHumans(),
             'deleted_at' => $member->deleted_at ? $member->deleted_at->diffForHumans() : null,
-            'permissions' => self::ROLE_DEFAULTS[$member->role] ?? self::ROLE_DEFAULTS['viewer'],
+            'permissions' => $member->permissions ?? self::ROLE_DEFAULTS[$member->role] ?? self::ROLE_DEFAULTS['viewer'],
         ];
     }
 
@@ -315,20 +329,4 @@ class TeamController extends Controller
         };
     }
 
-    private function logAudit(Request $request, string $action, ?string $resource, ?string $propertyName, string $category, string $result = 'success', array $metadata = []): void
-    {
-        $actor = $request->user();
-
-        AuditLog::create([
-            'user_id' => $actor?->id,
-            'user_name' => $actor?->name ?? 'System',
-            'action' => $action,
-            'resource' => $resource,
-            'property_name' => $propertyName,
-            'ip_address' => $request->ip(),
-            'result' => $result,
-            'category' => $category,
-            'metadata' => empty($metadata) ? null : $metadata,
-        ]);
-    }
 }

@@ -59,6 +59,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('accounting', [AccountingController::class, 'index'])->name('accounting');
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
+        Route::get('reports/export', [ReportController::class, 'export'])->name('reports.export');
         Route::get('superuser', [SuperuserController::class, 'index'])->name('superuser.index');
         Route::post('superuser/properties', [SuperuserController::class, 'storeProperty'])->name('superuser.properties.store');
         Route::post('superuser/managers', [SuperuserController::class, 'storeManager'])->name('superuser.managers.store');

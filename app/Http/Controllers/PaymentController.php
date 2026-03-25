@@ -11,6 +11,7 @@ use App\Models\Unit;
 use App\Models\ExchangeRate;
 use App\Services\AccountingService;
 use App\Support\MockRentalData;
+use App\Traits\LogsAudit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,7 @@ use Inertia\Inertia;
 
 class PaymentController extends Controller
 {
+    use LogsAudit;
     public function index(Request $request)
     {
         $user = $request->user();
@@ -144,6 +146,16 @@ class PaymentController extends Controller
             $this->reconcileInvoiceStatus($payment->invoice_id);
         });
 
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Payment recorded',
+            resource: sprintf('%s - %s (%s)', $tenant->name, $data['amount'], $data['currency'] ?? 'TZS'),
+            propertyName: $propertyName,
+            category: 'payment',
+            propertyId: $propertyId ?: null,
+        );
+
         return back()->with('success', 'Payment recorded.');
     }
 
@@ -156,6 +168,16 @@ class PaymentController extends Controller
 
         $this->reconcileInvoiceStatus($payment->invoice_id);
 
+        $propertyName = Property::where('id', $payment->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Payment updated',
+            resource: sprintf('Payment #%d', $payment->id),
+            propertyName: $propertyName,
+            category: 'payment',
+            propertyId: $payment->property_id ? (int) $payment->property_id : null,
+        );
+
         return back()->with('success', 'Payment updated.');
     }
 
@@ -163,11 +185,24 @@ class PaymentController extends Controller
     {
         $this->authorizePaymentProperty(request(), $payment);
 
+        $propertyId   = $payment->property_id;
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $resource     = sprintf('Payment #%d', $payment->id);
+
         // Observer will handle voiding before deletion
         $invoiceId = $payment->invoice_id;
         $payment->delete();
 
         $this->reconcileInvoiceStatus($invoiceId);
+
+        $this->logAudit(
+            request: request(),
+            action: 'Payment deleted',
+            resource: $resource,
+            propertyName: $propertyName,
+            category: 'payment',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
 
         return back()->with('success', 'Payment deleted.');
     }

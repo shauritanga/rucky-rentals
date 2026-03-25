@@ -84,6 +84,8 @@ class MockRentalData
             'DK' => ['name' => 'David Kamau', 'email' => 'david.kamau@gmail.com', 'phone' => '+254 733 445 566', 'national_id' => 'KE-67890123', 'nok_name' => 'Ruth Kamau', 'nok_phone' => '+254 733 990 001', 'nok_relation' => 'Wife', 'notes' => null, 'color' => 'rgba(34,197,94,.18)', 'text_color' => 'var(--green)'],
             'RN' => ['name' => 'Rose Njeri', 'email' => 'rose.njeri@gmail.com', 'phone' => '+254 711 778 899', 'national_id' => 'KE-78901234', 'nok_name' => 'Patrick Njeri', 'nok_phone' => '+254 711 223 334', 'nok_relation' => 'Father', 'notes' => null, 'color' => 'rgba(245,158,11,.18)', 'text_color' => 'var(--amber)'],
             'MO' => ['name' => 'Moses Odhiambo', 'email' => 'm.odhiambo@gmail.com', 'phone' => '+254 722 334 455', 'national_id' => 'KE-89012345', 'nok_name' => 'Clara Odhiambo', 'nok_phone' => '+254 722 445 556', 'nok_relation' => 'Sister', 'notes' => null, 'color' => 'rgba(59,130,246,.18)', 'text_color' => 'var(--accent)'],
+            'TL' => ['name' => 'Twiga Logistics Ltd', 'email' => 'admin@twiga.co.tz', 'phone' => '+255 22 276 4000', 'national_id' => null, 'nok_name' => null, 'nok_phone' => null, 'nok_relation' => null, 'notes' => 'Annual lease renewal pending board approval.', 'color' => 'rgba(99,102,241,.18)', 'text_color' => 'var(--accent)', 'tenant_type' => 'company', 'company_name' => 'Twiga Logistics Ltd', 'registration_number' => 'TZ-REG-00178234', 'tin' => '100-234-567', 'vrn' => 'VRN-9876543', 'contact_person' => 'Amani Kariuki'],
+            'NP' => ['name' => 'Nairobi Properties Ltd', 'email' => 'info@nairobiprops.co.tz', 'phone' => '+255 22 299 8800', 'national_id' => null, 'nok_name' => null, 'nok_phone' => null, 'nok_relation' => null, 'notes' => null, 'color' => 'rgba(245,158,11,.18)', 'text_color' => 'var(--amber)', 'tenant_type' => 'company', 'company_name' => 'Nairobi Properties Ltd', 'registration_number' => 'TZ-REG-00093411', 'tin' => '200-876-321', 'vrn' => null, 'contact_person' => 'Peter Odhiambo'],
         ];
 
         $unitSeed = [
@@ -155,6 +157,12 @@ class MockRentalData
                 'nok_phone' => $seed['nok_phone'],
                 'nok_relation' => $seed['nok_relation'],
                 'notes' => $seed['notes'],
+                'tenant_type' => $seed['tenant_type'] ?? 'individual',
+                'company_name' => $seed['company_name'] ?? null,
+                'registration_number' => $seed['registration_number'] ?? null,
+                'tin' => $seed['tin'] ?? null,
+                'vrn' => $seed['vrn'] ?? null,
+                'contact_person' => $seed['contact_person'] ?? null,
                 'leases' => [],
             ];
 

@@ -2,16 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AuditLog;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\Property;
 use App\Support\MockRentalData;
+use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class TenantController extends Controller
 {
+    use LogsAudit;
     public function index(Request $request)
     {
         $user = $request->user();
@@ -35,16 +36,28 @@ class TenantController extends Controller
         $user = $request->user();
 
         $data = $request->validate([
-            'name'         => 'required|string',
-            'email'        => 'required|email|unique:tenants',
-            'phone'        => 'required|string',
-            'national_id'  => 'nullable|string',
-            'nok_name'     => 'nullable|string',
-            'nok_phone'    => 'nullable|string',
-            'nok_relation' => 'nullable|string',
-            'notes'        => 'nullable|string',
+            'tenant_type'         => 'required|in:individual,company',
+            'name'                => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'national_id'         => 'nullable|string|max:100',
+            'nok_name'            => 'nullable|string|max:255',
+            'nok_phone'           => 'nullable|string|max:50',
+            'nok_relation'        => 'nullable|string|max:100',
+            'company_name'        => 'required_if:tenant_type,company|nullable|string|max:255',
+            'registration_number' => 'nullable|string|max:100',
+            'tin'                 => 'nullable|string|max:50',
+            'vrn'                 => 'nullable|string|max:50',
+            'contact_person'      => 'nullable|string|max:255',
+            'email'               => 'required|email|unique:tenants',
+            'phone'               => 'required|string|max:50',
+            'notes'               => 'nullable|string',
         ]);
-        $words = explode(' ', trim($data['name']));
+
+        if ($data['tenant_type'] === 'company') {
+            $data['name'] = $data['company_name'];
+            $words = explode(' ', trim($data['company_name']));
+        } else {
+            $words = explode(' ', trim($data['name']));
+        }
         $data['initials']   = strtoupper(substr($words[0], 0, 1) . (isset($words[1]) ? substr($words[1], 0, 1) : ''));
         $data['color']      = 'rgba(59,130,246,.18)';
         $data['text_color'] = 'var(--accent)';
@@ -67,7 +80,8 @@ class TenantController extends Controller
             action: 'Tenant created',
             resource: sprintf('%s (%s)', $tenant->name, $tenant->email),
             propertyName: $propertyName,
-            category: 'settings',
+            category: 'tenant',
+            propertyId: $tenant->property_id ? (int) $tenant->property_id : null,
         );
 
         return back()->with('success', 'Tenant created.');
@@ -81,15 +95,26 @@ class TenantController extends Controller
         }
 
         $data = $request->validate([
-            'name'         => 'required|string',
-            'email'        => 'required|email|unique:tenants,email,' . $tenant->id,
-            'phone'        => 'required|string',
-            'national_id'  => 'nullable|string',
-            'nok_name'     => 'nullable|string',
-            'nok_phone'    => 'nullable|string',
-            'nok_relation' => 'nullable|string',
-            'notes'        => 'nullable|string',
+            'tenant_type'         => 'required|in:individual,company',
+            'name'                => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'national_id'         => 'nullable|string|max:100',
+            'nok_name'            => 'nullable|string|max:255',
+            'nok_phone'           => 'nullable|string|max:50',
+            'nok_relation'        => 'nullable|string|max:100',
+            'company_name'        => 'required_if:tenant_type,company|nullable|string|max:255',
+            'registration_number' => 'nullable|string|max:100',
+            'tin'                 => 'nullable|string|max:50',
+            'vrn'                 => 'nullable|string|max:50',
+            'contact_person'      => 'nullable|string|max:255',
+            'email'               => 'required|email|unique:tenants,email,' . $tenant->id,
+            'phone'               => 'required|string|max:50',
+            'notes'               => 'nullable|string',
         ]);
+
+        if ($data['tenant_type'] === 'company') {
+            $data['name'] = $data['company_name'];
+        }
+
         $tenant->update($data);
 
         $propertyName = null;
@@ -102,7 +127,8 @@ class TenantController extends Controller
             action: 'Tenant updated',
             resource: sprintf('%s (%s)', $tenant->name, $tenant->email),
             propertyName: $propertyName,
-            category: 'settings',
+            category: 'tenant',
+            propertyId: $tenant->property_id ? (int) $tenant->property_id : null,
         );
 
         return back()->with('success', 'Tenant updated.');
@@ -130,7 +156,8 @@ class TenantController extends Controller
             action: 'Tenant deleted',
             resource: $resource,
             propertyName: $propertyName,
-            category: 'settings',
+            category: 'tenant',
+            propertyId: $tenant->property_id ? (int) $tenant->property_id : null,
         );
 
         return back()->with('success', 'Tenant deleted.');
@@ -148,22 +175,5 @@ class TenantController extends Controller
 
             $query->where('property_id', $user->property_id);
         }
-    }
-
-    private function logAudit(Request $request, string $action, ?string $resource, ?string $propertyName, string $category, string $result = 'success', array $metadata = []): void
-    {
-        $actor = $request->user();
-
-        AuditLog::create([
-            'user_id' => $actor?->id,
-            'user_name' => $actor?->name ?? 'System',
-            'action' => $action,
-            'resource' => $resource,
-            'property_name' => $propertyName,
-            'ip_address' => $request->ip(),
-            'result' => $result,
-            'category' => $category,
-            'metadata' => empty($metadata) ? null : $metadata,
-        ]);
     }
 }

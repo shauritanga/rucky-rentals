@@ -7,6 +7,7 @@ use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\Property;
 use App\Support\AccountingAutoPoster;
+use App\Traits\LogsAudit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -14,6 +15,7 @@ use Inertia\Inertia;
 
 class AccountingController extends Controller
 {
+    use LogsAudit;
     public function index(Request $request)
     {
         $propertyId = $this->resolvePropertyId($request, false);
@@ -62,10 +64,21 @@ class AccountingController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        Account::create([
+        $resolvedPropertyId = $propertyId ?? ($request->filled('property_id') ? (int) $request->input('property_id') : null);
+        $account = Account::create([
             ...$data,
-            'property_id' => $propertyId ?? ($request->filled('property_id') ? (int) $request->input('property_id') : null),
+            'property_id' => $resolvedPropertyId,
         ]);
+
+        $propertyName = Property::where('id', $resolvedPropertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Account created',
+            resource: sprintf('%s (%s)', $account->name, $account->code),
+            propertyName: $propertyName,
+            category: 'accounting',
+            propertyId: $resolvedPropertyId ? (int) $resolvedPropertyId : null,
+        );
 
         return back()->with('success', 'Account created.');
     }
@@ -132,6 +145,17 @@ class AccountingController extends Controller
             }
         });
 
+        $entryNumber  = JournalEntry::where('property_id', $propertyId)->orderByDesc('id')->value('entry_number');
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Journal entry created',
+            resource: $entryNumber ?? 'JE',
+            propertyName: $propertyName,
+            category: 'accounting',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
         return back()->with('success', 'Journal entry saved.');
     }
 
@@ -162,6 +186,17 @@ class AccountingController extends Controller
                 $poster->applyBalances($entryWithLines, true);
             }
         });
+
+        $propertyName = Property::where('id', $journalEntry->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Journal entry updated',
+            resource: $journalEntry->entry_number,
+            propertyName: $propertyName,
+            category: 'accounting',
+            metadata: ['status' => $data['status']],
+            propertyId: $journalEntry->property_id ? (int) $journalEntry->property_id : null,
+        );
 
         return back()->with('success', 'Entry updated.');
     }

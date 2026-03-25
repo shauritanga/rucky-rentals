@@ -2,18 +2,18 @@ import { useMemo, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 10;
 
 const MODULE_COLORS = {
-  login: { bg:'var(--accent-dim)', color:'var(--accent)' },
+  auth: { bg:'var(--accent-dim)', color:'var(--accent)' },
   lease: { bg:'var(--green-dim)', color:'var(--green)' },
   payment: { bg:'var(--green-dim)', color:'var(--green)' },
   invoice: { bg:'var(--amber-dim)', color:'var(--amber)' },
   maintenance: { bg:'var(--red-dim)', color:'var(--red)' },
   document: { bg:'var(--accent-dim)', color:'var(--accent)' },
   team: { bg:'rgba(167,139,250,.12)', color:'#a78bfa' },
+  accounting: { bg:'var(--amber-dim)', color:'var(--amber)' },
   settings: { bg:'var(--bg-elevated)', color:'var(--text-muted)' },
-  user: { bg:'var(--accent-dim)', color:'var(--accent)' },
 };
 
 function initials(name) {
@@ -125,15 +125,14 @@ export default function AuditIndex({ auditLogs = [] }) {
 
         <select className="form-input form-select" style={{width:160,height:36,fontSize:13}} value={moduleFilter} onChange={(e) => { setModuleFilter(e.target.value); setPage(0); }}>
           <option value="">All Categories</option>
-          <option value="login">Login / Auth</option>
+          <option value="auth">Login / Auth</option>
           <option value="lease">Leases</option>
           <option value="payment">Payments</option>
           <option value="invoice">Invoices</option>
           <option value="maintenance">Maintenance</option>
           <option value="document">Documents</option>
           <option value="team">Team</option>
-          <option value="settings">Settings</option>
-          <option value="user">User</option>
+          <option value="accounting">Accounting</option>
         </select>
 
         <select className="form-input form-select" style={{width:130,height:36,fontSize:13}} value={resultFilter} onChange={(e) => { setResultFilter(e.target.value); setPage(0); }}>

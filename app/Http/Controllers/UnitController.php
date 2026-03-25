@@ -2,18 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AuditLog;
 use App\Models\Unit;
 use App\Models\Tenant;
 use App\Models\Lease;
 use App\Models\Property;
 use App\Support\MockRentalData;
+use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class UnitController extends Controller
 {
+    use LogsAudit;
     private const SQM_PER_SQFT = 0.09290304;
     private const COMMERCIAL_UNIT_TYPES = [
         'Office Suite',
@@ -100,6 +101,7 @@ class UnitController extends Controller
             resource: $unit->unit_number,
             propertyName: $propertyName,
             category: 'settings',
+            propertyId: $unit->property_id ? (int) $unit->property_id : null,
         );
 
         return back()->with('success', 'Unit created.');
@@ -145,6 +147,7 @@ class UnitController extends Controller
             resource: $unit->unit_number,
             propertyName: $propertyName,
             category: 'settings',
+            propertyId: $unit->property_id ? (int) $unit->property_id : null,
         );
 
         return back()->with('success', 'Unit updated.');
@@ -173,6 +176,7 @@ class UnitController extends Controller
             resource: $unitNumber,
             propertyName: $propertyName,
             category: 'settings',
+            propertyId: $unit->property_id ? (int) $unit->property_id : null,
         );
 
         return back()->with('success', 'Unit deleted.');
@@ -213,20 +217,4 @@ class UnitController extends Controller
         return range(1, 7);
     }
 
-    private function logAudit(Request $request, string $action, ?string $resource, ?string $propertyName, string $category, string $result = 'success', array $metadata = []): void
-    {
-        $actor = $request->user();
-
-        AuditLog::create([
-            'user_id' => $actor?->id,
-            'user_name' => $actor?->name ?? 'System',
-            'action' => $action,
-            'resource' => $resource,
-            'property_name' => $propertyName,
-            'ip_address' => $request->ip(),
-            'result' => $result,
-            'category' => $category,
-            'metadata' => empty($metadata) ? null : $metadata,
-        ]);
-    }
 }

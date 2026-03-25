@@ -11,6 +11,7 @@ use App\Models\Tenant;
 use App\Models\ExchangeRate;
 use App\Services\AccountingService;
 use App\Support\MockRentalData;
+use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,7 @@ use Inertia\Inertia;
 
 class InvoiceController extends Controller
 {
+    use LogsAudit;
     public function index(Request $request)
     {
         $user = $request->user();
@@ -172,6 +174,17 @@ class InvoiceController extends Controller
             }
         });
 
+        $createdInvoice = Invoice::find($createdInvoiceId);
+        $propertyName   = Property::where('id', $propertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Invoice created',
+            resource: $createdInvoice?->invoice_number ?? ('INV #' . $createdInvoiceId),
+            propertyName: $propertyName,
+            category: 'invoice',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
         return back()
             ->with('success', 'Invoice created.')
             ->with('created_invoice_id', $createdInvoiceId);
@@ -192,6 +205,16 @@ class InvoiceController extends Controller
 
         // Observer handles status transitions (post/void as appropriate)
 
+        $propertyName = Property::where('id', $invoice->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Invoice updated',
+            resource: $invoice->invoice_number,
+            propertyName: $propertyName,
+            category: 'invoice',
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
         return back()->with('success', 'Invoice updated.');
     }
 
@@ -202,8 +225,22 @@ class InvoiceController extends Controller
             abort_if((int) $invoice->property_id !== (int) $user->property_id, 403);
         }
 
+        $propertyId   = $invoice->property_id;
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $resource     = $invoice->invoice_number;
+
         // Observer will handle voiding before deletion
         $invoice->delete();
+
+        $this->logAudit(
+            request: request(),
+            action: 'Invoice deleted',
+            resource: $resource,
+            propertyName: $propertyName,
+            category: 'invoice',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
         return back()->with('success', 'Invoice deleted.');
     }
 

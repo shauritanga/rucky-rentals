@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,6 +25,15 @@ class AuthController extends Controller
         $remember = (bool) $request->boolean('remember');
 
         if (!Auth::attempt($credentials, $remember)) {
+            AuditLog::create([
+                'user_name'  => $credentials['email'],
+                'action'     => 'Login',
+                'resource'   => $credentials['email'],
+                'ip_address' => $request->ip(),
+                'result'     => 'failure',
+                'category'   => 'auth',
+            ]);
+
             return back()
                 ->withErrors(['email' => 'Invalid email or password.'])
                 ->onlyInput('email');
@@ -32,6 +42,17 @@ class AuthController extends Controller
         $user = $request->user();
 
         if ($user && $user->status === 'suspended') {
+            AuditLog::create([
+                'user_id'    => $user->id,
+                'user_name'  => $user->name,
+                'action'     => 'Login',
+                'resource'   => $user->email,
+                'property_id'=> $user->property_id ? (int) $user->property_id : null,
+                'ip_address' => $request->ip(),
+                'result'     => 'blocked',
+                'category'   => 'auth',
+            ]);
+
             Auth::logout();
             $request->session()->invalidate();
             $request->session()->regenerateToken();
@@ -42,6 +63,17 @@ class AuthController extends Controller
         }
 
         $request->session()->regenerate();
+
+        AuditLog::create([
+            'user_id'     => $user->id,
+            'user_name'   => $user->name,
+            'action'      => 'Login',
+            'resource'    => $user->email,
+            'property_id' => $user->property_id ? (int) $user->property_id : null,
+            'ip_address'  => $request->ip(),
+            'result'      => 'success',
+            'category'    => 'auth',
+        ]);
 
         if ($user && $user->must_change_password) {
             return redirect()->route('password.force');
@@ -56,6 +88,20 @@ class AuthController extends Controller
 
     public function logout(Request $request): RedirectResponse
     {
+        $user = $request->user();
+        if ($user) {
+            AuditLog::create([
+                'user_id'     => $user->id,
+                'user_name'   => $user->name,
+                'action'      => 'Logout',
+                'resource'    => $user->email,
+                'property_id' => $user->property_id ? (int) $user->property_id : null,
+                'ip_address'  => $request->ip(),
+                'result'      => 'success',
+                'category'    => 'auth',
+            ]);
+        }
+
         Auth::logout();
 
         $request->session()->invalidate();
@@ -93,6 +139,17 @@ class AuthController extends Controller
         $user->update([
             'password' => Hash::make($validated['password']),
             'must_change_password' => false,
+        ]);
+
+        AuditLog::create([
+            'user_id'     => $user->id,
+            'user_name'   => $user->name,
+            'action'      => 'Password changed',
+            'resource'    => $user->email,
+            'property_id' => $user->property_id ? (int) $user->property_id : null,
+            'ip_address'  => $request->ip(),
+            'result'      => 'success',
+            'category'    => 'auth',
         ]);
 
         if ($user->role === 'superuser') {

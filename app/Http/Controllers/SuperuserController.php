@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ManagerWelcomeMail;
-use App\Models\AuditLog;
 use App\Models\Property;
 use App\Models\User;
+use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Hash;
@@ -14,6 +14,7 @@ use Inertia\Inertia;
 
 class SuperuserController extends Controller
 {
+    use LogsAudit;
     public function index()
     {
         $properties = Property::with('manager:id,name,email')
@@ -97,6 +98,7 @@ class SuperuserController extends Controller
             resource: sprintf('%s (%s)', $property->name, $property->code),
             propertyName: $property->name,
             category: 'settings',
+            propertyId: (int) $property->id,
         );
 
         return back()->with('success', 'Property created successfully.');
@@ -126,6 +128,7 @@ class SuperuserController extends Controller
             resource: sprintf('%s -> %s', $property->name, $newManager->name),
             propertyName: $property->name,
             category: 'user',
+            propertyId: (int) $property->id,
         );
 
         return back()->with('success', 'Manager assigned successfully.');
@@ -172,6 +175,7 @@ class SuperuserController extends Controller
             resource: sprintf('%s (%s)', $user->name, $user->role),
             propertyName: $assignedPropertyName ?? 'All',
             category: 'user',
+            propertyId: ($data['role'] === 'manager' && !empty($data['property_id'])) ? (int) $data['property_id'] : null,
         );
 
         if ($data['role'] === 'manager') {
@@ -187,20 +191,4 @@ class SuperuserController extends Controller
         return back()->with('success', 'User created successfully.');
     }
 
-    private function logAudit(Request $request, string $action, ?string $resource, ?string $propertyName, string $category, string $result = 'success', array $metadata = []): void
-    {
-        $actor = $request->user();
-
-        AuditLog::create([
-            'user_id' => $actor?->id,
-            'user_name' => $actor?->name ?? 'System',
-            'action' => $action,
-            'resource' => $resource,
-            'property_name' => $propertyName,
-            'ip_address' => $request->ip(),
-            'result' => $result,
-            'category' => $category,
-            'metadata' => empty($metadata) ? null : $metadata,
-        ]);
-    }
 }

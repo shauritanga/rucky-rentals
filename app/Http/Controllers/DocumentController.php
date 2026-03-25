@@ -3,13 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\Document;
+use App\Models\Property;
 use App\Models\Unit;
 use App\Support\MockRentalData;
+use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class DocumentController extends Controller
 {
+    use LogsAudit;
     public function index()
     {
         if (MockRentalData::shouldUse()) {
@@ -42,7 +46,7 @@ class DocumentController extends Controller
 
         $unit = $request->unit_ref ? Unit::where('unit_number', $request->unit_ref)->first() : null;
 
-        Document::create([
+        $document = Document::create([
             'name'        => pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME),
             'file_path'   => $path,
             'file_type'   => $type,
@@ -51,7 +55,19 @@ class DocumentController extends Controller
             'unit_ref'    => $request->unit_ref,
             'unit_id'     => $unit?->id,
             'description' => $request->description,
+            'uploaded_by' => $request->user()?->name ?? 'System',
         ]);
+
+        $propertyId   = $unit?->property_id ?? $request->user()?->property_id;
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Document uploaded',
+            resource: sprintf('%s (%s)', $document->name, $request->tag),
+            propertyName: $propertyName,
+            category: 'document',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
 
         return back()->with('success', 'Document uploaded.');
     }
@@ -59,12 +75,39 @@ class DocumentController extends Controller
     public function update(Request $request, Document $document)
     {
         $document->update($request->only(['name']));
+
+        $propertyId   = $document->unit?->property_id ?? $request->user()?->property_id;
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Document renamed',
+            resource: $document->name,
+            propertyName: $propertyName,
+            category: 'document',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
         return back()->with('success', 'Document renamed.');
     }
 
     public function destroy(Document $document)
     {
+        $propertyId   = $document->unit?->property_id ?? request()->user()?->property_id;
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $name         = $document->name;
+
+        Storage::disk('public')->delete($document->file_path);
         $document->delete();
+
+        $this->logAudit(
+            request: request(),
+            action: 'Document deleted',
+            resource: $name,
+            propertyName: $propertyName,
+            category: 'document',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
         return back()->with('success', 'Document deleted.');
     }
 

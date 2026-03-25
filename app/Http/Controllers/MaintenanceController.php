@@ -7,11 +7,13 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
+use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class MaintenanceController extends Controller
 {
+    use LogsAudit;
     public function index(Request $request)
     {
         $user = $request->user();
@@ -67,6 +69,16 @@ class MaintenanceController extends Controller
             'reported_date' => now()->toDateString(),
             'notes'         => json_encode([]),
         ]);
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Maintenance ticket created',
+            resource: $data['title'],
+            propertyName: $propertyName,
+            category: 'maintenance',
+            propertyId: (int) $propertyId,
+        );
+
         return back()->with('success', 'Ticket created.');
     }
 
@@ -129,13 +141,40 @@ class MaintenanceController extends Controller
             }
         }
 
+        $ticketPropertyId = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
+        $propertyName     = Property::where('id', $ticketPropertyId)->value('name');
+        $isResolved       = $maintenanceTicket->status === 'resolved';
+        $this->logAudit(
+            request: $request,
+            action: $isResolved ? 'Maintenance resolved' : 'Maintenance ticket updated',
+            resource: $maintenanceTicket->title,
+            propertyName: $propertyName,
+            category: 'maintenance',
+            propertyId: $ticketPropertyId ? (int) $ticketPropertyId : null,
+        );
+
         return back()->with('success', 'Ticket updated.');
     }
 
     public function destroy(Request $request, MaintenanceRecord $maintenanceTicket)
     {
         $this->authorizeTicketProperty($request, $maintenanceTicket);
+
+        $propertyId   = $maintenanceTicket->property_id;
+        $propertyName = Property::where('id', $propertyId)->value('name');
+        $title        = $maintenanceTicket->title;
+
         $maintenanceTicket->delete();
+
+        $this->logAudit(
+            request: $request,
+            action: 'Maintenance ticket deleted',
+            resource: $title,
+            propertyName: $propertyName,
+            category: 'maintenance',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
         return back()->with('success', 'Ticket deleted.');
     }
 

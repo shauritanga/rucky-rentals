@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
 
@@ -12,6 +12,10 @@ export default function DocumentsIndex({ documents, units }) {
   const [view, setView] = useState('grid');
   const [selected, setSelected] = useState(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [page, setPage] = useState(1);
+  const [dragOver, setDragOver] = useState(false);
+  const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
+  const [submitError,   setSubmitError]   = useState('');
 
   const { data, setData, post, processing, reset } = useForm({ file: null, tag:'lease', unit_ref:'', description:'' });
 
@@ -22,13 +26,49 @@ export default function DocumentsIndex({ documents, units }) {
     return matchFilter && matchSearch;
   });
 
+  const PER_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+
+  function changeFilter(f) { setFilter(f); setPage(1); }
+  function changeSearch(q) { setSearch(q); setPage(1); }
+
   const counts = { all: documents.length, lease: documents.filter(d=>d.tag==='lease').length, id: documents.filter(d=>d.tag==='id').length, notice: documents.filter(d=>d.tag==='notice').length, other: documents.filter(d=>d.tag==='other').length };
 
-  const submit = (e) => { e.preventDefault(); post('/documents', { forceFormData: true, onSuccess: () => { reset(); setShowUpload(false); } }); };
+  const submit = (e) => {
+    e.preventDefault();
+    setSubmitError('');
+    post('/documents', {
+      forceFormData: true,
+      onSuccess: () => {
+        reset();
+        setShowUpload(false);
+        setSubmitMessage({ type: 'success', text: 'Document uploaded successfully.' });
+      },
+      onError: (errors) => {
+        const first = Object.values(errors || {}).flat().find(v => typeof v === 'string' && v.trim());
+        setSubmitError(first || 'Upload failed. Please check the file and try again.');
+      },
+    });
+  };
+
+  useEffect(() => {
+    if (!submitMessage.type) return;
+    const t = setTimeout(() => setSubmitMessage({ type: '', text: '' }), 4000);
+    return () => clearTimeout(t);
+  }, [submitMessage]);
 
   return (
     <AppLayout title="Documents" subtitle={`${documents.length} files`}>
       <Head title="Documents" />
+
+      {submitMessage.type === 'success' && (
+        <div style={{ marginBottom: 14, background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          {submitMessage.text}
+        </div>
+      )}
 
       <div className="tn-stats-row">
         <div className="tn-stat"><div className="tn-stat-value">{counts.all}</div><div className="tn-stat-label">Total Files</div></div>
@@ -45,13 +85,13 @@ export default function DocumentsIndex({ documents, units }) {
       <div className="toolbar">
         <div className="filters">
           {[['all','All'],['lease','Leases'],['id','ID Documents'],['notice','Notices'],['other','Other']].map(([f,l])=>(
-            <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>setFilter(f)}>{l} <span className="pill-count">{counts[f]||0}</span></button>
+            <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>changeFilter(f)}>{l} <span className="pill-count">{counts[f]||0}</span></button>
           ))}
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <div className="search-box" style={{width:190}}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input type="text" placeholder="Search documents…" value={search} onChange={e=>setSearch(e.target.value)} />
+            <input type="text" placeholder="Search documents…" value={search} onChange={e=>changeSearch(e.target.value)} />
           </div>
           <div className="view-toggle">
             <button className={`vt-btn ${view==='grid'?'active':''}`} onClick={()=>setView('grid')} title="Grid"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></button>
@@ -66,7 +106,7 @@ export default function DocumentsIndex({ documents, units }) {
 
       {view === 'grid'
         ? <div className="docs-grid">
-            {filtered.map(d => (
+            {paginated.map(d => (
               <div className="doc-card" key={d.id} onClick={()=>setSelected(d)}>
                 <div style={{display:'flex',alignItems:'flex-start',gap:12}}>
                   <div className={`doc-icon ${d.file_type}`}>{EXT_ICON[d.file_type]||'📁'}</div>
@@ -86,7 +126,7 @@ export default function DocumentsIndex({ documents, units }) {
             <table className="data-table">
               <thead><tr><th style={{width:36}}></th><th>Name</th><th>Type</th><th>Unit</th><th>Size</th><th>Date Added</th><th></th></tr></thead>
               <tbody>
-                {filtered.map(d => (
+                {paginated.map(d => (
                   <tr key={d.id} onClick={()=>setSelected(d)}>
                     <td style={{paddingLeft:20}}><div className={`doc-icon ${d.file_type}`} style={{width:30,height:30,borderRadius:7,fontSize:14}}>{EXT_ICON[d.file_type]||'📁'}</div></td>
                     <td><div style={{fontWeight:600,fontSize:'13.5px'}}>{d.name}</div></td>
@@ -101,6 +141,51 @@ export default function DocumentsIndex({ documents, units }) {
             </table>
           </div>
       }
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, padding: '0 2px' }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+            Showing {(safePage - 1) * PER_PAGE + 1}–{Math.min(safePage * PER_PAGE, filtered.length)} of {filtered.length} documents
+          </div>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <button
+              className="btn-ghost"
+              style={{ padding: '4px 10px', fontSize: 12.5 }}
+              disabled={safePage === 1}
+              onClick={() => setPage(safePage - 1)}
+            >
+              ← Prev
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 12.5,
+                  border: 'none',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  background: p === safePage ? 'var(--accent)' : 'transparent',
+                  color: p === safePage ? '#fff' : 'var(--text-secondary)',
+                  fontWeight: p === safePage ? 600 : 400,
+                }}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              className="btn-ghost"
+              style={{ padding: '4px 10px', fontSize: 12.5 }}
+              disabled={safePage === totalPages}
+              onClick={() => setPage(safePage + 1)}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Document Drawer */}
       <div className={`drawer-overlay ${selected?'open':''}`} onClick={e=>e.target===e.currentTarget&&setSelected(null)}>
@@ -134,7 +219,10 @@ export default function DocumentsIndex({ documents, units }) {
               </div>
             </div>
             <div className="drawer-footer">
-              <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>setSelected(null)}>Download</button>
+              <a href={`/storage/${selected.file_path}`} download target="_blank" rel="noreferrer" className="btn-primary" style={{flex:1,justifyContent:'center',display:'flex',alignItems:'center',gap:6,textDecoration:'none'}}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
+              </a>
               <button className="btn-secondary" onClick={()=>setSelected(null)}>Rename</button>
               <button className="btn-danger" onClick={()=>{router.delete(`/documents/${selected.id}`);setSelected(null);}}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
@@ -150,7 +238,18 @@ export default function DocumentsIndex({ documents, units }) {
           <div className="modal-header"><div className="modal-title">Upload Document</div><button className="modal-close" onClick={()=>setShowUpload(false)}>✕</button></div>
           <form onSubmit={submit} encType="multipart/form-data">
             <div className="modal-body">
-              <div style={{border:'2px dashed var(--border)',borderRadius:10,padding:'28px 20px',textAlign:'center',cursor:'pointer',marginBottom:14,transition:'border-color .15s,background .15s'}} onClick={()=>document.getElementById('fileInput').click()}>
+              {submitError && (
+                <div style={{ marginBottom: 14, background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red)' }}>
+                  {submitError}
+                </div>
+              )}
+              <div
+                style={{border:`2px dashed ${dragOver?'var(--accent)':'var(--border)'}`,borderRadius:10,padding:'28px 20px',textAlign:'center',cursor:'pointer',marginBottom:14,transition:'border-color .15s,background .15s',background:dragOver?'var(--accent-dim)':'transparent'}}
+                onClick={()=>document.getElementById('fileInput').click()}
+                onDragOver={e=>{e.preventDefault();setDragOver(true);}}
+                onDragLeave={()=>setDragOver(false)}
+                onDrop={e=>{e.preventDefault();setDragOver(false);const f=e.dataTransfer.files[0];if(f)setData('file',f);}}
+              >
                 <div style={{fontSize:28,marginBottom:8}}>📂</div>
                 <div style={{fontSize:'13.5px',fontWeight:500,marginBottom:4}}>Click to browse or drag & drop</div>
                 <div style={{fontSize:12,color:'var(--text-muted)'}}>PDF, DOCX, JPG, PNG — max 20 MB</div>
@@ -164,7 +263,9 @@ export default function DocumentsIndex({ documents, units }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>setShowUpload(false)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing}>Upload Files</button>
+              <button type="submit" className="btn-primary" disabled={processing}>
+                {processing ? <><span className="btn-spinner" />Uploading…</> : 'Upload Files'}
+              </button>
             </div>
           </form>
         </div>

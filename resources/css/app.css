@@ -101,6 +101,8 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .badge.void{background:var(--red-dim);color:var(--red)}
 .badge.proforma{background:var(--amber-dim);color:var(--amber)}
 .badge.invoice{background:var(--accent-dim);color:var(--accent)}
+.badge.company{background:var(--accent-dim);color:var(--accent)}
+.badge.individual{background:var(--bg-elevated);color:var(--text-secondary)}
 .priority{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px}
 .priority.high{background:var(--red-dim);color:var(--red)}
 .priority.med{background:var(--amber-dim);color:var(--amber)}

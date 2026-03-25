@@ -107,6 +107,9 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
   );
   const [teamFilter, setTeamFilter] = useState('all');
   const [viewTab, setViewTab] = useState('active');
+  const [activePage, setActivePage] = useState(1);
+  const [archivedPage, setArchivedPage] = useState(1);
+  const PER_PAGE = 10;
   const [showModal, setShowModal] = useState(false);
   const [showPermDrawer, setShowPermDrawer] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -131,6 +134,16 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
     () => team.filter((m) => teamFilter === 'all' || m.role === teamFilter),
     [team, teamFilter],
   );
+
+  const activeTotalPages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const safeActivePage = Math.min(activePage, activeTotalPages);
+  const paginatedRows = rows.slice((safeActivePage - 1) * PER_PAGE, safeActivePage * PER_PAGE);
+
+  const archivedTotalPages = Math.max(1, Math.ceil(archived.length / PER_PAGE));
+  const safeArchivedPage = Math.min(archivedPage, archivedTotalPages);
+  const paginatedArchived = archived.slice((safeArchivedPage - 1) * PER_PAGE, safeArchivedPage * PER_PAGE);
+
+  const setFilter = (f) => { setTeamFilter(f); setActivePage(1); };
 
   const onRoleChange = (role) => {
     setData('role', role);
@@ -285,11 +298,11 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
       <>
       <div className="units-toolbar" style={{marginBottom:18}}>
         <div className="units-filters">
-          <button className={`filter-pill ${teamFilter==='all'?'active':''}`} onClick={() => setTeamFilter('all')}>All <span className="pill-count">{counts.all}</span></button>
-          <button className={`filter-pill ${teamFilter==='accountant'?'active':''}`} onClick={() => setTeamFilter('accountant')}>Accountant <span className="pill-count">{counts.accountant}</span></button>
-          <button className={`filter-pill ${teamFilter==='lease_manager'?'active':''}`} onClick={() => setTeamFilter('lease_manager')}>Lease Manager <span className="pill-count">{counts.lease_manager}</span></button>
-          <button className={`filter-pill ${teamFilter==='maintenance_staff'?'active':''}`} onClick={() => setTeamFilter('maintenance_staff')}>Maintenance <span className="pill-count">{counts.maintenance_staff}</span></button>
-          <button className={`filter-pill ${teamFilter==='viewer'?'active':''}`} onClick={() => setTeamFilter('viewer')}>Viewer <span className="pill-count">{counts.viewer}</span></button>
+          <button className={`filter-pill ${teamFilter==='all'?'active':''}`} onClick={() => setFilter('all')}>All <span className="pill-count">{counts.all}</span></button>
+          <button className={`filter-pill ${teamFilter==='accountant'?'active':''}`} onClick={() => setFilter('accountant')}>Accountant <span className="pill-count">{counts.accountant}</span></button>
+          <button className={`filter-pill ${teamFilter==='lease_manager'?'active':''}`} onClick={() => setFilter('lease_manager')}>Lease Manager <span className="pill-count">{counts.lease_manager}</span></button>
+          <button className={`filter-pill ${teamFilter==='maintenance_staff'?'active':''}`} onClick={() => setFilter('maintenance_staff')}>Maintenance <span className="pill-count">{counts.maintenance_staff}</span></button>
+          <button className={`filter-pill ${teamFilter==='viewer'?'active':''}`} onClick={() => setFilter('viewer')}>Viewer <span className="pill-count">{counts.viewer}</span></button>
         </div>
       </div>
 
@@ -300,7 +313,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
             {!rows.length && (
               <tr><td colSpan={6} style={{textAlign:'center',padding:40,color:'var(--text-muted)'}}>No team members yet — add your first staff member</td></tr>
             )}
-            {rows.map((m) => {
+            {paginatedRows.map((m) => {
               const colors = ROLE_COLORS[m.role] || ROLE_COLORS.viewer;
               const activeResources = RESOURCES.filter((resource) => accessTag(m.permissions, resource));
               const topResources = activeResources.slice(0, 4);
@@ -353,10 +366,23 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
           </tbody>
         </table>
       </div>
+
+      {activeTotalPages > 1 && (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:4,marginBottom:20}}>
+          <button className="btn-ghost" style={{fontSize:12,padding:'5px 10px'}} disabled={safeActivePage===1} onClick={() => setActivePage((p) => p - 1)}>← Prev</button>
+          {Array.from({length:activeTotalPages},(_,i)=>i+1).map((p) => (
+            <button key={p} onClick={() => setActivePage(p)} style={{fontSize:12,padding:'5px 10px',borderRadius:6,border:'1px solid var(--border)',background:p===safeActivePage?'var(--accent)':'transparent',color:p===safeActivePage?'#fff':'var(--text-secondary)',fontWeight:p===safeActivePage?700:400,cursor:'pointer'}}>
+              {p}
+            </button>
+          ))}
+          <button className="btn-ghost" style={{fontSize:12,padding:'5px 10px'}} disabled={safeActivePage===activeTotalPages} onClick={() => setActivePage((p) => p + 1)}>Next →</button>
+        </div>
+      )}
       </>
       )}
 
       {viewTab === 'archived' && (
+      <>
       <div className="card" style={{marginBottom:20}}>
         <div className="card-header">
           <div>
@@ -383,7 +409,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                   </td>
                 </tr>
               )}
-              {archived.map((m) => {
+              {paginatedArchived.map((m) => {
                 const colors = ROLE_COLORS[m.role] || ROLE_COLORS.viewer;
                 return (
                   <tr key={`archived-${m.id}`}>
@@ -417,6 +443,19 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
           </table>
         </div>
       </div>
+
+      {archivedTotalPages > 1 && (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginTop:4,marginBottom:20}}>
+          <button className="btn-ghost" style={{fontSize:12,padding:'5px 10px'}} disabled={safeArchivedPage===1} onClick={() => setArchivedPage((p) => p - 1)}>← Prev</button>
+          {Array.from({length:archivedTotalPages},(_,i)=>i+1).map((p) => (
+            <button key={p} onClick={() => setArchivedPage(p)} style={{fontSize:12,padding:'5px 10px',borderRadius:6,border:'1px solid var(--border)',background:p===safeArchivedPage?'var(--accent)':'transparent',color:p===safeArchivedPage?'#fff':'var(--text-secondary)',fontWeight:p===safeArchivedPage?700:400,cursor:'pointer'}}>
+              {p}
+            </button>
+          ))}
+          <button className="btn-ghost" style={{fontSize:12,padding:'5px 10px'}} disabled={safeArchivedPage===archivedTotalPages} onClick={() => setArchivedPage((p) => p + 1)}>Next →</button>
+        </div>
+      )}
+      </>
       )}
 
       {viewTab === 'permissions' && (

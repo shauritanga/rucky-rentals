@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
-use App\Models\Property;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -19,9 +18,8 @@ class AuditTrailController extends Controller
             if (empty($user->property_id)) {
                 $query->whereRaw('1 = 0');
             } else {
-                $propertyName = Property::where('id', $user->property_id)->value('name');
-                $query->where(function ($q) use ($propertyName, $user) {
-                    $q->where('property_name', $propertyName)
+                $query->where(function ($q) use ($user) {
+                    $q->where('property_id', $user->property_id)
                         ->orWhere('user_id', $user->id);
                 });
             }

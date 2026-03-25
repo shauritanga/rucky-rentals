@@ -19,6 +19,12 @@ class Tenant extends Model
         'nok_phone',
         'nok_relation',
         'notes',
+        'tenant_type',
+        'company_name',
+        'registration_number',
+        'tin',
+        'vrn',
+        'contact_person',
     ];
 
     public function leases()
