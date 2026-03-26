@@ -190,30 +190,25 @@
             margin-bottom: 40px;
         }
 
-        .hero-stats {
+        .hero-features {
             display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
+            flex-direction: column;
+            gap: 14px;
+            margin-top: 8px;
         }
 
-        .hero-stat {
-            background: rgba(255, 255, 255, .04);
-            border: 1px solid rgba(255, 255, 255, .07);
-            border-radius: 10px;
-            padding: 12px 18px;
+        .hero-feature {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.82);
+            font-weight: 500;
         }
 
-        .hero-stat-val {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: -.5px;
-            color: #f0f1f3;
-        }
-
-        .hero-stat-label {
-            font-size: 11.5px;
-            color: rgba(240, 241, 243, .4);
-            margin-top: 2px;
+        .hero-feature svg {
+            flex-shrink: 0;
+            opacity: 0.9;
         }
 
         .left-footer {
@@ -577,22 +572,22 @@
                 <div class="hero-desc">
                     Leases, invoices, maintenance, electricity billing and accounting - all in one system built for Dar es Salaam commercial real estate.
                 </div>
-                <div class="hero-stats">
-                    <div class="hero-stat">
-                        <div class="hero-stat-val">4</div>
-                        <div class="hero-stat-label">Properties</div>
+                <div class="hero-features">
+                    <div class="hero-feature">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        Property &amp; unit management
                     </div>
-                    <div class="hero-stat">
-                        <div class="hero-stat-val">127</div>
-                        <div class="hero-stat-label">Total Units</div>
+                    <div class="hero-feature">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                        Rent collection &amp; invoicing
                     </div>
-                    <div class="hero-stat">
-                        <div class="hero-stat-val">108</div>
-                        <div class="hero-stat-label">Active Leases</div>
+                    <div class="hero-feature">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Electricity &amp; utility tracking
                     </div>
-                    <div class="hero-stat">
-                        <div class="hero-stat-val">TZS 231M</div>
-                        <div class="hero-stat-label">Monthly Revenue</div>
+                    <div class="hero-feature">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        Maintenance &amp; reporting
                     </div>
                 </div>
             </div>
