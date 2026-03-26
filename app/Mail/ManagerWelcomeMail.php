@@ -13,6 +13,12 @@ class ManagerWelcomeMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
+    /** Retry up to 3 times before moving to failed_jobs */
+    public int $tries = 3;
+
+    /** Give up if the SMTP handshake takes longer than 30 seconds */
+    public int $timeout = 30;
+
     public function __construct(
         public string $managerName,
         public string $email,
