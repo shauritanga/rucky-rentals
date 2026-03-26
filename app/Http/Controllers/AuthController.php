@@ -87,7 +87,7 @@ class AuthController extends Controller
         return redirect()->intended(route('dashboard'));
     }
 
-    public function logout(Request $request): RedirectResponse
+    public function logout(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         $user = $request->user();
         if ($user) {

@@ -71,6 +71,7 @@ export default function Profile() {
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [toast, setToast] = useState('');
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   const displayName = useMemo(() => {
     const full = `${firstName} ${lastName}`.trim();
@@ -134,11 +135,7 @@ export default function Profile() {
     showToast('All other sessions signed out');
   };
 
-  const signOut = () => {
-    if (window.confirm('Sign out of your account?')) {
-      router.post('/logout');
-    }
-  };
+  const signOut = () => setLogoutOpen(true);
 
   return (
     <AppLayout title="My Profile" subtitle={userName}>
@@ -326,6 +323,31 @@ export default function Profile() {
       </div>
 
       <div className={`toast ${toast ? 'show' : ''}`}>{toast}</div>
+
+      {/* Logout confirmation dialog */}
+      <div className={`modal-overlay ${logoutOpen ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setLogoutOpen(false)}>
+        <div className="modal" style={{ width: 'min(420px, calc(100vw - 32px))', padding: 0 }}>
+          <div className="modal-header" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--red-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              </div>
+              <div className="modal-title">Sign out</div>
+            </div>
+            <button className="modal-close" onClick={() => setLogoutOpen(false)}>✕</button>
+          </div>
+          <div style={{ padding: '20px 24px', fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            Are you sure you want to sign out of your account? Any unsaved changes will be lost.
+          </div>
+          <div className="modal-footer" style={{ borderTop: '1px solid var(--border-subtle)', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn-secondary" onClick={() => setLogoutOpen(false)}>Cancel</button>
+            <button className="btn-danger" onClick={() => router.post('/logout')}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
     </AppLayout>
   );
 }
