@@ -12,7 +12,8 @@ const NAV = [
 ];
 
 export default function SuperuserLayout({ activeView, onNavigate, title, subtitle, actionLabel, onAction, navCounts = {}, children }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
+  useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
   const [theme, setTheme] = useState('dark');
   const { props } = usePage();
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
