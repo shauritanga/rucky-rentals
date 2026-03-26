@@ -70,6 +70,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('superuser/roles', [SuperuserController::class, 'updateRoles'])->name('superuser.roles.update');
         Route::patch('superuser/password', [SuperuserController::class, 'changePassword'])->name('superuser.password.change');
         Route::patch('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password.change');
+        Route::post('profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update');
         Route::post('accounting/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');
         Route::post('accounting/journal-entries', [AccountingController::class, 'storeJournalEntry'])->name('accounting.journal.store');
         Route::patch('accounting/journal-entries/{journalEntry}', [AccountingController::class, 'updateJournalEntry'])->name('accounting.journal.update');

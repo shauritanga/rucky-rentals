@@ -63,7 +63,8 @@ export default function Profile() {
   const [email, setEmail] = useState(user?.email || 'admin@ruckyrentals.co.tz');
   const [phone, setPhone] = useState('+255 700 000 001');
   const [bio, setBio] = useState('Platform owner responsible for global portfolio controls, manager assignments, and system governance.');
-  const [avatarSrc, setAvatarSrc] = useState('');
+  const [avatarSrc, setAvatarSrc] = useState(user?.avatar_url || '');
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [twofaEnabled, setTwofaEnabled] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState(NOTIF_PREFS_SEED);
   const [sessions, setSessions] = useState(SESSION_SEED);
@@ -98,12 +99,18 @@ export default function Profile() {
   const onAvatarPick = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    // Show instant local preview
     const reader = new FileReader();
-    reader.onload = (e) => {
-      setAvatarSrc(String(e.target?.result || ''));
-      showToast('Profile photo updated');
-    };
+    reader.onload = (e) => setAvatarSrc(String(e.target?.result || ''));
     reader.readAsDataURL(file);
+    // Upload to server
+    setAvatarUploading(true);
+    router.post('/profile/avatar', { avatar: file }, {
+      forceFormData: true,
+      preserveScroll: true,
+      onSuccess: () => { setAvatarUploading(false); showToast('Profile photo saved'); },
+      onError: () => { setAvatarUploading(false); showToast('Upload failed – try again'); },
+    });
   };
 
   const onSaveProfile = () => showToast('Profile saved successfully');
@@ -161,10 +168,15 @@ export default function Profile() {
             <div className="card">
               <div className="profile-avatar-card-head">
                 <div style={{ position: 'relative', marginBottom: 14 }}>
-                  <div id="profile-avatar-display" className="profile-avatar-display">
+                  <div id="profile-avatar-display" className="profile-avatar-display" style={{ position: 'relative' }}>
                     {avatarSrc ? <img src={avatarSrc} alt="Profile" className="profile-avatar-img" /> : initials}
+                    {avatarUploading && (
+                      <div style={{ position: 'absolute', inset: 0, borderRadius: 'inherit', background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="btn-spinner" style={{ width: 18, height: 18, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} />
+                      </div>
+                    )}
                   </div>
-                  <button type="button" onClick={() => document.getElementById('avatar-file-input')?.click()} className="profile-avatar-edit-btn" aria-label="Edit avatar">
+                  <button type="button" onClick={() => document.getElementById('avatar-file-input')?.click()} className="profile-avatar-edit-btn" aria-label="Edit avatar" disabled={avatarUploading}>
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z"/></svg>
                   </button>
                   <input id="avatar-file-input" type="file" accept="image/*" style={{ display: 'none' }} onChange={onAvatarPick} />

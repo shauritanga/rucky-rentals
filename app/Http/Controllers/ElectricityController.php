@@ -23,7 +23,7 @@ class ElectricityController extends Controller
             'fuel_levy'    => 3.20,
             'erc_levy'     => 0.50,
             'fixed_charge' => 1800,
-            'bill_kes'     => 288900,
+            'bill_tzs'     => 288900,
             'bill_kwh'     => 12840,
             'common_kwh'   => 420,
             'on'           => true,

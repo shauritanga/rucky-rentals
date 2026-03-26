@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
 const fmt = (n) => Number(n).toLocaleString();
-const fmtKES = (n) => `KES ${fmt(Math.round(n))}`;
+const fmtTZS = (n) => `TZS ${fmt(Math.round(n))}`;
 
 export default function Electricity({ readings = [], outages = [], fuelLogs = [], units = [], gridSettings = {}, genSettings = {} }) {
     const [tab, setTab] = useState('dashboard');
@@ -98,9 +98,9 @@ function DashboardTab({ readings, outages, units, gridOn, setGridOn, genRunning,
                         <span className={`source-badge ${gridOn ? 'on' : 'off'}`}>{gridOn ? 'ON' : 'OFF'}</span>
                     </div>
                     <div className="source-kv-grid">
-                        <div className="source-kv"><div className="source-kv-label">Tariff Rate</div><div className="source-kv-value accent">KES {Number(tariff).toFixed(2)}/kWh</div></div>
+                        <div className="source-kv"><div className="source-kv-label">Tariff Rate</div><div className="source-kv-value accent">TZS {Number(tariff).toFixed(2)}/kWh</div></div>
                         <div className="source-kv"><div className="source-kv-label">MTD Consumption</div><div className="source-kv-value">{fmt(totalGridKwh)} kWh</div></div>
-                        <div className="source-kv"><div className="source-kv-label">MTD Bill</div><div className="source-kv-value">{fmtKES(totalBill)}</div></div>
+                        <div className="source-kv"><div className="source-kv-label">MTD Bill</div><div className="source-kv-value">{fmtTZS(totalBill)}</div></div>
                         <div className="source-kv"><div className="source-kv-label">Uptime This Month</div><div className="source-kv-value green">94.2%</div></div>
                     </div>
                     <div className="source-actions">
@@ -128,10 +128,10 @@ function DashboardTab({ readings, outages, units, gridOn, setGridOn, genRunning,
                     </div>
 
                     <div className="source-kv-grid">
-                        <div className="source-kv"><div className="source-kv-label">Fuel Cost Rate</div><div className="source-kv-value amber">KES {genRate}/kWh</div></div>
+                        <div className="source-kv"><div className="source-kv-label">Fuel Cost Rate</div><div className="source-kv-value amber">TZS {genRate}/kWh</div></div>
                         <div className="source-kv"><div className="source-kv-label">MTD Runtime</div><div className="source-kv-value">14.5 hrs</div></div>
                         <div className="source-kv"><div className="source-kv-label">MTD Fuel Used</div><div className="source-kv-value">87 L</div></div>
-                        <div className="source-kv"><div className="source-kv-label">MTD Gen Cost</div><div className="source-kv-value amber">KES 16,530</div></div>
+                        <div className="source-kv"><div className="source-kv-label">MTD Gen Cost</div><div className="source-kv-value amber">TZS 16,530</div></div>
                     </div>
 
                     <div className="source-actions">
@@ -185,7 +185,7 @@ function DashboardTab({ readings, outages, units, gridOn, setGridOn, genRunning,
                 <div className="card card-last">
                     <div className="card-header"><div className="card-title">Top Consumers</div></div>
                     <table className="ledger-table">
-                        <thead><tr><th>Unit</th><th>Tenant</th><th className="num">kWh</th><th className="num">Bill (KES)</th></tr></thead>
+                        <thead><tr><th>Unit</th><th>Tenant</th><th className="num">kWh</th><th className="num">Bill (TZS)</th></tr></thead>
                         <tbody>
                             {topConsumers.slice(0, 6).map((r, i) => {
                                 const unit = units.find((u) => u.id === r.unit_id);
@@ -194,7 +194,7 @@ function DashboardTab({ readings, outages, units, gridOn, setGridOn, genRunning,
                                         <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.number ?? r.unit_number ?? '—'}</td>
                                         <td>{r.tenant_name ?? '—'}</td>
                                         <td className="num" style={{ fontWeight: 600 }}>{fmt(r.consumption ?? 0)}</td>
-                                        <td className="num" style={{ color: 'var(--green)', fontWeight: 600 }}>{fmtKES((r.consumption ?? 0) * tariff)}</td>
+                                        <td className="num" style={{ color: 'var(--green)', fontWeight: 600 }}>{fmtTZS((r.consumption ?? 0) * tariff)}</td>
                                     </tr>
                                 );
                             })}
@@ -224,12 +224,12 @@ function GridTab({ gridSettings }) {
                     <div className="card-header"><div className="card-title">Tariff Configuration</div></div>
                     <div style={{ padding: '16px 18px' }}>
                         <div className="form-row">
-                            <div className="form-group"><label className="form-label">Energy Charge (KES/kWh)</label><input className="form-input" type="number" value={form.energy_rate} onChange={(e) => setForm((f) => ({ ...f, energy_rate: e.target.value }))} /></div>
-                            <div className="form-group"><label className="form-label">Fixed Charge (KES/month)</label><input className="form-input" type="number" value={form.fixed_charge} onChange={(e) => setForm((f) => ({ ...f, fixed_charge: e.target.value }))} /></div>
+                            <div className="form-group"><label className="form-label">Energy Charge (TZS/kWh)</label><input className="form-input" type="number" value={form.energy_rate} onChange={(e) => setForm((f) => ({ ...f, energy_rate: e.target.value }))} /></div>
+                            <div className="form-group"><label className="form-label">Fixed Charge (TZS/month)</label><input className="form-input" type="number" value={form.fixed_charge} onChange={(e) => setForm((f) => ({ ...f, fixed_charge: e.target.value }))} /></div>
                         </div>
                         <div className="form-row">
-                            <div className="form-group"><label className="form-label">Fuel Cost Levy (KES/kWh)</label><input className="form-input" type="number" value={form.fuel_levy} onChange={(e) => setForm((f) => ({ ...f, fuel_levy: e.target.value }))} /></div>
-                            <div className="form-group"><label className="form-label">ERC Levy (KES/kWh)</label><input className="form-input" type="number" value={form.erc_levy} onChange={(e) => setForm((f) => ({ ...f, erc_levy: e.target.value }))} /></div>
+                            <div className="form-group"><label className="form-label">Fuel Cost Levy (TZS/kWh)</label><input className="form-input" type="number" value={form.fuel_levy} onChange={(e) => setForm((f) => ({ ...f, fuel_levy: e.target.value }))} /></div>
+                            <div className="form-group"><label className="form-label">ERC Levy (TZS/kWh)</label><input className="form-input" type="number" value={form.erc_levy} onChange={(e) => setForm((f) => ({ ...f, erc_levy: e.target.value }))} /></div>
                         </div>
                         <div className="form-row">
                             <div className="form-group"><label className="form-label">Reading Date (day of month)</label><input className="form-input" type="number" min="1" max="28" value={form.reading_day} onChange={(e) => setForm((f) => ({ ...f, reading_day: e.target.value }))} /></div>
@@ -237,7 +237,7 @@ function GridTab({ gridSettings }) {
                         </div>
                         <div className="info-box" style={{ marginTop: 4 }}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                            <div className="info-box-text">Effective unit tariff = Energy Charge + Fuel Levy + ERC Levy = <strong style={{ color: 'var(--accent)' }}>KES {effective}/kWh</strong></div>
+                            <div className="info-box-text">Effective unit tariff = Energy Charge + Fuel Levy + ERC Levy = <strong style={{ color: 'var(--accent)' }}>TZS {effective}/kWh</strong></div>
                         </div>
                     </div>
                 </div>
@@ -246,7 +246,7 @@ function GridTab({ gridSettings }) {
                     <div className="card-header"><div className="card-title">This Month's Utility Bill</div></div>
                     <div style={{ padding: '16px 18px' }}>
                         <div className="form-row">
-                            <div className="form-group"><label className="form-label">KPLC Bill Amount (KES)</label><input className="form-input" type="number" value={form.bill_amount} onChange={(e) => setForm((f) => ({ ...f, bill_amount: e.target.value }))} /></div>
+                            <div className="form-group"><label className="form-label">KPLC Bill Amount (TZS)</label><input className="form-input" type="number" value={form.bill_amount} onChange={(e) => setForm((f) => ({ ...f, bill_amount: e.target.value }))} /></div>
                             <div className="form-group"><label className="form-label">Bill Date</label><input className="form-input" type="date" value={form.bill_date ?? ''} onChange={(e) => setForm((f) => ({ ...f, bill_date: e.target.value }))} /></div>
                         </div>
                         <div className="form-row">
@@ -255,10 +255,10 @@ function GridTab({ gridSettings }) {
                         </div>
 
                         <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: '12px 14px', marginTop: 4 }}>
-                            <div className="bill-summary-row"><span>Total KPLC bill</span><span>{fmtKES(form.bill_amount)}</span></div>
-                            <div className="bill-summary-row"><span>Common area deduction</span><span style={{ color: 'var(--red)' }}>- {fmtKES(commonCost)}</span></div>
-                            <div className="bill-summary-row"><span>Balance to allocate to units</span><span style={{ color: 'var(--green)' }}>{fmtKES(toAllocate)}</span></div>
-                            <div className="bill-summary-row"><span>Average cost per kWh</span><span>KES {form.bill_kwh ? (form.bill_amount / form.bill_kwh).toFixed(2) : '0.00'}</span></div>
+                            <div className="bill-summary-row"><span>Total KPLC bill</span><span>{fmtTZS(form.bill_amount)}</span></div>
+                            <div className="bill-summary-row"><span>Common area deduction</span><span style={{ color: 'var(--red)' }}>- {fmtTZS(commonCost)}</span></div>
+                            <div className="bill-summary-row"><span>Balance to allocate to units</span><span style={{ color: 'var(--green)' }}>{fmtTZS(toAllocate)}</span></div>
+                            <div className="bill-summary-row"><span>Average cost per kWh</span><span>TZS {form.bill_kwh ? (form.bill_amount / form.bill_kwh).toFixed(2) : '0.00'}</span></div>
                         </div>
                     </div>
                 </div>
@@ -267,10 +267,10 @@ function GridTab({ gridSettings }) {
             <div className="card">
                 <div className="card-header"><div className="card-title">Billing History</div></div>
                 <table className="ledger-table">
-                    <thead><tr><th>Month</th><th>KPLC Bill (KES)</th><th className="num">Total kWh</th><th className="num">Units Avg</th><th className="num">Common kWh</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Month</th><th>KPLC Bill (TZS)</th><th className="num">Total kWh</th><th className="num">Units Avg</th><th className="num">Common kWh</th><th>Status</th></tr></thead>
                     <tbody>
                         {[['March 2026', '288,900', '12,840', '22.50', '420', 'unpaid', 'Pending'], ['February 2026', '275,400', '12,240', '22.50', '398', 'paid', 'Paid'], ['January 2026', '270,000', '12,000', '22.50', '410', 'paid', 'Paid']].map(([m, b, k, a, c, cls, lbl]) => (
-                            <tr key={m}><td>{m}</td><td>KES {b}</td><td className="num">{k}</td><td className="num">{a}</td><td className="num">{c}</td><td><span className={`badge ${cls}`}>{lbl}</span></td></tr>
+                            <tr key={m}><td>{m}</td><td>TZS {b}</td><td className="num">{k}</td><td className="num">{a}</td><td className="num">{c}</td><td><span className={`badge ${cls}`}>{lbl}</span></td></tr>
                         ))}
                     </tbody>
                 </table>
@@ -325,18 +325,18 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
                     <div className="card-header"><div className="card-title">Cost Configuration</div></div>
                     <div style={{ padding: '16px 18px' }}>
                         <div className="form-row">
-                            <div className="form-group"><label className="form-label">Diesel Price (KES/litre)</label><input className="form-input" type="number" value={dieselPrice} onChange={(e) => setDieselPrice(Number(e.target.value))} /></div>
+                            <div className="form-group"><label className="form-label">Diesel Price (TZS/litre)</label><input className="form-input" type="number" value={dieselPrice} onChange={(e) => setDieselPrice(Number(e.target.value))} /></div>
                             <div className="form-group"><label className="form-label">Fuel Consumption (L/hr)</label><input className="form-input" type="number" value={lPerHr} onChange={(e) => setLPerHr(Number(e.target.value))} /></div>
                         </div>
                         <div className="form-row">
                             <div className="form-group"><label className="form-label">Output (kW at full load)</label><input className="form-input" type="number" value={outputKw} onChange={(e) => setOutputKw(Number(e.target.value))} /></div>
-                            <div className="form-group"><label className="form-label">Maintenance Levy (KES/hr)</label><input className="form-input" type="number" value={maintLevy} onChange={(e) => setMaintLevy(Number(e.target.value))} /></div>
+                            <div className="form-group"><label className="form-label">Maintenance Levy (TZS/hr)</label><input className="form-input" type="number" value={maintLevy} onChange={(e) => setMaintLevy(Number(e.target.value))} /></div>
                         </div>
 
                         <div style={{ background: 'var(--amber-dim)', border: '1px solid var(--amber)', borderRadius: 10, padding: '12px 14px' }}>
-                            <div className="bill-summary-row"><span>Fuel cost per hour</span><span>{fmtKES(fuelCostPerHr)}</span></div>
-                            <div className="bill-summary-row"><span>Total cost per hour (incl. maint.)</span><span>{fmtKES(totalCostPerHr)}</span></div>
-                            <div className="bill-summary-row"><span>Effective cost per kWh</span><span style={{ color: 'var(--amber)', fontWeight: 700 }}>KES {costPerKwh}</span></div>
+                            <div className="bill-summary-row"><span>Fuel cost per hour</span><span>{fmtTZS(fuelCostPerHr)}</span></div>
+                            <div className="bill-summary-row"><span>Total cost per hour (incl. maint.)</span><span>{fmtTZS(totalCostPerHr)}</span></div>
+                            <div className="bill-summary-row"><span>Effective cost per kWh</span><span style={{ color: 'var(--amber)', fontWeight: 700 }}>TZS {costPerKwh}</span></div>
                         </div>
                     </div>
                 </div>
@@ -345,7 +345,7 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
             <div className="card" style={{ marginBottom: 16 }}>
                 <div className="card-header"><div className="card-title">Fuel Log</div></div>
                 <table className="ledger-table">
-                    <thead><tr><th>Date</th><th>Litres Added</th><th className="num">Cost (KES)</th><th>Price/L</th><th>Supplier</th><th>Level After</th><th>Logged By</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Litres Added</th><th className="num">Cost (TZS)</th><th>Price/L</th><th>Supplier</th><th>Level After</th><th>Logged By</th></tr></thead>
                     <tbody>
                         {fuelLogs.map((f, i) => {
                             const levelAfter = Number(f.level_after ?? f.levelAfter);
@@ -354,8 +354,8 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
                                 <tr key={i}>
                                     <td>{f.date}</td>
                                     <td className="num">{f.litres} L</td>
-                                    <td className="num">{fmtKES((f.litres ?? 0) * (f.cost_per_litre ?? 0))}</td>
-                                    <td>KES {f.cost_per_litre}/L</td>
+                                    <td className="num">{fmtTZS((f.litres ?? 0) * (f.cost_per_litre ?? 0))}</td>
+                                    <td>TZS {f.cost_per_litre}/L</td>
                                     <td>{f.supplier ?? '—'}</td>
                                     <td>
                                         {hasLevel ? (
@@ -377,9 +377,9 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
             <div className="card">
                 <div className="card-header"><div className="card-title">Monthly Runtime History</div></div>
                 <table className="ledger-table">
-                    <thead><tr><th>Month</th><th className="num">Outages</th><th className="num">Total Runtime</th><th className="num">Fuel Used (L)</th><th className="num">Fuel Cost (KES)</th><th className="num">kWh Generated</th></tr></thead>
+                    <thead><tr><th>Month</th><th className="num">Outages</th><th className="num">Total Runtime</th><th className="num">Fuel Used (L)</th><th className="num">Fuel Cost (TZS)</th><th className="num">kWh Generated</th></tr></thead>
                     <tbody>
-                        {[['March 2026', 3, '14.5 hrs', '87 L', 'KES 16,095', '522 kWh'], ['February 2026', 2, '9.0 hrs', '54 L', 'KES 9,990', '324 kWh'], ['January 2026', 1, '4.5 hrs', '27 L', 'KES 4,995', '162 kWh']].map(([m, ...cols]) => (
+                        {[['March 2026', 3, '14.5 hrs', '87 L', 'TZS 16,095', '522 kWh'], ['February 2026', 2, '9.0 hrs', '54 L', 'TZS 9,990', '324 kWh'], ['January 2026', 1, '4.5 hrs', '27 L', 'TZS 4,995', '162 kWh']].map(([m, ...cols]) => (
                             <tr key={m}><td>{m}</td>{cols.map((c, i) => <td key={i} className="num">{c}</td>)}</tr>
                         ))}
                     </tbody>
@@ -416,8 +416,8 @@ function MetersTab({ readings, units, meterSearch, setMeterSearch, tariff, genRa
                         <th className="num">Consumption (kWh)</th>
                         <th><span className="src-pill grid">Grid</span></th>
                         <th><span className="src-pill gen">Generator</span></th>
-                        <th className="num">Grid Bill (KES)</th><th className="num">Gen Levy (KES)</th>
-                        <th className="num" style={{ color: 'var(--accent)' }}>Total (KES)</th>
+                        <th className="num">Grid Bill (TZS)</th><th className="num">Gen Levy (TZS)</th>
+                        <th className="num" style={{ color: 'var(--accent)' }}>Total (TZS)</th>
                         <th></th>
                     </tr></thead>
                     <tbody>
@@ -436,9 +436,9 @@ function MetersTab({ readings, units, meterSearch, setMeterSearch, tariff, genRa
                                     <td className="num" style={{ fontWeight: 700 }}>{fmt(cons)}</td>
                                     <td className="num"><span className="src-pill grid">{fmt(cons)}</span></td>
                                     <td className="num"><span className="src-pill gen">{fmt(r.gen_kwh ?? 0)}</span></td>
-                                    <td className="num" style={{ color: 'var(--accent)' }}>{fmtKES(gridBill)}</td>
-                                    <td className="num" style={{ color: 'var(--amber)' }}>{fmtKES(genLevy)}</td>
-                                    <td className="num" style={{ fontWeight: 700, color: 'var(--green)' }}>{fmtKES(total)}</td>
+                                    <td className="num" style={{ color: 'var(--accent)' }}>{fmtTZS(gridBill)}</td>
+                                    <td className="num" style={{ color: 'var(--amber)' }}>{fmtTZS(genLevy)}</td>
+                                    <td className="num" style={{ fontWeight: 700, color: 'var(--green)' }}>{fmtTZS(total)}</td>
                                     <td><button style={{ background: 'none', border: 'none', fontSize: 14, color: 'var(--text-muted)', cursor: 'pointer', padding: '2px 6px', borderRadius: 5 }}>✎</button></td>
                                 </tr>
                             );
@@ -500,7 +500,7 @@ function OutagesTab({ outages, onAdd }) {
 
             <div className="card card-last">
                 <table className="ledger-table">
-                    <thead><tr><th>Date</th><th>Start</th><th>End</th><th className="num">Duration</th><th>Type</th><th>Floors Affected</th><th className="num">Gen Runtime</th><th className="num">Fuel Used</th><th className="num">Cost (KES)</th><th>Notes</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Start</th><th>End</th><th className="num">Duration</th><th>Type</th><th>Floors Affected</th><th className="num">Gen Runtime</th><th className="num">Fuel Used</th><th className="num">Cost (TZS)</th><th>Notes</th></tr></thead>
                     <tbody>
                         {outages.map((o, i) => {
                             const hasDuration = o.start_time && o.end_time;
@@ -515,7 +515,7 @@ function OutagesTab({ outages, onAdd }) {
                             const fuelUsedRaw = Number(o.fuel_used ?? o.fuelUsed);
                             const fuelUsed = Number.isFinite(fuelUsedRaw) ? `${fuelUsedRaw} L` : '—';
                             const costRaw = Number(o.cost);
-                            const cost = Number.isFinite(costRaw) ? fmtKES(costRaw) : (hasDuration ? fmtKES(durHours * 1160) : '—');
+                            const cost = Number.isFinite(costRaw) ? fmtTZS(costRaw) : (hasDuration ? fmtTZS(durHours * 1160) : '—');
                             return (
                                 <tr key={i}>
                                     <td>{formatDate(o.start_time)}</td>
@@ -561,14 +561,14 @@ function BillingTab({ readings, units, tariff, genLevyPerUnit }) {
             <div className="info-box" style={{ marginBottom: 16 }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 <div className="info-box-text">
-                    <strong>Billing formula:</strong> Grid bill = Unit kWh × KES {tariff}/kWh. Generator levy = Total generator cost ÷ occupied units = <strong>{fmtKES(genLevyPerUnit)}</strong> per unit. Total = Grid bill + Generator levy.
+                    <strong>Billing formula:</strong> Grid bill = Unit kWh × TZS {tariff}/kWh. Generator levy = Total generator cost ÷ occupied units = <strong>{fmtTZS(genLevyPerUnit)}</strong> per unit. Total = Grid bill + Generator levy.
                 </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 16 }}>
-                <div className="source-kv" style={{ borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)' }}><div className="source-kv-label">Total Grid Charges</div><div className="source-kv-value accent">{fmtKES(totalGrid)}</div></div>
-                <div className="source-kv" style={{ borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)' }}><div className="source-kv-label">Total Gen Levy</div><div className="source-kv-value amber">{fmtKES(totalGen)}</div></div>
-                <div className="source-kv" style={{ borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)' }}><div className="source-kv-label">Total Billed</div><div className="source-kv-value green">{fmtKES(totalAll)}</div></div>
+                <div className="source-kv" style={{ borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)' }}><div className="source-kv-label">Total Grid Charges</div><div className="source-kv-value accent">{fmtTZS(totalGrid)}</div></div>
+                <div className="source-kv" style={{ borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)' }}><div className="source-kv-label">Total Gen Levy</div><div className="source-kv-value amber">{fmtTZS(totalGen)}</div></div>
+                <div className="source-kv" style={{ borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)' }}><div className="source-kv-label">Total Billed</div><div className="source-kv-value green">{fmtTZS(totalAll)}</div></div>
                 <div className="source-kv" style={{ borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)' }}><div className="source-kv-label">Unpaid Bills</div><div className="source-kv-value red">{unpaidCount} units</div></div>
             </div>
 
@@ -587,9 +587,9 @@ function BillingTab({ readings, units, tariff, genLevyPerUnit }) {
                                     <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.number ?? r.unit_number ?? '—'}</td>
                                     <td>{r.tenant_name ?? '—'}</td>
                                     <td className="num">{fmt(r.consumption ?? 0)} kWh</td>
-                                    <td className="num">{fmtKES(gridBill)}</td>
-                                    <td className="num" style={{ color: 'var(--amber)' }}>{fmtKES(genLevyPerUnit)}</td>
-                                    <td className="num" style={{ fontWeight: 700, color: 'var(--green)' }}>{fmtKES(total)}</td>
+                                    <td className="num">{fmtTZS(gridBill)}</td>
+                                    <td className="num" style={{ color: 'var(--amber)' }}>{fmtTZS(genLevyPerUnit)}</td>
+                                    <td className="num" style={{ fontWeight: 700, color: 'var(--green)' }}>{fmtTZS(total)}</td>
                                     <td><span className={`badge ${badgeCls}`}>{status}</span></td>
                                     <td><button style={{ background: 'none', border: 'none', fontSize: 12, color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>View</button></td>
                                 </tr>
@@ -688,7 +688,7 @@ function FuelModal({ onClose }) {
                             <div style={{ flex: 1 }}><label className="form-label">Litres Added</label><input className="form-input" type="number" value={form.litres} onChange={e => setForm(f => ({ ...f, litres: e.target.value }))} required /></div>
                         </div>
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                            <div style={{ flex: 1 }}><label className="form-label">Price per Litre (KES)</label><input className="form-input" type="number" value={form.cost_per_litre} onChange={e => setForm(f => ({ ...f, cost_per_litre: e.target.value }))} /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Price per Litre (TZS)</label><input className="form-input" type="number" value={form.cost_per_litre} onChange={e => setForm(f => ({ ...f, cost_per_litre: e.target.value }))} /></div>
                             <div style={{ flex: 1 }}><label className="form-label">Supplier</label><input className="form-input" type="text" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} /></div>
                         </div>
                         <div><label className="form-label">Notes</label><input className="form-input" type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>

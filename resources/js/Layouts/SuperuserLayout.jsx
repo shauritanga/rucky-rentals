@@ -65,7 +65,11 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
 
         <div className="sidebar-footer">
           <Link href="/superuser/profile" className="user-card" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div className="avatar">{initials}</div>
+            <div className="avatar" style={{ overflow: 'hidden', padding: 0 }}>
+              {user?.avatar_url
+                ? <img src={user.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
+                : initials}
+            </div>
             <div className="user-info">
               <div className="user-name">{displayName}</div>
               <div className="user-role">{roleLabel}</div>

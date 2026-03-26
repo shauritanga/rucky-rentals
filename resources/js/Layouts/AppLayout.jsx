@@ -67,7 +67,11 @@ export default function AppLayout({ children, title, subtitle }) {
 
         <div className="sidebar-footer">
           <Link href="/profile" className="user-card" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div className="avatar">{initials}</div>
+            <div className="avatar" style={{ overflow: 'hidden', padding: 0 }}>
+              {user?.avatar_url
+                ? <img src={user.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
+                : initials}
+            </div>
             <div className="user-info">
               <div className="user-name">{displayName}</div>
               <div className="user-role">{roleLabel}</div>
