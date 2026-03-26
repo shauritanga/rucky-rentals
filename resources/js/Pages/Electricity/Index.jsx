@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout';
 const fmt = (n) => Number(n).toLocaleString();
 const fmtTZS = (n) => `TZS ${fmt(Math.round(n))}`;
 
-export default function Electricity({ readings = [], outages = [], fuelLogs = [], units = [], gridSettings = {}, genSettings = {} }) {
+export default function Electricity({ readings = [], outages = [], fuelLogs = [], units = [], gridSettings = {}, genSettings = {}, currentMonth = new Date().toISOString().slice(0, 7), runtimeHistory = [] }) {
     const [tab, setTab] = useState('dashboard');
     const [gridOn, setGridOn] = useState(true);
     const [genRunning, setGenRunning] = useState(false);
@@ -30,7 +30,7 @@ export default function Electricity({ readings = [], outages = [], fuelLogs = []
 
     const topConsumers = [...readings].sort((a, b) => (b.consumption ?? 0) - (a.consumption ?? 0)).slice(0, 8);
 
-    const genLevyPerUnit = readings.length > 0 ? (fuelLogs.reduce((s, f) => s + (f.cost_per_litre * f.litres), 0) / readings.length) : 589;
+    const genLevyPerUnit = readings.length > 0 ? (fuelLogs.reduce((s, f) => s + ((f.price_per_litre ?? f.price_per_litre ?? 0) * f.litres), 0) / readings.length) : 589;
 
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', section: 'Overview', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="15" height="15"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> },
@@ -58,15 +58,15 @@ export default function Electricity({ readings = [], outages = [], fuelLogs = []
 
                 <main className="acc-content" style={{ overflowY: 'auto', padding: 26 }}>
                     {tab === 'dashboard' && <DashboardTab readings={readings} outages={outages} fuelLogs={fuelLogs} units={units} gridOn={gridOn} setGridOn={setGridOn} genRunning={genRunning} setGenRunning={setGenRunning} tariff={tariff} genRate={genRate} fuelPct={fuelPct} totalGridKwh={totalGridKwh} totalBill={totalBill} outageCount={outageCount} floors={floors} floorMax={floorMax} topConsumers={topConsumers} setTab={setTab} onAddReading={() => setShowReadingModal(true)} />}
-                    {tab === 'grid' && <GridTab gridSettings={gridSettings} />}
-                    {tab === 'generator' && <GeneratorTab fuelLogs={fuelLogs} genSettings={genSettings} fuelPct={fuelPct} onAddFuel={() => setShowFuelModal(true)} />}
+                    {tab === 'grid' && <GridTab gridSettings={gridSettings} currentMonth={currentMonth} onSave={(data) => router.post('/electricity/settings/grid', data, { preserveScroll: true })} />}
+                    {tab === 'generator' && <GeneratorTab fuelLogs={fuelLogs} genSettings={genSettings} fuelPct={fuelPct} runtimeHistory={runtimeHistory} onAddFuel={() => setShowFuelModal(true)} onSaveGen={(data) => router.post('/electricity/settings/generator', data, { preserveScroll: true })} />}
                     {tab === 'meters' && <MetersTab readings={readings} units={units} meterSearch={meterSearch} setMeterSearch={setMeterSearch} tariff={tariff} genRate={genRate} onAddReading={() => setShowReadingModal(true)} />}
                     {tab === 'outages' && <OutagesTab outages={outages} onAdd={() => setShowOutageModal(true)} />}
-                    {tab === 'billing' && <BillingTab readings={readings} units={units} tariff={tariff} genLevyPerUnit={genLevyPerUnit} />}
+                    {tab === 'billing' && <BillingTab readings={readings} units={units} tariff={tariff} genLevyPerUnit={genLevyPerUnit} onGenerateBills={() => router.post('/electricity/bills/generate', {}, { preserveScroll: true })} onIssueBills={() => router.post('/electricity/bills/issue', {}, { preserveScroll: true })} />}
                 </main>
             </div>
 
-            {showReadingModal && <ReadingModal units={units} onClose={() => setShowReadingModal(false)} />}
+            {showReadingModal && <ReadingModal units={units} currentMonth={currentMonth} onClose={() => setShowReadingModal(false)} />}
             {showOutageModal && <OutageModal onClose={() => setShowOutageModal(false)} />}
             {showFuelModal && <FuelModal onClose={() => setShowFuelModal(false)} />}
         </AppLayout>
@@ -191,7 +191,7 @@ function DashboardTab({ readings, outages, units, gridOn, setGridOn, genRunning,
                                 const unit = units.find((u) => u.id === r.unit_id);
                                 return (
                                     <tr key={i}>
-                                        <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.number ?? r.unit_number ?? '—'}</td>
+                                        <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.unit_number ?? '—'}</td>
                                         <td>{r.tenant_name ?? '—'}</td>
                                         <td className="num" style={{ fontWeight: 600 }}>{fmt(r.consumption ?? 0)}</td>
                                         <td className="num" style={{ color: 'var(--green)', fontWeight: 600 }}>{fmtTZS((r.consumption ?? 0) * tariff)}</td>
@@ -207,8 +207,10 @@ function DashboardTab({ readings, outages, units, gridOn, setGridOn, genRunning,
     );
 }
 
-function GridTab({ gridSettings }) {
-    const [form, setForm] = useState({ energy_rate: 22.50, fixed_charge: 1800, fuel_levy: 3.20, erc_levy: 0.50, reading_day: 1, account_no: '039-001-3874', bill_amount: 288900, bill_kwh: 12840, common_kwh: 420, ...gridSettings });
+const fmtMonth = (m) => new Date(m + '-02').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+function GridTab({ gridSettings, currentMonth, onSave }) {
+    const [form, setForm] = useState({ energy_rate: 22.50, fixed_charge: 1800, fuel_levy: 3.20, erc_levy: 0.50, reading_day: 1, account_no: '', bill_amount: 0, bill_kwh: 0, common_kwh: 0, ...gridSettings });
     const effective = (parseFloat(form.energy_rate) + parseFloat(form.fuel_levy) + parseFloat(form.erc_levy)).toFixed(2);
     const commonCost = form.bill_kwh ? (form.common_kwh / form.bill_kwh) * form.bill_amount : 0;
     const toAllocate = form.bill_amount - commonCost;
@@ -216,7 +218,7 @@ function GridTab({ gridSettings }) {
         <div>
             <div className="page-header">
                 <div><div className="page-title">Grid Power — KPLC Settings</div><div className="page-sub">Configure tariff, billing cycle and supply details</div></div>
-                <div className="actions"><button className="btn-primary">Save Settings</button></div>
+                <div className="actions"><button className="btn-primary" onClick={() => onSave(form)}>Save Settings</button></div>
             </div>
 
             <div className="grid-2-equal">
@@ -269,9 +271,18 @@ function GridTab({ gridSettings }) {
                 <table className="ledger-table">
                     <thead><tr><th>Month</th><th>KPLC Bill (TZS)</th><th className="num">Total kWh</th><th className="num">Units Avg</th><th className="num">Common kWh</th><th>Status</th></tr></thead>
                     <tbody>
-                        {[['March 2026', '288,900', '12,840', '22.50', '420', 'unpaid', 'Pending'], ['February 2026', '275,400', '12,240', '22.50', '398', 'paid', 'Paid'], ['January 2026', '270,000', '12,000', '22.50', '410', 'paid', 'Paid']].map(([m, b, k, a, c, cls, lbl]) => (
-                            <tr key={m}><td>{m}</td><td>TZS {b}</td><td className="num">{k}</td><td className="num">{a}</td><td className="num">{c}</td><td><span className={`badge ${cls}`}>{lbl}</span></td></tr>
-                        ))}
+                        {form.bill_amount > 0 ? (
+                            <tr>
+                                <td>{fmtMonth(currentMonth)}</td>
+                                <td>{fmtTZS(form.bill_amount)}</td>
+                                <td className="num">{fmt(form.bill_kwh)}</td>
+                                <td className="num">{form.energy_rate}</td>
+                                <td className="num">{fmt(form.common_kwh)}</td>
+                                <td><span className="badge unpaid">Current</span></td>
+                            </tr>
+                        ) : (
+                            <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 28 }}>No billing history — enter this month's KPLC bill above and save</td></tr>
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -279,11 +290,11 @@ function GridTab({ gridSettings }) {
     );
 }
 
-function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
-    const [dieselPrice, setDieselPrice] = useState(185);
-    const [lPerHr, setLPerHr] = useState(6);
-    const [outputKw, setOutputKw] = useState(36);
-    const [maintLevy, setMaintLevy] = useState(50);
+function GeneratorTab({ fuelLogs, genSettings, fuelPct, runtimeHistory = [], onAddFuel, onSaveGen }) {
+    const [dieselPrice, setDieselPrice] = useState(genSettings?.diesel_price ?? 185);
+    const [lPerHr, setLPerHr] = useState(genSettings?.l_per_hr ?? 6);
+    const [outputKw, setOutputKw] = useState(genSettings?.output_kw ?? 36);
+    const [maintLevy, setMaintLevy] = useState(genSettings?.maint_levy ?? 50);
     const fuelCostPerHr = dieselPrice * lPerHr;
     const totalCostPerHr = fuelCostPerHr + maintLevy;
     const costPerKwh = (totalCostPerHr / outputKw).toFixed(2);
@@ -338,6 +349,9 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
                             <div className="bill-summary-row"><span>Total cost per hour (incl. maint.)</span><span>{fmtTZS(totalCostPerHr)}</span></div>
                             <div className="bill-summary-row"><span>Effective cost per kWh</span><span style={{ color: 'var(--amber)', fontWeight: 700 }}>TZS {costPerKwh}</span></div>
                         </div>
+                        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+                            <button className="btn-primary" onClick={() => onSaveGen({ diesel_price: dieselPrice, l_per_hr: lPerHr, output_kw: outputKw, maint_levy: maintLevy, tank_size: genSettings?.tank_size ?? 200 })}>Save Settings</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -352,10 +366,10 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
                             const hasLevel = Number.isFinite(levelAfter);
                             return (
                                 <tr key={i}>
-                                    <td>{f.date}</td>
+                                    <td>{f.log_date}</td>
                                     <td className="num">{f.litres} L</td>
-                                    <td className="num">{fmtTZS((f.litres ?? 0) * (f.cost_per_litre ?? 0))}</td>
-                                    <td>TZS {f.cost_per_litre}/L</td>
+                                    <td className="num">{fmtTZS((f.litres ?? 0) * (f.price_per_litre ?? 0))}</td>
+                                    <td>TZS {f.price_per_litre}/L</td>
                                     <td>{f.supplier ?? '—'}</td>
                                     <td>
                                         {hasLevel ? (
@@ -365,7 +379,7 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
                                             </div>
                                         ) : '—'}
                                     </td>
-                                    <td>{f.by ?? '—'}</td>
+                                    <td>{f.recorded_by ?? '—'}</td>
                                 </tr>
                             );
                         })}
@@ -379,9 +393,18 @@ function GeneratorTab({ fuelLogs, genSettings, fuelPct, onAddFuel }) {
                 <table className="ledger-table">
                     <thead><tr><th>Month</th><th className="num">Outages</th><th className="num">Total Runtime</th><th className="num">Fuel Used (L)</th><th className="num">Fuel Cost (TZS)</th><th className="num">kWh Generated</th></tr></thead>
                     <tbody>
-                        {[['March 2026', 3, '14.5 hrs', '87 L', 'TZS 16,095', '522 kWh'], ['February 2026', 2, '9.0 hrs', '54 L', 'TZS 9,990', '324 kWh'], ['January 2026', 1, '4.5 hrs', '27 L', 'TZS 4,995', '162 kWh']].map(([m, ...cols]) => (
-                            <tr key={m}><td>{m}</td>{cols.map((c, i) => <td key={i} className="num">{c}</td>)}</tr>
-                        ))}
+                        {runtimeHistory.length > 0 ? runtimeHistory.map((row) => (
+                            <tr key={row.month}>
+                                <td>{fmtMonth(row.month)}</td>
+                                <td className="num">{row.outage_count}</td>
+                                <td className="num">{row.runtime_hrs} hrs</td>
+                                <td className="num">{row.fuel_used} L</td>
+                                <td className="num">{fmtTZS(row.fuel_cost)}</td>
+                                <td className="num">{row.gen_kwh} kWh</td>
+                            </tr>
+                        )) : (
+                            <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 28 }}>No generator runtime recorded yet</td></tr>
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -393,7 +416,7 @@ function MetersTab({ readings, units, meterSearch, setMeterSearch, tariff, genRa
     const filtered = readings.filter(r => {
         const unit = units.find(u => u.id === r.unit_id);
         const q = meterSearch.toLowerCase();
-        return !q || (unit?.number ?? '').toLowerCase().includes(q) || (r.tenant_name ?? '').toLowerCase().includes(q);
+        return !q || (unit?.unit_number ?? '').toLowerCase().includes(q) || (r.tenant_name ?? '').toLowerCase().includes(q);
     });
     return (
         <div>
@@ -429,7 +452,7 @@ function MetersTab({ readings, units, meterSearch, setMeterSearch, tariff, genRa
                             const total = gridBill + genLevy;
                             return (
                                 <tr key={i}>
-                                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.number ?? r.unit_number ?? '—'}</td>
+                                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.unit_number ?? '—'}</td>
                                     <td style={{ fontWeight: 500 }}>{r.tenant_name ?? '—'}</td>
                                     <td className="num">{fmt(r.prev_reading ?? 0)}</td>
                                     <td className="num">{fmt(r.curr_reading ?? 0)}</td>
@@ -504,12 +527,13 @@ function OutagesTab({ outages, onAdd }) {
                     <tbody>
                         {outages.map((o, i) => {
                             const hasDuration = o.start_time && o.end_time;
-                            const durHours = hasDuration ? (new Date(o.end_time) - new Date(o.start_time)) / 3600000 : 0;
+                            const toMinutes = (t) => { const [h, m] = (t || '').split(':').map(Number); return h * 60 + (m || 0); };
+                            const durHours = hasDuration ? Math.max(0, toMinutes(o.end_time) - toMinutes(o.start_time)) / 60 : 0;
                             const dur = hasDuration ? `${durHours.toFixed(1)} hrs` : '—';
-                            const typeRaw = (o.type ?? o.reason ?? 'major').toString().toLowerCase();
+                            const typeRaw = (o.type ?? 'major').toString().toLowerCase();
                             const sevClass = typeRaw.includes('planned') ? 'planned' : (typeRaw.includes('minor') ? 'minor' : 'major');
                             const sevLabel = sevClass.charAt(0).toUpperCase() + sevClass.slice(1);
-                            const floors = Array.isArray(o.affected_units) ? o.affected_units.join(', ') : (o.affected_units || 'All floors');
+                            const floors = o.floors_affected || 'All floors';
                             const genRuntimeRaw = Number(o.generator_runtime_hours);
                             const genRuntime = Number.isFinite(genRuntimeRaw) ? `${genRuntimeRaw.toFixed(1)} hrs` : dur;
                             const fuelUsedRaw = Number(o.fuel_used ?? o.fuelUsed);
@@ -518,9 +542,9 @@ function OutagesTab({ outages, onAdd }) {
                             const cost = Number.isFinite(costRaw) ? fmtTZS(costRaw) : (hasDuration ? fmtTZS(durHours * 1160) : '—');
                             return (
                                 <tr key={i}>
-                                    <td>{formatDate(o.start_time)}</td>
-                                    <td>{formatTime(o.start_time)}</td>
-                                    <td>{o.end_time ? formatTime(o.end_time) : '—'}</td>
+                                    <td>{o.outage_date ? formatDate(o.outage_date) : '—'}</td>
+                                    <td>{o.start_time || '—'}</td>
+                                    <td>{o.end_time || '—'}</td>
                                     <td className="num">{dur}</td>
                                     <td><span className={`outage-sev ${sevClass}`}>{sevLabel}</span></td>
                                     <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{floors}</td>
@@ -539,19 +563,19 @@ function OutagesTab({ outages, onAdd }) {
     );
 }
 
-function BillingTab({ readings, units, tariff, genLevyPerUnit }) {
+function BillingTab({ readings, units, tariff, genLevyPerUnit, onGenerateBills, onIssueBills }) {
     const totalGrid = readings.reduce((s, r) => s + (r.consumption ?? 0) * tariff, 0);
     const totalGen = readings.length * genLevyPerUnit;
     const totalAll = totalGrid + totalGen;
-    const unpaidCount = readings.reduce((s, _, i) => (i % 5 === 1 || i % 4 === 3 ? s + 1 : s), 0);
+    const unpaidCount = readings.filter(r => r.invoice_status === 'unpaid' || r.invoice_status === 'overdue').length;
 
     return (
         <div>
             <div className="page-header">
-                <div><div className="page-title">Unit Electricity Bills</div><div className="page-sub">March 2026</div></div>
+                <div><div className="page-title">Unit Electricity Bills</div><div className="page-sub">Current Month</div></div>
                 <div className="actions">
-                    <button className="btn-ghost">Generate All Bills</button>
-                    <button className="btn-primary">
+                    <button className="btn-ghost" onClick={onGenerateBills}>Generate All Bills</button>
+                    <button className="btn-primary" onClick={onIssueBills}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                         Issue All Invoices
                     </button>
@@ -580,18 +604,29 @@ function BillingTab({ readings, units, tariff, genLevyPerUnit }) {
                             const unit = units.find(u => u.id === r.unit_id);
                             const gridBill = (r.consumption ?? 0) * tariff;
                             const total = gridBill + genLevyPerUnit;
-                            const status = i % 5 === 1 ? 'Overdue' : (i % 4 === 3 ? 'Unpaid' : 'Paid');
-                            const badgeCls = status === 'Paid' ? 'paid' : (status === 'Overdue' ? 'overdue' : 'unpaid');
+                            const rawStatus = r.invoice_status ?? null;
+                            const status = rawStatus === null ? 'No Bill'
+                                : rawStatus === 'partially_paid' ? 'Part Paid'
+                                : rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
+                            const badgeCls = rawStatus === 'paid' ? 'paid'
+                                : rawStatus === 'overdue' ? 'overdue'
+                                : rawStatus === 'unpaid' || rawStatus === 'partially_paid' ? 'unpaid'
+                                : 'muted';
                             return (
                                 <tr key={i}>
-                                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.number ?? r.unit_number ?? '—'}</td>
+                                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{unit?.unit_number ?? '—'}</td>
                                     <td>{r.tenant_name ?? '—'}</td>
                                     <td className="num">{fmt(r.consumption ?? 0)} kWh</td>
                                     <td className="num">{fmtTZS(gridBill)}</td>
                                     <td className="num" style={{ color: 'var(--amber)' }}>{fmtTZS(genLevyPerUnit)}</td>
                                     <td className="num" style={{ fontWeight: 700, color: 'var(--green)' }}>{fmtTZS(total)}</td>
                                     <td><span className={`badge ${badgeCls}`}>{status}</span></td>
-                                    <td><button style={{ background: 'none', border: 'none', fontSize: 12, color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>View</button></td>
+                                    <td>
+                                        {r.invoice_number
+                                            ? <a href="/invoices" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'underline', fontFamily: 'inherit' }}>{r.invoice_number}</a>
+                                            : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
+                                        }
+                                    </td>
                                 </tr>
                             );
                         })}
@@ -603,9 +638,19 @@ function BillingTab({ readings, units, tariff, genLevyPerUnit }) {
     );
 }
 
-function ReadingModal({ units, onClose }) {
-    const [form, setForm] = useState({ month: '2026-03', date: new Date().toISOString().slice(0, 10), unit_id: '', prev_reading: '', curr_reading: '', gen_kwh: '', notes: '' });
-    const consumption = form.curr_reading && form.prev_reading ? Math.max(0, form.curr_reading - form.prev_reading) : null;
+function ReadingModal({ units, currentMonth, onClose }) {
+    const today = new Date().toISOString().slice(0, 10);
+    // Generate last 6 months as options
+    const monthOptions = Array.from({ length: 6 }, (_, i) => {
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - i);
+        const value = d.toISOString().slice(0, 7);
+        const label = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+        return { value, label };
+    });
+    const [form, setForm] = useState({ month: currentMonth, reading_date: today, unit_id: '', prev_reading: '', curr_reading: '', gen_kwh: '' });
+    const consumption = form.curr_reading && form.prev_reading ? Math.max(0, Number(form.curr_reading) - Number(form.prev_reading)) : null;
     const submit = (e) => {
         e.preventDefault();
         router.post('/electricity/readings', form, { onSuccess: onClose });
@@ -617,25 +662,28 @@ function ReadingModal({ units, onClose }) {
                 <form onSubmit={submit}>
                     <div className="modal-body">
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                            <div style={{ flex: 1 }}><label className="form-label">Reading Month</label><select className="form-input form-select" value={form.month} onChange={e => setForm(f => ({ ...f, month: e.target.value }))}><option value="2026-03">March 2026</option><option value="2026-02">February 2026</option></select></div>
-                            <div style={{ flex: 1 }}><label className="form-label">Reading Date</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Reading Month</label>
+                                <select className="form-input form-select" value={form.month} onChange={e => setForm(f => ({ ...f, month: e.target.value }))}>
+                                    {monthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                            </div>
+                            <div style={{ flex: 1 }}><label className="form-label">Reading Date</label><input className="form-input" type="date" value={form.reading_date} onChange={e => setForm(f => ({ ...f, reading_date: e.target.value }))} required /></div>
                         </div>
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
                             <div style={{ flex: 1 }}><label className="form-label">Unit</label>
-                                <select className="form-input form-select" value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))}>
+                                <select className="form-input form-select" value={form.unit_id} onChange={e => setForm(f => ({ ...f, unit_id: e.target.value }))} required>
                                     <option value="">Select unit...</option>
-                                    {units.map(u => <option key={u.id} value={u.id}>{u.number}</option>)}
+                                    {units.map(u => <option key={u.id} value={u.id}>{u.unit_number}</option>)}
                                 </select>
                             </div>
-                            <div style={{ flex: 1 }}><label className="form-label">Previous Reading (kWh)</label><input className="form-input" type="number" value={form.prev_reading} onChange={e => setForm(f => ({ ...f, prev_reading: e.target.value }))} /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Previous Reading (kWh)</label><input className="form-input" type="number" min="0" value={form.prev_reading} onChange={e => setForm(f => ({ ...f, prev_reading: e.target.value }))} required /></div>
                         </div>
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                            <div style={{ flex: 1 }}><label className="form-label">Current Reading (kWh)</label><input className="form-input" type="number" value={form.curr_reading} onChange={e => setForm(f => ({ ...f, curr_reading: e.target.value }))} /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Current Reading (kWh)</label><input className="form-input" type="number" min="0" value={form.curr_reading} onChange={e => setForm(f => ({ ...f, curr_reading: e.target.value }))} required /></div>
                             <div style={{ flex: 1 }}><label className="form-label">Consumption</label><div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>{consumption !== null ? `${consumption} kWh` : '— kWh'}</div></div>
                         </div>
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                            <div style={{ flex: 1 }}><label className="form-label">Generator kWh (if sub-metered)</label><input className="form-input" type="number" value={form.gen_kwh} onChange={e => setForm(f => ({ ...f, gen_kwh: e.target.value }))} placeholder="0" /></div>
-                            <div style={{ flex: 1 }}><label className="form-label">Notes</label><input className="form-input" type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Generator kWh (optional)</label><input className="form-input" type="number" min="0" value={form.gen_kwh} onChange={e => setForm(f => ({ ...f, gen_kwh: e.target.value }))} placeholder="0" /></div>
                         </div>
                     </div>
                     <div className="modal-footer"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" className="btn-primary">Save Reading</button></div>
@@ -646,7 +694,11 @@ function ReadingModal({ units, onClose }) {
 }
 
 function OutageModal({ onClose }) {
-    const [form, setForm] = useState({ start_time: '', end_time: '', reason: '', notes: '' });
+    const today = new Date().toISOString().slice(0, 10);
+    const [form, setForm] = useState({
+        outage_date: today, type: 'minor', start_time: '', end_time: '',
+        floors_affected: 'All floors', generator_activated: false, fuel_used: '', notes: '',
+    });
     const submit = (e) => {
         e.preventDefault();
         router.post('/electricity/outages', form, { onSuccess: onClose });
@@ -658,11 +710,33 @@ function OutageModal({ onClose }) {
                 <form onSubmit={submit}>
                     <div className="modal-body">
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                            <div style={{ flex: 1 }}><label className="form-label">Start Time</label><input className="form-input" type="datetime-local" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} required /></div>
-                            <div style={{ flex: 1 }}><label className="form-label">End Time</label><input className="form-input" type="datetime-local" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Outage Date</label><input className="form-input" type="date" value={form.outage_date} onChange={e => setForm(f => ({ ...f, outage_date: e.target.value }))} required /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Type</label>
+                                <select className="form-input form-select" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} required>
+                                    <option value="minor">Minor</option>
+                                    <option value="major">Major</option>
+                                    <option value="planned">Planned</option>
+                                </select>
+                            </div>
                         </div>
-                        <div style={{ marginBottom: 14 }}><label className="form-label">Reason</label><input className="form-input" type="text" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} /></div>
-                        <div><label className="form-label">Notes</label><textarea className="form-input" rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ resize: 'vertical' }} /></div>
+                        <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                            <div style={{ flex: 1 }}><label className="form-label">Start Time</label><input className="form-input" type="time" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))} required /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">End Time (leave blank if ongoing)</label><input className="form-input" type="time" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))} /></div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center' }}>
+                            <div style={{ flex: 1 }}><label className="form-label">Floors Affected</label><input className="form-input" type="text" value={form.floors_affected} onChange={e => setForm(f => ({ ...f, floors_affected: e.target.value }))} placeholder="e.g. All floors, Floor 2-4" /></div>
+                            <div style={{ flex: 1 }}>
+                                <label className="form-label">Generator Activated</label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={form.generator_activated} onChange={e => setForm(f => ({ ...f, generator_activated: e.target.checked, fuel_used: e.target.checked ? f.fuel_used : '' }))} style={{ width: 16, height: 16 }} />
+                                    <span style={{ fontSize: 13 }}>Yes, generator was used</span>
+                                </label>
+                            </div>
+                        </div>
+                        {form.generator_activated && (
+                            <div style={{ marginBottom: 14 }}><label className="form-label">Fuel Used (litres)</label><input className="form-input" type="number" min="0" step="0.1" value={form.fuel_used} onChange={e => setForm(f => ({ ...f, fuel_used: e.target.value }))} placeholder="0" /></div>
+                        )}
+                        <div><label className="form-label">Notes</label><textarea className="form-input" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} style={{ resize: 'vertical' }} /></div>
                     </div>
                     <div className="modal-footer"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" className="btn-primary">Log Outage</button></div>
                 </form>
@@ -672,7 +746,9 @@ function OutageModal({ onClose }) {
 }
 
 function FuelModal({ onClose }) {
-    const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), litres: '', cost_per_litre: 185, supplier: '', notes: '' });
+    const today = new Date().toISOString().slice(0, 10);
+    const [form, setForm] = useState({ log_date: today, litres: '', price_per_litre: 185, supplier: '', level_after: '' });
+    const totalCost = form.litres && form.price_per_litre ? Math.round(Number(form.litres) * Number(form.price_per_litre)) : null;
     const submit = (e) => {
         e.preventDefault();
         router.post('/electricity/fuel', form, { onSuccess: onClose });
@@ -684,14 +760,17 @@ function FuelModal({ onClose }) {
                 <form onSubmit={submit}>
                     <div className="modal-body">
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                            <div style={{ flex: 1 }}><label className="form-label">Date</label><input className="form-input" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></div>
-                            <div style={{ flex: 1 }}><label className="form-label">Litres Added</label><input className="form-input" type="number" value={form.litres} onChange={e => setForm(f => ({ ...f, litres: e.target.value }))} required /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Date</label><input className="form-input" type="date" value={form.log_date} onChange={e => setForm(f => ({ ...f, log_date: e.target.value }))} required /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Litres Added</label><input className="form-input" type="number" min="0" step="0.1" value={form.litres} onChange={e => setForm(f => ({ ...f, litres: e.target.value }))} required /></div>
                         </div>
                         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-                            <div style={{ flex: 1 }}><label className="form-label">Price per Litre (TZS)</label><input className="form-input" type="number" value={form.cost_per_litre} onChange={e => setForm(f => ({ ...f, cost_per_litre: e.target.value }))} /></div>
-                            <div style={{ flex: 1 }}><label className="form-label">Supplier</label><input className="form-input" type="text" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Price per Litre (TZS)</label><input className="form-input" type="number" min="0" value={form.price_per_litre} onChange={e => setForm(f => ({ ...f, price_per_litre: e.target.value }))} required /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Supplier</label><input className="form-input" type="text" value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} placeholder="e.g. Total, Oryx" /></div>
                         </div>
-                        <div><label className="form-label">Notes</label><input className="form-input" type="text" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
+                        <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
+                            <div style={{ flex: 1 }}><label className="form-label">Tank Level After (%)</label><input className="form-input" type="number" min="0" max="100" value={form.level_after} onChange={e => setForm(f => ({ ...f, level_after: e.target.value }))} required placeholder="0–100" /></div>
+                            <div style={{ flex: 1 }}><label className="form-label">Total Cost</label><div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>{totalCost !== null ? `TZS ${totalCost.toLocaleString()}` : '—'}</div></div>
+                        </div>
                     </div>
                     <div className="modal-footer"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" className="btn-primary">Save Fuel Log</button></div>
                 </form>

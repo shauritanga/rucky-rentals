@@ -58,6 +58,10 @@ Route::middleware('auth')->group(function () {
         Route::post('electricity/readings', [ElectricityController::class, 'storeReading'])->name('electricity.readings.store');
         Route::post('electricity/outages', [ElectricityController::class, 'storeOutage'])->name('electricity.outages.store');
         Route::post('electricity/fuel', [ElectricityController::class, 'storeFuelLog'])->name('electricity.fuel.store');
+        Route::post('electricity/bills/generate', [ElectricityController::class, 'generateBills'])->name('electricity.bills.generate');
+        Route::post('electricity/bills/issue', [ElectricityController::class, 'issueInvoices'])->name('electricity.bills.issue');
+        Route::post('electricity/settings/grid', [ElectricityController::class, 'updateGridSettings'])->name('electricity.settings.grid');
+        Route::post('electricity/settings/generator', [ElectricityController::class, 'updateGenSettings'])->name('electricity.settings.generator');
 
         Route::get('accounting', [AccountingController::class, 'index'])->name('accounting');
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
