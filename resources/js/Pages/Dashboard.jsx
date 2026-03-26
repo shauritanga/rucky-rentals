@@ -5,15 +5,8 @@ import useExchangeRate from '@/hooks/useExchangeRate';
 const STATUS_CLASS = { occupied: 'occupied', vacant: 'vacant', overdue: 'overdue', maintenance: 'maintenance' };
 const STATUS_LABEL = { occupied: 'Occupied', vacant: 'Vacant', overdue: 'Overdue', maintenance: 'Maintenance' };
 
-export default function Dashboard({ stats, recentPayments, maintenanceItems, units, occupancyByFloor }) {
-  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
-  const upcomingEvents = [
-    { day: '20', mon: 'Mar', title: 'Rent due - A-102', meta: `Brian Kimani - ${formatTzsFromUsd(950)}`, type: 'rent', label: 'Rent' },
-    { day: '22', mon: 'Mar', title: 'Plumbing repair - D-401', meta: 'Contractor visit scheduled', type: 'repair', label: 'Repair' },
-    { day: '25', mon: 'Mar', title: 'Move-in - B-202', meta: 'New tenant onboarding', type: 'move', label: 'Move-in' },
-    { day: '31', mon: 'Mar', title: 'Lease renewal - C-302', meta: '12 months extension', type: 'move', label: 'Lease' },
-    { day: '1', mon: 'Apr', title: 'Rent due - all units', meta: `${stats.occupiedUnits} active tenants`, type: 'rent', label: 'Rent' },
-  ];
+export default function Dashboard({ stats, recentPayments, maintenanceItems, units, occupancyByFloor, upcomingEvents = [] }) {
+  const { formatCompactTzsFromUsd, formatMoney } = useExchangeRate();
 
   return (
     <AppLayout title="Dashboard" subtitle="March 2026">
@@ -40,7 +33,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
         <div className="stat-card">
           <div className="stat-top">
             <div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
-            <span className="stat-delta down">↓ {formatTzsFromUsd(800)}</span>
+            <span className="stat-delta down">↓ TZS 2,120,000</span>
           </div>
           <div className="stat-value">{formatCompactTzsFromUsd(stats.monthlyRevenue)}</div>
           <div className="stat-label">Revenue / Month</div>
@@ -99,8 +92,8 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                         )}
                       </td>
                       <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
-                      <td className="amount">{formatTzsFromUsd(u.rent)}</td>
-                      <td className={`amount ${isOverdue ? 'due' : isOccupied ? 'paid' : ''}`}>{isOverdue ? formatTzsFromUsd(u.rent) : isOccupied ? 'Paid' : '—'}</td>
+                      <td className="amount">{formatMoney(u.rent, u.currency)}</td>
+                      <td className={`amount ${isOverdue ? 'due' : isOccupied ? 'paid' : ''}`}>{isOverdue ? formatMoney(u.rent, u.currency) : isOccupied ? 'Paid' : '—'}</td>
                       <td><button className="action-dots">···</button></td>
                     </tr>
                   );
@@ -119,7 +112,11 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
             <button className="card-action">Calendar</button>
           </div>
           <div className="events-list">
-            {upcomingEvents.map((e) => (
+            {upcomingEvents.length === 0 ? (
+              <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                No upcoming events in the next 7 days
+              </div>
+            ) : upcomingEvents.map((e) => (
               <div className="event-item" key={`${e.day}-${e.title}`}>
                 <div className="event-date"><div className="event-day">{e.day}</div><div className="event-mon">{e.mon}</div></div>
                 <div>
@@ -172,7 +169,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                   <div className="pay-unit">Unit {p.unit?.unit_number || '—'}</div>
                 </div>
                 <div>
-                  <div className="pay-amount" style={{ color: p.status === 'paid' ? 'var(--green)' : 'var(--red)' }}>{p.status === 'paid' ? '+ ' : ''}{formatTzsFromUsd(p.amount)}</div>
+                  <div className="pay-amount" style={{ color: p.status === 'paid' ? 'var(--green)' : 'var(--red)' }}>{p.status === 'paid' ? '+ ' : ''}{formatMoney(p.amount, p.currency)}</div>
                   <div className="pay-date">{p.paid_date || 'Overdue'}</div>
                 </div>
               </div>

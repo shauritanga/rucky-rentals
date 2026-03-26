@@ -65,6 +65,15 @@ export default function useExchangeRate() {
     return `TZS ${tzs.toLocaleString()}`;
   }, [rate]);
 
+  // Display amount in its native currency — no conversion.
+  const formatMoney = useCallback((amount, currency = 'USD') => {
+    if (amount == null || Number.isNaN(Number(amount))) return '—';
+    const n   = Number(amount);
+    const cur = (currency || 'USD').toUpperCase();
+    if (cur === 'TZS') return `TZS ${Math.round(n).toLocaleString()}`;
+    return `${cur} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }, []);
+
   const sourceLabel = useMemo(() => {
     if (source === 'live') return 'live';
     if (source === 'cached') return 'cached';
@@ -78,5 +87,6 @@ export default function useExchangeRate() {
     refreshRate: () => fetchRate({ force: true }),
     formatTzsFromUsd,
     formatCompactTzsFromUsd,
+    formatMoney,
   };
 }

@@ -16,7 +16,8 @@ class DocumentController extends Controller
     use LogsAudit;
     public function index()
     {
-        if (MockRentalData::shouldUse()) {
+        $user = request()->user();
+        if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Documents/Index', [
                 'documents' => MockRentalData::documents(),
                 'units' => MockRentalData::units(),

@@ -14,7 +14,8 @@ function getLeaseStatus(tenant) {
 }
 
 export default function TenantsIndex({ tenants }) {
-  const { formatTzsFromUsd, formatCompactTzsFromUsd } = useExchangeRate();
+  const { formatCompactTzsFromUsd, formatMoney } = useExchangeRate();
+  const leaseCurrency = (t) => t.leases?.[0]?.currency || t.leases?.[0]?.unit?.currency || 'USD';
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('name');
@@ -213,7 +214,7 @@ export default function TenantsIndex({ tenants }) {
                   </div>
                   <div className="tc-foot">
                     <div style={{flex:1,fontSize:12,color:'var(--text-muted)'}}>{t.leases?.[0]?.end_date ? `Lease until ${t.leases[0].end_date}` : '—'}</div>
-                    <div className="tc-rent">{formatTzsFromUsd(rent)}<span style={{fontWeight:400,fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
+                    <div className="tc-rent">{formatMoney(rent, leaseCurrency(t))}<span style={{fontWeight:400,fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
                   </div>
                 </div>
               );
@@ -252,8 +253,8 @@ export default function TenantsIndex({ tenants }) {
                       </td>
                       <td><span className={`badge ${isCompany?'company':'individual'}`}>{isCompany?'Company':'Individual'}</span></td>
                       <td style={{fontWeight:500,color:'var(--text-secondary)'}}>{units||'—'}</td>
-                      <td style={{fontWeight:600}}>{formatTzsFromUsd(totalRent(t))}</td>
-                      <td>{bal>0?<span style={{color:'var(--red)',fontWeight:600}}>{formatTzsFromUsd(bal)}</span>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                      <td style={{fontWeight:600}}>{formatMoney(totalRent(t), leaseCurrency(t))}</td>
+                      <td>{bal>0?<span style={{color:'var(--red)',fontWeight:600}}>{formatMoney(bal, leaseCurrency(t))}</span>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
                       <td style={{color:'var(--text-secondary)'}}>{t.leases?.[0]?.end_date||'—'}</td>
                     </tr>
                   );
@@ -343,9 +344,9 @@ export default function TenantsIndex({ tenants }) {
                       ) : <div style={{color:'var(--text-muted)',fontSize:13}}>No active lease</div>}
                     </div>
                     <div className="tdr-kv-grid">
-                      <div className="tdr-kv"><div className="tdr-kv-label">Monthly Rent</div><div className="tdr-kv-value">{formatTzsFromUsd(totalRent(selected))}</div></div>
-                      <div className="tdr-kv"><div className="tdr-kv-label">Balance</div><div className={`tdr-kv-value ${bal>0?'red':(selected.leases||[]).length>0?'green':''}`}>{bal>0?`${formatTzsFromUsd(bal)} overdue`:(selected.leases||[]).length>0?'Paid up':'—'}</div></div>
-                      <div className="tdr-kv"><div className="tdr-kv-label">Deposit Held</div><div className="tdr-kv-value">{formatTzsFromUsd((selected.leases||[]).reduce((s,l)=>s+Number(l.deposit),0))}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Monthly Rent</div><div className="tdr-kv-value">{formatMoney(totalRent(selected), leaseCurrency(selected))}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Balance</div><div className={`tdr-kv-value ${bal>0?'red':(selected.leases||[]).length>0?'green':''}`}>{bal>0?`${formatMoney(bal, leaseCurrency(selected))} overdue`:(selected.leases||[]).length>0?'Paid up':'—'}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Deposit Held</div><div className="tdr-kv-value">{formatMoney((selected.leases||[]).reduce((s,l)=>s+Number(l.deposit),0), leaseCurrency(selected))}</div></div>
                       <div className="tdr-kv"><div className="tdr-kv-label">Units</div><div className="tdr-kv-value accent">{unitsText}</div></div>
                     </div>
                   </div>
@@ -362,7 +363,7 @@ export default function TenantsIndex({ tenants }) {
                         <div className="tdr-payment-row" key={idx}>
                           <div className={`tdr-pay-dot ${p.ok?'green':'red'}`}></div>
                           <div className="tdr-pay-month">{p.month}</div>
-                          <div className="tdr-pay-amount" style={{color:p.ok?'var(--green)':'var(--red)'}}>{formatTzsFromUsd(p.amount)}</div>
+                          <div className="tdr-pay-amount" style={{color:p.ok?'var(--green)':'var(--red)'}}>{formatMoney(p.amount, p.currency || leaseCurrency(selected))}</div>
                           <div className="tdr-pay-date">
                             {toMonYear(p.date)} · {String(p.status||'').charAt(0).toUpperCase()+String(p.status||'').slice(1)}
                           </div>
