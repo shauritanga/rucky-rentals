@@ -56,7 +56,7 @@ export default function AppLayout({ children, title, subtitle }) {
             return (
               <div key={item.href ?? item.label}>
                 {showSection && <span className="nav-section-label">{item.section}</span>}
-                <Link href={item.href} className={`nav-item ${isActive(item.href) ? 'active' : ''}`}>
+                <Link href={item.href} className={`nav-item ${isActive(item.href) ? 'active' : ''}`} data-tooltip={item.label}>
                   {item.icon}
                   <span className="nav-label">{item.label}</span>
                   {item.badge && <span className="nav-badge" style={item.badgeStyle}>{item.badge}</span>}

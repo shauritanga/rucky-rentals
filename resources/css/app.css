@@ -744,3 +744,13 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .superuser-shell .health-status{font-size:12px;font-weight:600;white-space:nowrap}
 .superuser-shell .uptime-bar{height:4px;background:var(--bg-elevated);border-radius:20px;overflow:hidden;width:80px;margin-left:auto;margin-right:12px}
 .superuser-shell .uptime-fill{height:100%;border-radius:20px;background:var(--green)}
+
+/* ── Sidebar collapsed: overflow fix so tooltips escape the sidebar ── */
+/* Wait 0.28s (width transition duration) before making overflow visible */
+.sidebar.collapsed{overflow:visible;transition:width .28s cubic-bezier(.4,0,.2,1),min-width .28s cubic-bezier(.4,0,.2,1),overflow 0s .28s}
+.sidebar.collapsed .nav{overflow:visible}
+.sidebar.collapsed .nav-item{overflow:visible;position:relative}
+
+/* ── Sidebar collapsed: nav item tooltips ─────────────────────── */
+.sidebar.collapsed .nav-item[data-tooltip]::after{content:attr(data-tooltip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);background:var(--bg-surface);color:var(--text);border:1px solid var(--border);padding:5px 10px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:200}
+.sidebar.collapsed .nav-item[data-tooltip]:hover::after{opacity:1}

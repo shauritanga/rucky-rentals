@@ -54,6 +54,7 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
                   className={`nav-item ${activeView === item.id ? 'active' : ''}`}
                   onClick={() => onNavigate(item.id)}
                   style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
+                  data-tooltip={item.label}
                 >
                   {item.icon}
                   <span className="nav-label">{item.label}</span>
