@@ -28,15 +28,24 @@ class SuperuserController extends Controller
                 'units as occupied_units_live' => fn($q) => $q->whereIn('units.status', ['occupied', 'overdue']),
             ])
             ->withSum(
-                ['leases as monthly_revenue' => fn($q) => $q->whereIn('leases.status', ['active', 'expiring', 'overdue'])],
+                ['leases as revenue_tzs' => fn($q) => $q
+                    ->whereIn('leases.status', ['active', 'expiring', 'overdue'])
+                    ->where('leases.currency', 'TZS')],
+                'monthly_rent'
+            )
+            ->withSum(
+                ['leases as revenue_usd' => fn($q) => $q
+                    ->whereIn('leases.status', ['active', 'expiring', 'overdue'])
+                    ->where('leases.currency', 'USD')],
                 'monthly_rent'
             )
             ->orderBy('name')
             ->get()
             ->map(function ($property) {
-                $property->unit_count      = (int)   ($property->unit_count_live    ?? 0);
-                $property->occupied_units  = (int)   ($property->occupied_units_live ?? 0);
-                $property->monthly_revenue = (float) ($property->monthly_revenue     ?? 0);
+                $property->unit_count     = (int)   ($property->unit_count_live    ?? 0);
+                $property->occupied_units = (int)   ($property->occupied_units_live ?? 0);
+                $property->revenue_tzs    = (float) ($property->revenue_tzs         ?? 0);
+                $property->revenue_usd    = (float) ($property->revenue_usd         ?? 0);
                 return $property;
             });
 

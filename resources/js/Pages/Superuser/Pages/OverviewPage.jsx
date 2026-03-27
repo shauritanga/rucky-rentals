@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
+import useExchangeRate from '@/hooks/useExchangeRate';
 
 const statusClass = (status) => {
   if (status === 'active') return 'active';
@@ -37,6 +38,9 @@ function formatLogTime(ts) {
 
 export default function OverviewPage({ properties = [], managers = [], auditLogs = [] }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState('all');
+  const { rate } = useExchangeRate();
+
+  const toTzs = (p) => (p.revenue_tzs ?? 0) + (p.revenue_usd ?? 0) * rate;
 
   const selectedProperty = useMemo(
     () => properties.find((property) => String(property.id) === String(selectedPropertyId)) || null,
@@ -49,9 +53,9 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
     const total = scopedProperties.length;
     const units = scopedProperties.reduce((sum, p) => sum + Number(p.unit_count || 0), 0);
     const occupied = scopedProperties.reduce((sum, p) => sum + Number(p.occupied_units || 0), 0);
-    const revenue = scopedProperties.reduce((sum, p) => sum + Number(p.monthly_revenue || p.monthly_rent || p.revenue || 0), 0);
+    const revenue = scopedProperties.reduce((sum, p) => sum + toTzs(p), 0);
     return { total, units, occupied, revenue };
-  }, [scopedProperties]);
+  }, [scopedProperties, rate]);
 
   const scopedManagers = useMemo(() => {
     if (!selectedProperty) return managers;
@@ -129,7 +133,7 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
                     <td><div style={{ fontWeight: 600 }}>{property.name}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{property.city || '-'}</div></td>
                     <td>{property.manager?.name || 'Unassigned'}</td>
                     <td>{occupancy}%</td>
-                    <td style={{ fontWeight: 600 }}>TZS {Math.round(Number(property.monthly_revenue || property.monthly_rent || 0) / 1000)}k</td>
+                    <td style={{ fontWeight: 600 }}>TZS {Math.round(toTzs(property) / 1000)}k</td>
                     <td><span className={`badge ${statusClass(property.status)}`}>{property.status}</span></td>
                   </tr>
                 );
