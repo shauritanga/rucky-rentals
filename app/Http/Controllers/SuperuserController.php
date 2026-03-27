@@ -25,10 +25,10 @@ class SuperuserController extends Controller
         $properties = Property::with('manager:id,name,email')
             ->withCount([
                 'units as unit_count_live',
-                'units as occupied_units_live' => fn($q) => $q->whereIn('status', ['occupied', 'overdue']),
+                'units as occupied_units_live' => fn($q) => $q->whereIn('units.status', ['occupied', 'overdue']),
             ])
             ->withSum(
-                ['leases as monthly_revenue' => fn($q) => $q->whereIn('status', ['active', 'expiring', 'overdue'])],
+                ['leases as monthly_revenue' => fn($q) => $q->whereIn('leases.status', ['active', 'expiring', 'overdue'])],
                 'monthly_rent'
             )
             ->orderBy('name')
