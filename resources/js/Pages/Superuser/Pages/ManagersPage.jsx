@@ -1,14 +1,22 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 
 export default function ManagersPage({ managers = [], properties = [], archivedManagers = [], onOpenManagerModal }) {
     const [search, setSearch] = useState('');
     const [role, setRole] = useState('');
     const [showArchived, setShowArchived] = useState(false);
+    const [openMenu, setOpenMenu] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [confirmName, setConfirmName] = useState('');
     const [confirmError, setConfirmError] = useState('');
     const [deleting, setDeleting] = useState(false);
+
+    // Close ⋮ menu when clicking elsewhere
+    useEffect(() => {
+        const handler = () => setOpenMenu(null);
+        document.addEventListener('click', handler);
+        return () => document.removeEventListener('click', handler);
+    }, []);
 
     const resolvedManagers = managers.map((manager) => {
         const assigned = properties.filter((p) => Number(p.manager_user_id) === Number(manager.id));
@@ -132,16 +140,32 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                     <td>{manager.lastActive || 'Recently'}</td>
                                     <td><span className={`badge ${manager.twoFA ? 'active' : 'inactive'}`}>{manager.twoFA ? 'Enabled' : 'Disabled'}</span></td>
                                     <td><span className={`badge ${manager.status === 'suspended' ? 'rejected' : 'active'}`}>{manager.status || 'active'}</span></td>
-                                    <td>
+                                    <td style={{ position: 'relative' }}>
                                         {manager.role !== 'superuser' ? (
-                                            <button
-                                                type="button"
-                                                className="btn-ghost"
-                                                style={{ fontSize: 12, padding: '5px 12px', color: 'var(--danger)' }}
-                                                onClick={() => openDeleteModal(manager)}
-                                            >
-                                                Remove
-                                            </button>
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    className="btn-ghost"
+                                                    style={{ padding: '4px 12px', fontSize: 18, lineHeight: 1 }}
+                                                    onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === manager.id ? null : manager.id); }}
+                                                >
+                                                    ⋮
+                                                </button>
+                                                {openMenu === manager.id && (
+                                                    <div
+                                                        style={{ position: 'absolute', right: 0, top: '100%', zIndex: 50, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, minWidth: 140, boxShadow: '0 4px 16px rgba(0,0,0,.14)' }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <button
+                                                            type="button"
+                                                            style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: 13, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}
+                                                            onClick={(e) => { e.stopPropagation(); openDeleteModal(manager); setOpenMenu(null); }}
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </>
                                         ) : (
                                             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
                                         )}
@@ -196,49 +220,46 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                 </div>
             )}
 
-            {/* Delete confirmation dialog */}
-            {deleteTarget && (
-                <div className="modal-overlay" onClick={closeDeleteModal}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-                        <div className="modal-header">
-                            <h3>Remove User</h3>
-                            <button type="button" className="modal-close" onClick={closeDeleteModal}>×</button>
-                        </div>
-                        <div className="modal-body">
-                            <p style={{ marginBottom: 14, lineHeight: 1.6 }}>
-                                You are about to remove <strong>{deleteTarget.name}</strong>
-                                {deleteTarget.assignedProperties?.length > 0 && (
-                                    <> and unassign them from <strong>{deleteTarget.assignedProperties.map((p) => p.name).join(', ')}</strong></>
-                                )}. This action can be undone from the Archived tab.
-                            </p>
-                            <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 6 }}>
-                                Type <strong>{deleteTarget.name}</strong> to confirm:
-                            </label>
-                            <input
-                                className="form-input"
-                                placeholder={deleteTarget.name}
-                                value={confirmName}
-                                onChange={(e) => { setConfirmName(e.target.value); setConfirmError(''); }}
-                                autoFocus
-                            />
-                            {confirmError && (
-                                <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>{confirmError}</p>
-                            )}
-                        </div>
-                        <div className="modal-footer">
-                            <button type="button" className="btn-ghost" onClick={closeDeleteModal}>Cancel</button>
-                            <button
-                                type="button"
-                                className="btn-danger"
-                                disabled={deleting || confirmName !== deleteTarget.name}
-                                onClick={handleDelete}
-                            >
-                                {deleting ? 'Removing…' : 'Remove'}
-                            </button>
-                        </div>
+            {/* Delete confirmation dialog — uses 'open' class like all other modals in this app */}
+            <div className={`modal-overlay ${deleteTarget ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeDeleteModal()}>
+                <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+                    <div className="modal-header">
+                        <h3>Remove User</h3>
+                        <button type="button" className="modal-close" onClick={closeDeleteModal}>×</button>
+                    </div>
+                    <div className="modal-body">
+                        <p style={{ marginBottom: 14, lineHeight: 1.6 }}>
+                            You are about to remove <strong>{deleteTarget?.name}</strong>
+                            {deleteTarget?.assignedProperties?.length > 0 && (
+                                <> and unassign them from <strong>{deleteTarget.assignedProperties.map((p) => p.name).join(', ')}</strong></>
+                            )}. This action can be undone from the Archived tab.
+                        </p>
+                        <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 6 }}>
+                            Type <strong>{deleteTarget?.name}</strong> to confirm:
+                        </label>
+                        <input
+                            className="form-input"
+                            placeholder={deleteTarget?.name ?? ''}
+                            value={confirmName}
+                            onChange={(e) => { setConfirmName(e.target.value); setConfirmError(''); }}
+                        />
+                        {confirmError && (
+                            <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>{confirmError}</p>
+                        )}
+                    </div>
+                    <div className="modal-footer">
+                        <button type="button" className="btn-ghost" onClick={closeDeleteModal}>Cancel</button>
+                        <button
+                            type="button"
+                            className="btn-danger"
+                            disabled={deleting || confirmName !== deleteTarget?.name}
+                            onClick={handleDelete}
+                        >
+                            {deleting ? 'Removing…' : 'Remove'}
+                        </button>
                     </div>
                 </div>
-            )}
+            </div>
         </>
     );
 }
