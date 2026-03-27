@@ -9,6 +9,8 @@ use App\Models\MaintenanceRecord;
 use App\Models\Property;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Notifications\LeaseDecisionNotification;
+use App\Notifications\MaintenanceDecisionNotification;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -66,12 +68,23 @@ class SuperuserController extends Controller
 
         $settings = SystemSetting::pluck('value', 'key');
 
-        $pendingLeases = Lease::with(['tenant:id,name', 'unit:id,unit_number,property_id', 'unit.property:id,name'])
+        $pendingLeases = Lease::with([
+                'tenant:id,name,email,phone',
+                'unit:id,unit_number,floor,property_id',
+                'unit.property:id,name,manager_user_id',
+                'unit.property.manager:id,name,email',
+            ])
             ->whereIn('status', ['pending_accountant', 'pending_pm'])
             ->orderBy('created_at')
             ->get();
 
-        $pendingMaintenance = MaintenanceRecord::with(['unit:id,unit_number,property_id', 'unit.property:id,name'])
+        $pendingMaintenance = MaintenanceRecord::with([
+                'unit:id,unit_number,property_id',
+                'unit.property:id,name,manager_user_id',
+                'unit.property.manager:id,name,email',
+                'property:id,name,manager_user_id',
+                'property.manager:id,name,email',
+            ])
             ->whereIn('workflow_status', ['submitted', 'pending_manager'])
             ->orderBy('created_at')
             ->get();
@@ -307,26 +320,35 @@ class SuperuserController extends Controller
 
     // ── Lease Approvals ──────────────────────────────────────────────
 
-    public function approveLease(Lease $lease)
+    public function approveLease(Request $request, Lease $lease)
     {
         abort_if(Auth::user()->role !== 'superuser', 403);
         abort_if(!in_array($lease->status, ['pending_accountant', 'pending_pm']), 422, 'Lease is not pending approval.');
 
+        $message = trim($request->input('message', 'Approved by superuser.')) ?: 'Approved by superuser.';
+        $actor   = Auth::user()->name;
+
         $log   = json_decode($lease->approval_log ?? '[]', true);
         $log[] = [
-            'step'   => count($log) + 1,
-            'action' => 'approved',
-            'by'     => Auth::user()->name . ' (Superuser)',
-            'date'   => now()->format('d M Y'),
-            'text'   => 'Approved by superuser',
+            'step'    => count($log) + 1,
+            'action'  => 'approved',
+            'by'      => $actor . ' (Superuser)',
+            'date'    => now()->format('d M Y'),
+            'text'    => $message,
         ];
         $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
 
         app(LeaseController::class)->ensureInstallmentsGenerated($lease->fresh());
 
+        // Notify the property manager
+        $manager = $lease->unit?->property?->manager;
+        if ($manager) {
+            $manager->notify(new LeaseDecisionNotification($lease->fresh(), 'approved', $message, $actor));
+        }
+
         $propertyName = $lease->unit?->property?->name;
         $this->logAudit(
-            request: request(),
+            request: $request,
             action: 'Lease approved',
             resource: $lease->lease_number ?? ('Lease #' . $lease->id),
             propertyName: $propertyName,
@@ -337,33 +359,64 @@ class SuperuserController extends Controller
         return back()->with('success', 'Lease approved.');
     }
 
-    public function rejectLease(Lease $lease, Request $request)
+    public function rejectLease(Request $request, Lease $lease)
     {
         abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $data = $request->validate([
+            'message' => 'required|string|min:5|max:1000',
+        ]);
+
+        $actor = Auth::user()->name;
 
         $log   = json_decode($lease->approval_log ?? '[]', true);
         $log[] = [
             'action' => 'rejected',
-            'by'     => Auth::user()->name . ' (Superuser)',
+            'by'     => $actor . ' (Superuser)',
             'date'   => now()->format('d M Y'),
-            'reason' => $request->input('reason', ''),
+            'reason' => $data['message'],
         ];
         $lease->update(['status' => 'rejected', 'approval_log' => json_encode($log)]);
+
+        // Notify the property manager
+        $manager = $lease->unit?->property?->manager;
+        if ($manager) {
+            $manager->notify(new LeaseDecisionNotification($lease->fresh(), 'rejected', $data['message'], $actor));
+        }
+
+        $propertyName = $lease->unit?->property?->name;
+        $this->logAudit(
+            request: $request,
+            action: 'Lease rejected',
+            resource: $lease->lease_number ?? ('Lease #' . $lease->id),
+            propertyName: $propertyName,
+            category: 'lease',
+            propertyId: $lease->unit?->property_id ? (int) $lease->unit->property_id : null,
+        );
 
         return back()->with('success', 'Lease rejected.');
     }
 
     // ── Maintenance Approvals ────────────────────────────────────────
 
-    public function approveMaintenance(MaintenanceRecord $ticket)
+    public function approveMaintenance(Request $request, MaintenanceRecord $ticket)
     {
         abort_if(Auth::user()->role !== 'superuser', 403);
 
+        $message = trim($request->input('message', 'Approved by superuser.')) ?: 'Approved by superuser.';
+        $actor   = Auth::user()->name;
+
         $ticket->update(['workflow_status' => 'approved', 'status' => 'open']);
+
+        // Notify the property manager
+        $manager = $ticket->unit?->property?->manager ?? $ticket->property?->manager;
+        if ($manager) {
+            $manager->notify(new MaintenanceDecisionNotification($ticket->fresh(), 'approved', $message, $actor));
+        }
 
         $propertyName = $ticket->unit?->property?->name ?? Property::where('id', $ticket->property_id)->value('name');
         $this->logAudit(
-            request: request(),
+            request: $request,
             action: 'Maintenance ticket approved',
             resource: $ticket->title,
             propertyName: $propertyName,
@@ -374,11 +427,33 @@ class SuperuserController extends Controller
         return back()->with('success', 'Maintenance ticket approved.');
     }
 
-    public function rejectMaintenance(MaintenanceRecord $ticket, Request $request)
+    public function rejectMaintenance(Request $request, MaintenanceRecord $ticket)
     {
         abort_if(Auth::user()->role !== 'superuser', 403);
 
+        $data = $request->validate([
+            'message' => 'required|string|min:5|max:1000',
+        ]);
+
+        $actor = Auth::user()->name;
+
         $ticket->update(['workflow_status' => 'rejected', 'status' => 'open']);
+
+        // Notify the property manager
+        $manager = $ticket->unit?->property?->manager ?? $ticket->property?->manager;
+        if ($manager) {
+            $manager->notify(new MaintenanceDecisionNotification($ticket->fresh(), 'rejected', $data['message'], $actor));
+        }
+
+        $propertyName = $ticket->unit?->property?->name ?? Property::where('id', $ticket->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Maintenance ticket rejected',
+            resource: $ticket->title,
+            propertyName: $propertyName,
+            category: 'maintenance',
+            propertyId: $ticket->property_id ? (int) $ticket->property_id : null,
+        );
 
         return back()->with('success', 'Maintenance ticket rejected.');
     }
