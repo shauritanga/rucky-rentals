@@ -73,6 +73,36 @@ function statusClass(s) {
     return 'draft';
 }
 
+function parsePeriod(p) {
+    if (!p) return { from: null, to: null };
+    const [part, yearStr] = p.split('-');
+    const y = parseInt(yearStr, 10);
+    if (part === 'Q1') return { from: `${y}-01-01`, to: `${y}-03-31` };
+    if (part === 'Q2') return { from: `${y}-04-01`, to: `${y}-06-30` };
+    if (part === 'Q3') return { from: `${y}-07-01`, to: `${y}-09-30` };
+    if (part === 'Q4') return { from: `${y}-10-01`, to: `${y}-12-31` };
+    if (part === 'FY') return { from: `${y}-01-01`, to: `${y}-12-31` };
+    return { from: null, to: null };
+}
+
+function periodLabel(p) {
+    if (!p) return 'All Time';
+    const [part, year] = p.split('-');
+    const ends = { Q1: '31 March', Q2: '30 June', Q3: '30 September', Q4: '31 December' };
+    if (ends[part]) return `For the period ending ${ends[part]} ${year}`;
+    if (part === 'FY') return `Full Year ${year}`;
+    return p;
+}
+
+function periodAsAt(p) {
+    if (!p) return 'All Time';
+    const [part, year] = p.split('-');
+    const ends = { Q1: '31 March', Q2: '30 June', Q3: '30 September', Q4: '31 December' };
+    if (ends[part]) return `As at ${ends[part]} ${year}`;
+    if (part === 'FY') return `As at 31 December ${year}`;
+    return p;
+}
+
 export default function Accounting({ accounts = [], entries = [] }) {
     const [active, setActive] = useState('coa');
     const [period, setPeriod] = useState('Q1-2026');
@@ -159,12 +189,38 @@ export default function Accounting({ accounts = [], entries = [] }) {
     }, [accountData]);
 
     const plData = useMemo(() => {
+        const { from, to } = parsePeriod(period);
+
+        const filtered = entryData.filter(
+            (e) =>
+                e.status === 'posted' &&
+                (from === null || e.date >= from) &&
+                (to === null || e.date <= to),
+        );
+
+        const lineAmounts = new Map();
+        filtered.forEach((entry) => {
+            entry.lines.forEach((line) => {
+                const curr = lineAmounts.get(line.acct) ?? { dr: 0, cr: 0 };
+                lineAmounts.set(line.acct, { dr: curr.dr + line.dr, cr: curr.cr + line.cr });
+            });
+        });
+
         const revenue = accountData
             .filter((a) => a.type === 'revenue')
-            .map((a) => ({ ...a, ytd_display: displayBalance({ ...a, balance: a.ytd }) }));
+            .map((a) => {
+                const { dr = 0, cr = 0 } = lineAmounts.get(a.code) ?? {};
+                return { ...a, ytd_display: cr - dr };
+            })
+            .filter((a) => a.ytd_display !== 0);
+
         const expense = accountData
             .filter((a) => a.type === 'expense')
-            .map((a) => ({ ...a, ytd_display: displayBalance({ ...a, balance: a.ytd }) }));
+            .map((a) => {
+                const { dr = 0, cr = 0 } = lineAmounts.get(a.code) ?? {};
+                return { ...a, ytd_display: dr - cr };
+            })
+            .filter((a) => a.ytd_display !== 0);
 
         const totalRevenue = revenue.reduce((s, a) => s + a.ytd_display, 0);
         const totalExpense = expense.reduce((s, a) => s + a.ytd_display, 0);
@@ -172,15 +228,13 @@ export default function Accounting({ accounts = [], entries = [] }) {
             .filter((a) => a.cat === 'Operating Expenses')
             .reduce((s, a) => s + a.ytd_display, 0);
         return { revenue, expense, totalRevenue, totalExpense, gross: totalRevenue - operating, net: totalRevenue - totalExpense };
-    }, [accountData]);
+    }, [accountData, entryData, period]);
 
     const bsData = useMemo(() => {
         const assets = accountData.filter((a) => a.type === 'asset' || a.type === 'contra').map((a) => ({ ...a, balance: displayBalance(a) }));
         const liabilities = accountData.filter((a) => a.type === 'liability').map((a) => ({ ...a, balance: displayBalance(a) }));
         const equityBase = accountData.filter((a) => a.type === 'equity').map((a) => ({ ...a, balance: displayBalance(a) }));
-        const currentEarnings = accountData
-            .filter((a) => a.type === 'revenue' || a.type === 'expense')
-            .reduce((sum, a) => sum + displayBalance(a), 0);
+        const currentEarnings = plData.net;
         const equity = [
             ...equityBase,
             {
@@ -206,7 +260,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
             totalEquity,
             difference: totalAssets - (totalLiabilities + totalEquity),
         };
-    }, [accountData]);
+    }, [accountData, plData]);
 
     const cfData = useMemo(() => {
         const accountByCode = new Map(accountData.map((a) => [a.code, a]));
@@ -222,7 +276,13 @@ export default function Accounting({ accounts = [], entries = [] }) {
             financing: [],
         };
 
-        const postedEntries = entryData.filter((e) => e.status === 'posted');
+        const { from: cfFrom, to: cfTo } = parsePeriod(period);
+        const postedEntries = entryData.filter(
+            (e) =>
+                e.status === 'posted' &&
+                (cfFrom === null || e.date >= cfFrom) &&
+                (cfTo === null || e.date <= cfTo),
+        );
 
         postedEntries.forEach((entry) => {
             const cashDelta = entry.lines
@@ -269,7 +329,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
         const open = close - net;
 
         return { operating, investing, financing, tO, tI, tF, net, open, close };
-    }, [accountData, entryData]);
+    }, [accountData, entryData, period]);
 
     const jeTotals = useMemo(() => {
         const dr = jeForm.lines.reduce((s, l) => s + toNum(l.dr), 0);
@@ -384,10 +444,13 @@ export default function Accounting({ accounts = [], entries = [] }) {
         <>
             <div className="period-select">
                 <select value={period} onChange={(e) => { setPeriod(e.target.value); refreshAll(); }}>
-                    <option value="Q1-2026">Q1 2026 (Jan-Mar)</option>
-                    <option value="Q4-2025">Q4 2025</option>
+                    <option value="Q1-2026">Q1 2026 (Jan–Mar)</option>
+                    <option value="Q2-2026">Q2 2026 (Apr–Jun)</option>
+                    <option value="Q3-2026">Q3 2026 (Jul–Sep)</option>
+                    <option value="Q4-2026">Q4 2026 (Oct–Dec)</option>
+                    <option value="FY-2026">Full Year 2026</option>
+                    <option value="Q4-2025">Q4 2025 (Oct–Dec)</option>
                     <option value="FY-2025">Full Year 2025</option>
-                    <option value="FY-2026">Full Year 2026 (YTD)</option>
                 </select>
             </div>
             <button className="icon-btn" onClick={refreshAll} title="Refresh from dashboard" style={{ color: 'var(--green)' }}>
@@ -572,7 +635,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'tb' ? 'active' : ''}`} id="acc-print-tb">
-                        <SectionHeader title="Trial Balance" subtitle="As at 31 March 2026">{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
+                        <SectionHeader title="Trial Balance" subtitle={periodAsAt(period)}>{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
                         <div className="card">
                             <table className="ledger-table">
                                 <thead><tr><th style={{ paddingLeft: 16 }}>Code</th><th>Account Name</th><th>Type</th><th className="num" style={{ color: 'var(--accent)', textAlign: 'right' }}>Debit (TZS)</th><th className="num" style={{ color: 'var(--green)', textAlign: 'right' }}>Credit (TZS)</th></tr></thead>
@@ -595,7 +658,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'pl' ? 'active' : ''}`} id="acc-print-pl">
-                        <SectionHeader title="Profit & Loss Statement" subtitle="For the period ending 31 March 2026">{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
+                        <SectionHeader title="Profit & Loss Statement" subtitle={periodLabel(period)}>{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
                         <div className="card">
                             <ReportSection title="Revenue" rows={plData.revenue} field="ytd_display" />
                             <ReportSection title="Expenses" rows={plData.expense} field="ytd_display" />
@@ -605,7 +668,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'bs' ? 'active' : ''}`} id="acc-print-bs">
-                        <SectionHeader title="Balance Sheet" subtitle="As at 31 March 2026">{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
+                        <SectionHeader title="Balance Sheet" subtitle={periodAsAt(period)}>{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
                         <div className="card">
                             <ReportSection title="Assets" rows={bsData.assets} field="balance" />
                             <ReportSection title="Liabilities" rows={bsData.liabilities} field="balance" />
@@ -616,7 +679,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                     </div>
 
                     <div className={`acc-page ${active === 'cf' ? 'active' : ''}`} id="acc-print-cf">
-                        <SectionHeader title="Cash Flow Statement" subtitle="For the quarter ended 31 March 2026">{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
+                        <SectionHeader title="Cash Flow Statement" subtitle={periodLabel(period)}>{renderPageBarActions({ showExport: true, extra: renderPageControls() })}</SectionHeader>
                         <div className="card">
                             <CashSection title="Operating Activities" rows={cfData.operating} total={cfData.tO} />
                             <CashSection title="Investing Activities" rows={cfData.investing} total={cfData.tI} />
