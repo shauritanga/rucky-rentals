@@ -93,23 +93,21 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
             </div>
 
             {/* Active / Archived toggle */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                <button
-                    type="button"
-                    className={!showArchived ? 'btn-primary' : 'btn-ghost'}
-                    style={{ fontSize: 13, padding: '6px 16px' }}
-                    onClick={() => setShowArchived(false)}
-                >
-                    Active
-                </button>
-                <button
-                    type="button"
-                    className={showArchived ? 'btn-primary' : 'btn-ghost'}
-                    style={{ fontSize: 13, padding: '6px 16px' }}
-                    onClick={() => setShowArchived(true)}
-                >
-                    Archived{archivedManagers.length > 0 ? ` (${archivedManagers.length})` : ''}
-                </button>
+            <div className="toolbar" style={{ marginBottom: 14 }}>
+                <div className="filters">
+                    <button
+                        className={`filter-pill ${!showArchived ? 'active' : ''}`}
+                        onClick={() => setShowArchived(false)}
+                    >
+                        Active <span className="pill-count">{resolvedManagers.length}</span>
+                    </button>
+                    <button
+                        className={`filter-pill ${showArchived ? 'active' : ''}`}
+                        onClick={() => setShowArchived(true)}
+                    >
+                        Archived <span className="pill-count">{archivedManagers.length}</span>
+                    </button>
+                </div>
             </div>
 
             {/* Active table */}
@@ -161,7 +159,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                                         <button
                                                             type="button"
                                                             style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: 13, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}
-                                                            onClick={() => { openDeleteModal(manager); setOpenMenu(null); }}
+                                                            onClick={(e) => { e.stopPropagation(); openDeleteModal(manager); setOpenMenu(null); }}
                                                         >
                                                             Remove
                                                         </button>
