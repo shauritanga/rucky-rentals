@@ -49,7 +49,7 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
     const total = scopedProperties.length;
     const units = scopedProperties.reduce((sum, p) => sum + Number(p.unit_count || 0), 0);
     const occupied = scopedProperties.reduce((sum, p) => sum + Number(p.occupied_units || 0), 0);
-    const revenue = scopedProperties.reduce((sum, p) => sum + Number(p.monthly_rent || p.revenue || 0), 0);
+    const revenue = scopedProperties.reduce((sum, p) => sum + Number(p.monthly_revenue || p.monthly_rent || p.revenue || 0), 0);
     return { total, units, occupied, revenue };
   }, [scopedProperties]);
 
@@ -129,7 +129,7 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
                     <td><div style={{ fontWeight: 600 }}>{property.name}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{property.city || '-'}</div></td>
                     <td>{property.manager?.name || 'Unassigned'}</td>
                     <td>{occupancy}%</td>
-                    <td style={{ fontWeight: 600 }}>TZS {Math.round(Number(property.monthly_rent || 0) / 1000)}k</td>
+                    <td style={{ fontWeight: 600 }}>TZS {Math.round(Number(property.monthly_revenue || property.monthly_rent || 0) / 1000)}k</td>
                     <td><span className={`badge ${statusClass(property.status)}`}>{property.status}</span></td>
                   </tr>
                 );

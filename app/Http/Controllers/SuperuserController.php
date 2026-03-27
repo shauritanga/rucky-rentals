@@ -27,11 +27,16 @@ class SuperuserController extends Controller
                 'units as unit_count_live',
                 'units as occupied_units_live' => fn($q) => $q->whereIn('status', ['occupied', 'overdue']),
             ])
+            ->withSum(
+                ['leases as monthly_revenue' => fn($q) => $q->whereIn('status', ['active', 'expiring', 'overdue'])],
+                'monthly_rent'
+            )
             ->orderBy('name')
             ->get()
             ->map(function ($property) {
-                $property->unit_count = (int) ($property->unit_count_live ?? 0);
-                $property->occupied_units = (int) ($property->occupied_units_live ?? 0);
+                $property->unit_count      = (int)   ($property->unit_count_live    ?? 0);
+                $property->occupied_units  = (int)   ($property->occupied_units_live ?? 0);
+                $property->monthly_revenue = (float) ($property->monthly_revenue     ?? 0);
                 return $property;
             });
 
