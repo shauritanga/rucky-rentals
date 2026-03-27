@@ -1,22 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 
 export default function ManagersPage({ managers = [], properties = [], archivedManagers = [], onOpenManagerModal }) {
     const [search, setSearch] = useState('');
     const [role, setRole] = useState('');
     const [showArchived, setShowArchived] = useState(false);
-    const [openMenu, setOpenMenu] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [confirmName, setConfirmName] = useState('');
     const [confirmError, setConfirmError] = useState('');
     const [deleting, setDeleting] = useState(false);
-
-    // Close ⋮ menu when clicking elsewhere
-    useEffect(() => {
-        const handler = () => setOpenMenu(null);
-        document.addEventListener('click', handler);
-        return () => document.removeEventListener('click', handler);
-    }, []);
 
     const resolvedManagers = managers.map((manager) => {
         const assigned = properties.filter((p) => Number(p.manager_user_id) === Number(manager.id));
@@ -34,6 +26,12 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
 
     const openDeleteModal = (manager) => {
         setDeleteTarget(manager);
+        setConfirmName('');
+        setConfirmError('');
+    };
+
+    const closeDeleteModal = () => {
+        setDeleteTarget(null);
         setConfirmName('');
         setConfirmError('');
     };
@@ -95,16 +93,10 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
             {/* Active / Archived toggle */}
             <div className="toolbar" style={{ marginBottom: 14 }}>
                 <div className="filters">
-                    <button
-                        className={`filter-pill ${!showArchived ? 'active' : ''}`}
-                        onClick={() => setShowArchived(false)}
-                    >
+                    <button className={`filter-pill ${!showArchived ? 'active' : ''}`} onClick={() => setShowArchived(false)}>
                         Active <span className="pill-count">{resolvedManagers.length}</span>
                     </button>
-                    <button
-                        className={`filter-pill ${showArchived ? 'active' : ''}`}
-                        onClick={() => setShowArchived(true)}
-                    >
+                    <button className={`filter-pill ${showArchived ? 'active' : ''}`} onClick={() => setShowArchived(true)}>
                         Archived <span className="pill-count">{archivedManagers.length}</span>
                     </button>
                 </div>
@@ -140,32 +132,16 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                     <td>{manager.lastActive || 'Recently'}</td>
                                     <td><span className={`badge ${manager.twoFA ? 'active' : 'inactive'}`}>{manager.twoFA ? 'Enabled' : 'Disabled'}</span></td>
                                     <td><span className={`badge ${manager.status === 'suspended' ? 'rejected' : 'active'}`}>{manager.status || 'active'}</span></td>
-                                    <td style={{ position: 'relative' }}>
+                                    <td>
                                         {manager.role !== 'superuser' ? (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    className="btn-ghost"
-                                                    style={{ padding: '4px 12px', fontSize: 18, lineHeight: 1 }}
-                                                    onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === manager.id ? null : manager.id); }}
-                                                >
-                                                    ⋮
-                                                </button>
-                                                {openMenu === manager.id && (
-                                                    <div
-                                                        style={{ position: 'absolute', right: 0, top: '100%', zIndex: 50, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, minWidth: 140, boxShadow: '0 4px 16px rgba(0,0,0,.14)' }}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: 13, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}
-                                                            onClick={(e) => { e.stopPropagation(); openDeleteModal(manager); setOpenMenu(null); }}
-                                                        >
-                                                            Remove
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </>
+                                            <button
+                                                type="button"
+                                                className="btn-ghost"
+                                                style={{ fontSize: 12, padding: '5px 12px', color: 'var(--danger)' }}
+                                                onClick={() => openDeleteModal(manager)}
+                                            >
+                                                Remove
+                                            </button>
                                         ) : (
                                             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
                                         )}
@@ -220,24 +196,24 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                 </div>
             )}
 
-            {/* Delete confirmation modal */}
+            {/* Delete confirmation dialog */}
             {deleteTarget && (
-                <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
+                <div className="modal-overlay" onClick={closeDeleteModal}>
                     <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
                         <div className="modal-header">
                             <h3>Remove User</h3>
-                            <button type="button" className="modal-close" onClick={() => setDeleteTarget(null)}>×</button>
+                            <button type="button" className="modal-close" onClick={closeDeleteModal}>×</button>
                         </div>
                         <div className="modal-body">
                             <p style={{ marginBottom: 14, lineHeight: 1.6 }}>
-                                This will remove <strong>{deleteTarget.name}</strong>
+                                You are about to remove <strong>{deleteTarget.name}</strong>
                                 {deleteTarget.assignedProperties?.length > 0 && (
                                     <> and unassign them from <strong>{deleteTarget.assignedProperties.map((p) => p.name).join(', ')}</strong></>
-                                )}. They can be restored later from the Archived tab.
+                                )}. This action can be undone from the Archived tab.
                             </p>
-                            <p style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 8 }}>
+                            <label style={{ display: 'block', fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 6 }}>
                                 Type <strong>{deleteTarget.name}</strong> to confirm:
-                            </p>
+                            </label>
                             <input
                                 className="form-input"
                                 placeholder={deleteTarget.name}
@@ -246,11 +222,11 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                 autoFocus
                             />
                             {confirmError && (
-                                <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 5 }}>{confirmError}</p>
+                                <p style={{ color: 'var(--danger)', fontSize: 12, marginTop: 6 }}>{confirmError}</p>
                             )}
                         </div>
                         <div className="modal-footer">
-                            <button type="button" className="btn-ghost" onClick={() => setDeleteTarget(null)}>Cancel</button>
+                            <button type="button" className="btn-ghost" onClick={closeDeleteModal}>Cancel</button>
                             <button
                                 type="button"
                                 className="btn-danger"
