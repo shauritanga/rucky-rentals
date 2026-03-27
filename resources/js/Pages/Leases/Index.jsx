@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 
 const fmt = (n) => Number(n).toLocaleString();
 const CURRENCY_FALLBACK = 'USD';
@@ -166,6 +166,8 @@ function buildPaymentSchedule(lease, isPending) {
 }
 
 export default function LeasesIndex({ leases, tenants, units }) {
+  const { props } = usePage();
+  const user = props?.auth?.user;
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
@@ -344,7 +346,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
     }
   };
 
-  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_accountant'?'pending_pm':action==='approve_pm'?'active':s.status} : null) });
+  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
   const submit = (e) => {
     e.preventDefault();
     post('/leases', {
@@ -469,13 +471,13 @@ export default function LeasesIndex({ leases, tenants, units }) {
                   <div className="drawer-section-title ldr-section-title">Approval Workflow</div>
 
                   <div className="apv-stepper">
-                    {[{ label: 'Accountant Review', role: 'Accountant' }, { label: 'PM Approval', role: 'Property Manager' }].map((step, i) => {
+                    {[{ label: 'Submitted', role: 'Manager / Staff' }, { label: 'Superuser Approval', role: 'Superuser' }].map((step, i) => {
                       const isRejected = selected.status === 'rejected';
-                      const currentStep = selected.status === 'pending_pm' ? 1 : 0;
-                      const isDone = !isRejected && i < currentStep;
-                      const isActive = !isRejected && i === currentStep;
-                      const cls = isDone ? 'done' : isActive ? 'active' : isRejected && i === currentStep ? 'rejected' : '';
-                      const icon = isDone ? '✓' : isRejected && i === currentStep ? '✕' : String(i + 1);
+                      const isPendingStep = ['pending_accountant', 'pending_pm'].includes(selected.status);
+                      const isDone = !isRejected && i === 0 && isPendingStep;
+                      const isActive = !isRejected && i === 1 && isPendingStep;
+                      const cls = isDone ? 'done' : isActive ? 'active' : isRejected && i === 1 ? 'rejected' : '';
+                      const icon = isDone ? '✓' : isRejected && i === 1 ? '✕' : String(i + 1);
 
                       return (
                         <div key={step.label} className={`apv-step ${cls}`}>
@@ -488,25 +490,16 @@ export default function LeasesIndex({ leases, tenants, units }) {
                   </div>
 
                   <div className={`apv-action-banner ${selected.status === 'rejected' ? 'rejected' : 'can-approve'}`}>
-                    {selected.status === 'pending_accountant' && (
+                    {['pending_accountant', 'pending_pm'].includes(selected.status) && (
                       <>
-                        <div className="apv-banner-title">Awaiting Accountant Approval</div>
-                        <div className="apv-banner-sub">The accountant must review and verify the lease financials — rent amount, deposit, and payment schedule — before it proceeds to the Property Manager.</div>
-                        <div className="apv-banner-actions">
-                          <button className="apv-btn-approve" onClick={()=>approve(selected,'approve_accountant')}>Approve as Accountant</button>
-                          <button className="apv-btn-reject" onClick={()=>approve(selected,'reject')}>Reject</button>
-                        </div>
-                      </>
-                    )}
-
-                    {selected.status === 'pending_pm' && (
-                      <>
-                        <div className="apv-banner-title">Awaiting Property Manager Approval</div>
-                        <div className="apv-banner-sub">Accountant approval complete. The Property Manager must give final sign-off before the lease becomes active.</div>
-                        <div className="apv-banner-actions">
-                          <button className="apv-btn-approve" onClick={()=>approve(selected,'approve_pm')}>Approve as Property Manager</button>
-                          <button className="apv-btn-reject" onClick={()=>approve(selected,'reject')}>Reject</button>
-                        </div>
+                        <div className="apv-banner-title">Awaiting Superuser Approval</div>
+                        <div className="apv-banner-sub">This lease is pending approval. Only the superuser can approve or reject leases.</div>
+                        {user?.role === 'superuser' && (
+                          <div className="apv-banner-actions">
+                            <button className="apv-btn-approve" onClick={() => approve(selected, 'approve_superuser')}>Approve</button>
+                            <button className="apv-btn-reject" onClick={() => approve(selected, 'reject')}>Reject</button>
+                          </div>
+                        )}
                       </>
                     )}
 

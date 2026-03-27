@@ -54,13 +54,11 @@ class InvoiceController extends Controller
 
     public function store(Request $request, AccountingService $accountingService)
     {
-        $user = $request->user();
-        $managerPropertyId = null;
+        $effectivePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-            abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
-            $managerPropertyId = (int) $user->property_id;
+        if ($this->shouldScopeToProperty($request)) {
+            abort_if($effectivePropertyId === null, 422, 'No property context available.');
+            abort_if(!Property::where('id', $effectivePropertyId)->exists(), 422, 'Assigned property not found.');
         }
 
         $data = $request->validate([
@@ -70,11 +68,11 @@ class InvoiceController extends Controller
                 'nullable',
                 Rule::exists('leases', 'id')->when(
                     true,
-                    fn($rule) => $rule->where(function ($q) use ($managerPropertyId) {
+                    fn($rule) => $rule->where(function ($q) use ($effectivePropertyId) {
                         $q->where('status', 'active');
 
-                        if ($managerPropertyId) {
-                            $q->where('property_id', $managerPropertyId);
+                        if ($effectivePropertyId) {
+                            $q->where('property_id', $effectivePropertyId);
                         }
                     })
                 ),
@@ -104,12 +102,11 @@ class InvoiceController extends Controller
             $propertyId = $lease->property_id;
         }
 
-        if ($managerPropertyId !== null) {
+        if ($effectivePropertyId !== null) {
             if ($propertyId === null) {
-                $propertyId = $managerPropertyId;
+                $propertyId = $effectivePropertyId;
             }
-
-            abort_if((int) $propertyId !== $managerPropertyId, 403);
+            abort_if((int) $propertyId !== $effectivePropertyId, 403);
         }
 
         $createdInvoiceId = null;
@@ -192,9 +189,9 @@ class InvoiceController extends Controller
 
     public function update(Request $request, Invoice $invoice)
     {
-        $user = $request->user();
-        if ($user?->role === 'manager') {
-            abort_if((int) $invoice->property_id !== (int) $user->property_id, 403);
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
         }
 
         $data = $request->validate([
@@ -220,9 +217,10 @@ class InvoiceController extends Controller
 
     public function destroy(Invoice $invoice)
     {
-        $user = request()->user();
-        if ($user?->role === 'manager') {
-            abort_if((int) $invoice->property_id !== (int) $user->property_id, 403);
+        $req = request();
+        if ($this->shouldScopeToProperty($req)) {
+            $effectiveId = $this->effectivePropertyId($req);
+            abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
         }
 
         $propertyId   = $invoice->property_id;
@@ -246,16 +244,10 @@ class InvoiceController extends Controller
 
     private function scopeByUserProperty($query, Request $request, string $column): void
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-                return;
-            }
-
-            $query->where($column, $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where($column, $propertyId);
     }
 
     private function attachInvoiceToInstallment(Invoice $invoice): void

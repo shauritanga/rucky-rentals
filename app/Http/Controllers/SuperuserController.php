@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
+use App\Models\Lease;
+use App\Models\MaintenanceRecord;
 use App\Models\Property;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
@@ -44,11 +47,23 @@ class SuperuserController extends Controller
 
         $settings = SystemSetting::pluck('value', 'key');
 
+        $pendingLeases = Lease::with(['tenant:id,name', 'unit:id,unit_number,property_id', 'unit.property:id,name'])
+            ->whereIn('status', ['pending_accountant', 'pending_pm'])
+            ->orderBy('created_at')
+            ->get();
+
+        $pendingMaintenance = MaintenanceRecord::with(['unit:id,unit_number,property_id', 'unit.property:id,name'])
+            ->whereIn('workflow_status', ['submitted', 'pending_manager'])
+            ->orderBy('created_at')
+            ->get();
+
         return Inertia::render('Superuser/Index', [
-            'properties' => $properties,
-            'managers'   => $managers,
-            'auditLogs'  => $auditLogs,
-            'settings'   => $settings,
+            'properties'         => $properties,
+            'managers'           => $managers,
+            'auditLogs'          => $auditLogs,
+            'settings'           => $settings,
+            'pendingLeases'      => $pendingLeases,
+            'pendingMaintenance' => $pendingMaintenance,
         ]);
     }
 
@@ -253,6 +268,99 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Role permissions saved.');
+    }
+
+    // ── Property View ────────────────────────────────────────────────
+
+    public function enterPropertyView(Property $property)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        session(['superuser_viewing_property_id' => $property->id]);
+        return redirect('/');
+    }
+
+    public function exitPropertyView()
+    {
+        session()->forget('superuser_viewing_property_id');
+        return redirect()->route('superuser.index');
+    }
+
+    // ── Lease Approvals ──────────────────────────────────────────────
+
+    public function approveLease(Lease $lease)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if(!in_array($lease->status, ['pending_accountant', 'pending_pm']), 422, 'Lease is not pending approval.');
+
+        $log   = json_decode($lease->approval_log ?? '[]', true);
+        $log[] = [
+            'step'   => count($log) + 1,
+            'action' => 'approved',
+            'by'     => Auth::user()->name . ' (Superuser)',
+            'date'   => now()->format('d M Y'),
+            'text'   => 'Approved by superuser',
+        ];
+        $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
+
+        app(LeaseController::class)->ensureInstallmentsGenerated($lease->fresh());
+
+        $propertyName = $lease->unit?->property?->name;
+        $this->logAudit(
+            request: request(),
+            action: 'Lease approved',
+            resource: $lease->lease_number ?? ('Lease #' . $lease->id),
+            propertyName: $propertyName,
+            category: 'lease',
+            propertyId: $lease->unit?->property_id ? (int) $lease->unit->property_id : null,
+        );
+
+        return back()->with('success', 'Lease approved.');
+    }
+
+    public function rejectLease(Lease $lease, Request $request)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $log   = json_decode($lease->approval_log ?? '[]', true);
+        $log[] = [
+            'action' => 'rejected',
+            'by'     => Auth::user()->name . ' (Superuser)',
+            'date'   => now()->format('d M Y'),
+            'reason' => $request->input('reason', ''),
+        ];
+        $lease->update(['status' => 'rejected', 'approval_log' => json_encode($log)]);
+
+        return back()->with('success', 'Lease rejected.');
+    }
+
+    // ── Maintenance Approvals ────────────────────────────────────────
+
+    public function approveMaintenance(MaintenanceRecord $ticket)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $ticket->update(['workflow_status' => 'approved', 'status' => 'open']);
+
+        $propertyName = $ticket->unit?->property?->name ?? Property::where('id', $ticket->property_id)->value('name');
+        $this->logAudit(
+            request: request(),
+            action: 'Maintenance ticket approved',
+            resource: $ticket->title,
+            propertyName: $propertyName,
+            category: 'maintenance',
+            propertyId: $ticket->property_id ? (int) $ticket->property_id : null,
+        );
+
+        return back()->with('success', 'Maintenance ticket approved.');
+    }
+
+    public function rejectMaintenance(MaintenanceRecord $ticket, Request $request)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $ticket->update(['workflow_status' => 'rejected', 'status' => 'open']);
+
+        return back()->with('success', 'Maintenance ticket rejected.');
     }
 
 }

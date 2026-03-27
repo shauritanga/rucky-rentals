@@ -203,13 +203,9 @@ class AccountingController extends Controller
 
     private function resolvePropertyId(Request $request, bool $mustExist): ?int
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-            abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
-
-            return (int) $user->property_id;
+        // Manager or superuser in property-view mode — scope to effective property
+        if ($this->shouldScopeToProperty($request)) {
+            return $this->effectivePropertyId($request);
         }
 
         $requestedPropertyId = $request->filled('property_id') ? (int) $request->input('property_id') : null;

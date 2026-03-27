@@ -7,6 +7,7 @@ import ManagersPage from '@/Pages/Superuser/Pages/ManagersPage';
 import RolesPage from '@/Pages/Superuser/Pages/RolesPage';
 import AuditPage from '@/Pages/Superuser/Pages/AuditPage';
 import SettingsPage from '@/Pages/Superuser/Pages/SettingsPage';
+import ApprovalsPage from '@/Pages/Superuser/Pages/ApprovalsPage';
 
 
 const VIEW_META = {
@@ -14,11 +15,12 @@ const VIEW_META = {
   properties: { title: 'Properties', subtitle: 'All buildings', actionLabel: 'Add Property' },
   managers: { title: 'Managers & Users', subtitle: 'All system users', actionLabel: 'Add User' },
   roles: { title: 'Roles & Permissions', subtitle: 'Access control', actionLabel: 'Save Changes' },
+  approvals: { title: 'Approvals', subtitle: 'Pending requests', actionLabel: null },
   audit: { title: 'Audit Trail', subtitle: 'System log', actionLabel: 'Export CSV' },
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
 
-export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {} }) {
+export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [] }) {
   const [activeView, setActiveView] = useState('overview');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
@@ -125,7 +127,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       subtitle={meta.subtitle}
       actionLabel={meta.actionLabel}
       onAction={onAction}
-      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length }}
+      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length, approvals: pendingLeases.length + pendingMaintenance.length }}
     >
       <Head title={`Superuser - ${meta.title}`} />
 
@@ -152,6 +154,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
 
       {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} onOpenManagerModal={() => setShowManagerModal(true)} />}
       {activeView === 'roles' && <RolesPage settings={settings} />}
+      {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage settings={settings} />}
 

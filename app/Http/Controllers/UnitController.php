@@ -60,9 +60,10 @@ class UnitController extends Controller
         $managerProperty = null;
         $maxFloor = null;
 
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-            $managerProperty = Property::find($user->property_id);
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId === null, 422, 'No property context available.');
+            $managerProperty = Property::find($effectiveId);
             abort_if(!$managerProperty, 422, 'Assigned property not found.');
             $maxFloor = max(1, (int) ($managerProperty->total_floors ?? 1));
         }
@@ -84,8 +85,8 @@ class UnitController extends Controller
         $data['rent'] = round($data['size_sqm'] * $data['rate_per_sqm'], 2);
         $data['deposit'] = round($data['rent'] * 2, 2);
 
-        if ($user?->role === 'manager') {
-            $data['property_id'] = $user->property_id;
+        if ($this->shouldScopeToProperty($request)) {
+            $data['property_id'] = $this->effectivePropertyId($request);
         }
 
         $unit = Unit::create($data);
@@ -111,10 +112,11 @@ class UnitController extends Controller
     {
         $user = $request->user();
         $maxFloor = null;
-        if ($user?->role === 'manager') {
-            abort_if((int) $unit->property_id !== (int) $user->property_id, 403);
-            $managerProperty = Property::find($user->property_id);
-            $maxFloor = max(1, (int) ($managerProperty?->total_floors ?? 1));
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $unit->property_id !== $effectiveId, 403);
+            $managerProperty = $effectiveId ? Property::find($effectiveId) : null;
+            $maxFloor = $managerProperty ? max(1, (int) ($managerProperty->total_floors ?? 1)) : null;
         }
 
         $data = $request->validate([
@@ -156,9 +158,9 @@ class UnitController extends Controller
     public function destroy(Unit $unit)
     {
         $request = request();
-        $user = $request->user();
-        if ($user?->role === 'manager') {
-            abort_if((int) $unit->property_id !== (int) $user->property_id, 403);
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $unit->property_id !== $effectiveId, 403);
         }
 
         $propertyName = null;
@@ -184,36 +186,22 @@ class UnitController extends Controller
 
     private function scopeUnitsForUser($query, Request $request): void
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-                return;
-            }
-
-            $query->where('property_id', $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where('property_id', $propertyId);
     }
 
     private function resolveFloorOptions(Request $request): array
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                return [];
-            }
-
-            $property = Property::find($user->property_id);
-            if (!$property) {
-                return [];
-            }
-
+        if ($this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
+            if ($propertyId === null) return [];
+            $property = Property::find($propertyId);
+            if (!$property) return [];
             $maxFloor = max(1, (int) ($property->total_floors ?? 1));
             return range(1, $maxFloor);
         }
-
         return range(1, 7);
     }
 

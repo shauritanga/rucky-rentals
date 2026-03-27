@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Property;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Middleware;
@@ -55,6 +56,11 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn() => $request->session()->get('error'),
                 'created_invoice_id' => fn() => $request->session()->get('created_invoice_id'),
             ],
+            'viewing_property' => fn() => (
+                $request->user()?->role === 'superuser' && $request->session()->get('superuser_viewing_property_id')
+                    ? Property::find($request->session()->get('superuser_viewing_property_id'), ['id', 'name'])
+                    : null
+            ),
         ];
     }
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 
 const CAT_ICONS = {
@@ -88,6 +88,8 @@ function safeNotes(value) {
 }
 
 export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], approvalCount = 0 }) {
+  const { props } = usePage();
+  const user = props?.auth?.user;
   const [tab, setTab] = useState('requests');
   const [filter, setFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('');
@@ -640,6 +642,8 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4, background: 'var(--bg-elevated)', borderRadius: 10, padding: 6 }}>
                     {['submitted', 'pending_manager', 'approved', 'in_progress', 'resolved'].map((s) => {
+                      const isApprovalStep = s === 'approved' || s === 'pending_manager';
+                      if (isApprovalStep && user?.role !== 'superuser') return null;
                       const active = normalizeWorkflowStatus(selected) === s;
                       return (
                         <button key={s} onClick={() => updateWorkflowStatus(selected, s)} style={{ padding: '6px 4px', borderRadius: 8, border: 'none', fontSize: 10, fontWeight: 500, fontFamily: 'inherit', cursor: 'pointer', background: active ? (STATUS_META[s]?.bg || 'var(--bg-surface)') : 'none', color: active ? (STATUS_META[s]?.color || 'var(--text-primary)') : 'var(--text-muted)' }}>

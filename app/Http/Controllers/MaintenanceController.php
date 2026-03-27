@@ -42,12 +42,22 @@ class MaintenanceController extends Controller
         $units   = $units->get();
 
         $scheduledTasks = ScheduledMaintenance::query()
-            ->when($user?->role === 'manager', fn ($q) => $q->where('property_id', $user->property_id))
+            ->when($this->shouldScopeToProperty($request), function ($q) use ($request) {
+                $pid = $this->effectivePropertyId($request);
+                if ($pid) $q->where('property_id', $pid);
+                else $q->whereRaw('1 = 0');
+            })
             ->orderBy('next_due')
             ->get();
 
+        // Approval count — for superuser in view mode, show pending tickets for that property
         $approvalCount = 0;
-        if ($user?->role === 'accountant') {
+        if ($user?->role === 'superuser' && $this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
+            $approvalCount = MaintenanceRecord::whereIn('workflow_status', ['submitted', 'pending_manager'])
+                ->when($propertyId, fn ($q) => $q->where('property_id', $propertyId))
+                ->count();
+        } elseif ($user?->role === 'accountant') {
             $approvalCount = MaintenanceRecord::where('workflow_status', 'submitted')
                 ->when(!empty($user->property_id), fn ($q) => $q->where('property_id', $user->property_id))
                 ->count();
@@ -77,11 +87,18 @@ class MaintenanceController extends Controller
         $this->authorizeUnitProperty($request, $unit);
 
         $propertyId = $unit?->property_id;
-        if ($propertyId === null && $user?->role === 'manager') {
-            $propertyId = $user->property_id;
+        if ($propertyId === null && $this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
         }
 
         abort_if(empty($propertyId), 422, 'Unable to determine property for this ticket.');
+
+        // Superuser acting in property view → auto-approve
+        if ($this->isSuperuserActing($request)) {
+            $workflowStatus = 'approved';
+        } else {
+            $workflowStatus = 'submitted';
+        }
 
         $count  = MaintenanceRecord::count() + 1;
         $ticket = MaintenanceRecord::create([
@@ -90,17 +107,19 @@ class MaintenanceController extends Controller
             'unit_id'         => $unit?->id,
             'ticket_number'   => 'TK-' . str_pad($count, 3, '0', STR_PAD_LEFT),
             'status'          => 'open',
-            'workflow_status' => 'submitted',
+            'workflow_status' => $workflowStatus,
             'reported_by'     => $user?->name ?? 'System',
             'reported_date'   => now()->toDateString(),
             'notes'           => json_encode([]),
         ]);
 
-        // Notify accountants for this property
-        $accountants = User::where('role', 'accountant')
-            ->when(!empty($propertyId), fn ($q) => $q->where('property_id', $propertyId))
-            ->get();
-        Notification::send($accountants, new MaintenanceApprovalNotification($ticket, 'submitted'));
+        // Send notifications — to superuser if submitted, not to accountants
+        if ($workflowStatus === 'submitted') {
+            $superusers = User::where('role', 'superuser')->get();
+            if ($superusers->isNotEmpty()) {
+                Notification::send($superusers, new MaintenanceApprovalNotification($ticket, 'submitted'));
+            }
+        }
 
         $propertyName = Property::where('id', $propertyId)->value('name');
         $this->logAudit(
@@ -137,6 +156,12 @@ class MaintenanceController extends Controller
             $maintenanceTicket->update(['notes' => json_encode($notes)]);
         } elseif ($request->has('workflow_status')) {
             $next = $request->input('workflow_status');
+            $user = $request->user();
+
+            // Only superuser can approve tickets
+            if (in_array($next, ['approved', 'pending_manager'])) {
+                abort_if($user?->role !== 'superuser', 403, 'Only superuser can approve maintenance tickets.');
+            }
 
             // Sync base status to match workflow stage
             $newStatus = match ($next) {
@@ -150,15 +175,8 @@ class MaintenanceController extends Controller
                 'status'          => $newStatus,
             ]);
 
-            $propertyId = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
-
-            // Send notifications based on transition
-            if ($next === 'pending_manager') {
-                $managers = User::where('role', 'manager')
-                    ->when(!empty($propertyId), fn ($q) => $q->where('property_id', $propertyId))
-                    ->get();
-                Notification::send($managers, new MaintenanceApprovalNotification($maintenanceTicket, 'pending_manager'));
-            } elseif ($next === 'approved') {
+            // Send notification when approved
+            if ($next === 'approved') {
                 $reporter = User::where('name', $maintenanceTicket->reported_by)->first();
                 if ($reporter) {
                     $reporter->notify(new MaintenanceApprovalNotification($maintenanceTicket, 'approved'));
@@ -251,48 +269,34 @@ class MaintenanceController extends Controller
 
     private function scopeByUserProperty($query, Request $request): void
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-                return;
-            }
-            $query->where('property_id', $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where('property_id', $propertyId);
     }
 
     private function scopeUnitsByUserProperty($query, Request $request): void
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-                return;
-            }
-            $query->where('property_id', $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where('property_id', $propertyId);
     }
 
     private function authorizeTicketProperty(Request $request, MaintenanceRecord $ticket): void
     {
-        $user = $request->user();
-        if ($user?->role !== 'manager') {
-            return;
-        }
-        $ticketPropertyId = $ticket->property_id;
-        abort_if((int) $ticketPropertyId !== (int) $user->property_id, 403);
+        if (!$this->shouldScopeToProperty($request)) return;
+        $effectiveId = $this->effectivePropertyId($request);
+        if ($effectiveId === null) return;
+        abort_if((int) $ticket->property_id !== $effectiveId, 403);
     }
 
     private function authorizeUnitProperty(Request $request, ?Unit $unit): void
     {
-        $user = $request->user();
-        if ($user?->role !== 'manager' || !$unit) {
-            return;
-        }
-        abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-        abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
-        abort_if((int) $unit->property_id !== (int) $user->property_id, 403);
+        if (!$this->shouldScopeToProperty($request) || !$unit) return;
+        $effectiveId = $this->effectivePropertyId($request);
+        abort_if($effectiveId === null, 422, 'No property context available.');
+        abort_if(!Property::where('id', $effectiveId)->exists(), 422, 'Assigned property not found.');
+        abort_if((int) $unit->property_id !== $effectiveId, 403);
     }
 }

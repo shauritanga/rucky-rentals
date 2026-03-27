@@ -62,10 +62,11 @@ class TenantController extends Controller
         $data['color']      = 'rgba(59,130,246,.18)';
         $data['text_color'] = 'var(--accent)';
 
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-            abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
-            $data['property_id'] = $user->property_id;
+        if ($this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
+            abort_if($propertyId === null, 422, 'No property context available.');
+            abort_if(!Property::where('id', $propertyId)->exists(), 422, 'Assigned property not found.');
+            $data['property_id'] = $propertyId;
         }
 
         $tenant = Tenant::create($data);
@@ -89,9 +90,9 @@ class TenantController extends Controller
 
     public function update(Request $request, Tenant $tenant)
     {
-        $user = $request->user();
-        if ($user?->role === 'manager') {
-            abort_if((int) $tenant->property_id !== (int) $user->property_id, 403);
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $tenant->property_id !== $effectiveId, 403);
         }
 
         $data = $request->validate([
@@ -137,9 +138,9 @@ class TenantController extends Controller
     public function destroy(Tenant $tenant)
     {
         $request = request();
-        $user = $request->user();
-        if ($user?->role === 'manager') {
-            abort_if((int) $tenant->property_id !== (int) $user->property_id, 403);
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $tenant->property_id !== $effectiveId, 403);
         }
 
         $propertyName = null;
@@ -165,15 +166,9 @@ class TenantController extends Controller
 
     private function scopeTenantsForUser($query, Request $request): void
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-                return;
-            }
-
-            $query->where('property_id', $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where('property_id', $propertyId);
     }
 }

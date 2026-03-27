@@ -11,29 +11,33 @@ use App\Models\Tenant;
 use App\Models\Unit;
 use App\Support\MockRentalData;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        if (Auth::check() && Auth::user()->role === 'superuser') {
+        // Redirect superuser to their panel unless they're in property-view mode
+        if (Auth::check() && Auth::user()->role === 'superuser' && !session('superuser_viewing_property_id')) {
             return redirect()->route('superuser.index');
         }
 
         $user = Auth::user();
 
-        if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
+        // Don't serve mock data when superuser is viewing a real property
+        if (MockRentalData::shouldUse() && $user?->role !== 'manager' && !session('superuser_viewing_property_id')) {
             return Inertia::render('Dashboard', MockRentalData::dashboard());
         }
 
         $unitsBaseQuery = Unit::query();
-        if ($user && $user->role === 'manager') {
-            if (empty($user->property_id)) {
+        if ($this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
+            if ($propertyId === null) {
                 $unitsBaseQuery->whereRaw('1 = 0');
             } else {
-                $unitsBaseQuery->where('property_id', $user->property_id);
+                $unitsBaseQuery->where('property_id', $propertyId);
             }
         }
 
@@ -80,11 +84,12 @@ class DashboardController extends Controller
         $today    = Carbon::today();
         $in7Days  = $today->copy()->addDays(7);
         $events   = collect();
+        $scopePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
         // 1. Unpaid invoices due within 7 days → Rent events
         Invoice::where('status', 'unpaid')
             ->whereBetween('due_date', [$today, $in7Days])
-            ->when($user && $user->role === 'manager' && $user->property_id, fn ($q) => $q->where('property_id', $user->property_id))
+            ->when($scopePropertyId !== null, fn ($q) => $q->where('property_id', $scopePropertyId))
             ->orderBy('due_date')
             ->limit(5)
             ->get()
@@ -125,7 +130,7 @@ class DashboardController extends Controller
         // 3. Scheduled maintenance due within 7 days → Repair events
         ScheduledMaintenance::whereIn('status', ['upcoming', 'overdue'])
             ->whereBetween('next_due', [$today, $in7Days])
-            ->when($user && $user->role === 'manager' && $user->property_id, fn ($q) => $q->where('property_id', $user->property_id))
+            ->when($scopePropertyId !== null, fn ($q) => $q->where('property_id', $scopePropertyId))
             ->orderBy('next_due')
             ->limit(5)
             ->get()

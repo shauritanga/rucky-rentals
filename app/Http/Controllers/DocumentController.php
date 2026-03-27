@@ -14,9 +14,9 @@ use Inertia\Inertia;
 class DocumentController extends Controller
 {
     use LogsAudit;
-    public function index()
+    public function index(Request $request)
     {
-        $user = request()->user();
+        $user = $request->user();
         if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Documents/Index', [
                 'documents' => MockRentalData::documents(),
@@ -24,8 +24,24 @@ class DocumentController extends Controller
             ]);
         }
 
-        $documents = Document::with('unit')->orderByDesc('created_at')->get();
-        $units     = Unit::orderBy('unit_number')->get();
+        $documentsQuery = Document::with('unit')->orderByDesc('created_at');
+        $unitsQuery = Unit::orderBy('unit_number');
+
+        // Scope documents to property when in property-view mode (via unit's property_id)
+        if ($this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
+            if ($propertyId === null) {
+                $documentsQuery->whereRaw('1 = 0');
+                $unitsQuery->whereRaw('1 = 0');
+            } else {
+                $documentsQuery->whereHas('unit', fn($q) => $q->where('property_id', $propertyId))
+                    ->orWhereNull('unit_id'); // documents not linked to a unit
+                $unitsQuery->where('property_id', $propertyId);
+            }
+        }
+
+        $documents = $documentsQuery->get();
+        $units     = $unitsQuery->get();
         return Inertia::render('Documents/Index', compact('documents', 'units'));
     }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import { Link, usePage, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 
 const NAV = [
@@ -25,6 +25,7 @@ export default function AppLayout({ children, title, subtitle }) {
   const { url, props } = usePage();
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
   const user = props?.auth?.user;
+  const viewingProperty = props?.viewing_property ?? null;
   const displayName = user?.name || 'User';
   const roleLabel = user?.role ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'User';
   const initials = displayName
@@ -83,6 +84,37 @@ export default function AppLayout({ children, title, subtitle }) {
       </aside>
 
       <div className="main">
+        {viewingProperty && (
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.08)',
+            borderBottom: '1px solid rgba(245, 158, 11, 0.35)',
+            padding: '8px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            fontSize: 13,
+            color: 'rgb(245, 158, 11)',
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>Superuser acting as Manager —</span>
+            <strong style={{ color: 'var(--text)' }}>{viewingProperty.name}</strong>
+            <button
+              onClick={() => router.post('/superuser/property/exit')}
+              style={{
+                marginLeft: 'auto',
+                padding: '4px 12px',
+                borderRadius: 6,
+                border: '1px solid rgba(245, 158, 11, 0.5)',
+                background: 'transparent',
+                color: 'rgb(245, 158, 11)',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              ← Exit to Superuser Panel
+            </button>
+          </div>
+        )}
         <header className="topbar">
           <button
             className="toggle-btn"

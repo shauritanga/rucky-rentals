@@ -562,14 +562,12 @@ class ReportController extends Controller
 
     private function resolvePropertyId(Request $request): ?int
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-            abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
-            return (int) $user->property_id;
+        // Manager or superuser in property-view mode — scope to their effective property
+        if ($this->shouldScopeToProperty($request)) {
+            return $this->effectivePropertyId($request);
         }
 
+        // Superuser not in property-view mode — use query param if provided
         return $request->filled('property_id') ? (int) $request->input('property_id') : null;
     }
 }

@@ -51,12 +51,11 @@ class LeaseController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $managerPropertyId = null;
+        $effectivePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-            abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
-            $managerPropertyId = (int) $user->property_id;
+        if ($this->shouldScopeToProperty($request)) {
+            abort_if($effectivePropertyId === null, 422, 'No property context available.');
+            abort_if(!Property::where('id', $effectivePropertyId)->exists(), 422, 'Assigned property not found.');
         }
 
         $validated = $request->validate([
@@ -65,8 +64,8 @@ class LeaseController extends Controller
                 'nullable',
                 'required_if:tenant_mode,existing',
                 Rule::exists('tenants', 'id')->when(
-                    $managerPropertyId,
-                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $managerPropertyId))
+                    $effectivePropertyId,
+                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
                 ),
             ],
             'new_tenant_name' => 'nullable|required_if:tenant_mode,new|string|max:255',
@@ -76,8 +75,8 @@ class LeaseController extends Controller
             'unit_id'         => [
                 'required',
                 Rule::exists('units', 'id')->when(
-                    $managerPropertyId,
-                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $managerPropertyId))
+                    $effectivePropertyId,
+                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
                 ),
             ],
             'possession_date' => 'nullable|date',
@@ -101,8 +100,8 @@ class LeaseController extends Controller
         $propertyId = $unit->property_id;
         abort_if(empty($propertyId), 422, 'Selected unit is not linked to any property.');
 
-        if ($managerPropertyId !== null) {
-            abort_if((int) $propertyId !== $managerPropertyId, 403);
+        if ($effectivePropertyId !== null) {
+            abort_if((int) $propertyId !== $effectivePropertyId, 403);
         }
 
         $tenantId = $validated['tenant_id'] ?? null;
@@ -134,9 +133,25 @@ class LeaseController extends Controller
 
         if (($validated['tenant_mode'] ?? 'existing') === 'existing') {
             $tenant = Tenant::findOrFail($tenantId);
-            if ($managerPropertyId !== null) {
-                abort_if((int) $tenant->property_id !== $managerPropertyId, 403);
+            if ($effectivePropertyId !== null) {
+                abort_if((int) $tenant->property_id !== $effectivePropertyId, 403);
             }
+        }
+
+        // Determine initial status — superuser acting in property view mode auto-approves
+        if ($this->isSuperuserActing($request)) {
+            $status = 'active';
+            $approvalLog = json_encode([[
+                'step' => 1, 'action' => 'approved',
+                'by' => $user->name . ' (Superuser)',
+                'date' => now()->toDateString(),
+                'text' => 'Auto-approved by superuser.',
+            ]]);
+        } else {
+            $status = 'pending_accountant';
+            $approvalLog = json_encode([
+                ['step' => 0, 'action' => 'submitted', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease submitted for approval.']
+            ]);
         }
 
         $data = [
@@ -159,14 +174,18 @@ class LeaseController extends Controller
             'monthly_rent' => $validated['monthly_rent'],
             'deposit' => $validated['deposit'] ?? ($validated['monthly_rent'] * 2),
             'terms' => $validated['terms'] ?? null,
-            'status' => 'pending_accountant',
-            'approval_log' => json_encode([
-                ['step' => 0, 'action' => 'submitted', 'by' => 'James Mwangi (Lease Manager)', 'date' => now()->toDateString(), 'text' => 'Lease submitted for approval.']
-            ]),
+            'status' => $status,
+            'approval_log' => $approvalLog,
         ];
 
-        $lease = Lease::create($data);
-        $unit->update(['status' => 'occupied']);
+        DB::transaction(function () use (&$lease, $data, $unit) {
+            $lease = Lease::create($data);
+            $unit->update(['status' => 'occupied']);
+            // If auto-approved, generate installments immediately
+            if ($lease->status === 'active') {
+                $this->ensureInstallmentsGenerated($lease->fresh());
+            }
+        });
 
         $propertyName = Property::where('id', $propertyId)->value('name');
         $this->logAudit(
@@ -178,36 +197,62 @@ class LeaseController extends Controller
             propertyId: (int) $propertyId,
         );
 
-        return back()->with('success', 'Lease created and submitted for approval.');
+        $message = $this->isSuperuserActing($request)
+            ? 'Lease created and approved.'
+            : 'Lease created and submitted for approval.';
+
+        return back()->with('success', $message);
     }
 
     public function update(Request $request, Lease $lease)
     {
         $user = $request->user();
-        if ($user?->role === 'manager') {
-            abort_if((int) $lease->property_id !== (int) $user->property_id, 403);
+
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $lease->property_id !== $effectiveId, 403);
         }
 
         $action = $request->input('action');
 
-        if ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
+        if ($action === 'approve_superuser' && $user->role === 'superuser'
+            && in_array($lease->status, ['pending_accountant', 'pending_pm'])) {
             $log = json_decode($lease->approval_log, true) ?? [];
-            $log[] = ['step' => 1, 'action' => 'approved', 'by' => 'Diana Ochieng (Accountant)', 'date' => now()->toDateString(), 'text' => 'Financials verified. Approved.'];
-            $lease->update(['status' => 'pending_pm', 'approval_log' => json_encode($log)]);
+            $log[] = [
+                'step' => 2, 'action' => 'approved',
+                'by' => $user->name . ' (Superuser)',
+                'date' => now()->toDateString(),
+                'text' => 'Approved by superuser.',
+            ];
+            DB::transaction(function () use ($lease, $log) {
+                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
+                $this->ensureInstallmentsGenerated($lease->fresh());
+            });
+        } elseif ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
+            // Only superuser can approve
+            abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
+            $log = json_decode($lease->approval_log, true) ?? [];
+            $log[] = ['step' => 1, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
+            DB::transaction(function () use ($lease, $log) {
+                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
+                $this->ensureInstallmentsGenerated($lease->fresh());
+            });
         } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
+            // Only superuser can approve
+            abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
-            $log[] = ['step' => 2, 'action' => 'approved', 'by' => 'James Mwangi (Property Manager)', 'date' => now()->toDateString(), 'text' => 'Final approval. Lease activated.'];
+            $log[] = ['step' => 2, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
             });
         } elseif ($action === 'reject') {
             $log = json_decode($lease->approval_log, true) ?? [];
-            $log[] = ['step' => 0, 'action' => 'rejected', 'by' => 'James Mwangi', 'date' => now()->toDateString(), 'reason' => $request->input('reason', ''), 'text' => 'Lease rejected.'];
+            $log[] = ['step' => 0, 'action' => 'rejected', 'by' => $user->name, 'date' => now()->toDateString(), 'reason' => $request->input('reason', ''), 'text' => 'Lease rejected.'];
             $lease->update(['status' => 'rejected', 'approval_log' => json_encode($log)]);
         } elseif ($action === 'resubmit') {
             $log = json_decode($lease->approval_log, true) ?? [];
-            $log[] = ['step' => 0, 'action' => 'submitted', 'by' => 'James Mwangi (Lease Manager)', 'date' => now()->toDateString(), 'text' => 'Lease resubmitted after rejection.'];
+            $log[] = ['step' => 0, 'action' => 'submitted', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease resubmitted after rejection.'];
             $lease->update(['status' => 'pending_accountant', 'approval_log' => json_encode($log)]);
         }
 
@@ -227,9 +272,10 @@ class LeaseController extends Controller
 
     public function destroy(Lease $lease)
     {
-        $user = request()->user();
-        if ($user?->role === 'manager') {
-            abort_if((int) $lease->property_id !== (int) $user->property_id, 403);
+        $request = request();
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $lease->property_id !== $effectiveId, 403);
         }
 
         $propertyId   = $lease->property_id;
@@ -239,7 +285,7 @@ class LeaseController extends Controller
         $lease->delete();
 
         $this->logAudit(
-            request: request(),
+            request: $request,
             action: 'Lease deleted',
             resource: $resource,
             propertyName: $propertyName,
@@ -252,19 +298,13 @@ class LeaseController extends Controller
 
     private function scopeByUserProperty($query, Request $request, string $column): void
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-                return;
-            }
-
-            $query->where($column, $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where($column, $propertyId);
     }
 
-    private function ensureInstallmentsGenerated(Lease $lease): void
+    public function ensureInstallmentsGenerated(Lease $lease): void
     {
         if ($lease->installments()->exists()) {
             return;

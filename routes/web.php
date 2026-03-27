@@ -73,6 +73,12 @@ Route::middleware('auth')->group(function () {
         Route::patch('superuser/settings', [SuperuserController::class, 'updateSettings'])->name('superuser.settings.update');
         Route::patch('superuser/roles', [SuperuserController::class, 'updateRoles'])->name('superuser.roles.update');
         Route::patch('superuser/password', [SuperuserController::class, 'changePassword'])->name('superuser.password.change');
+        Route::post('superuser/property/{property}/enter', [SuperuserController::class, 'enterPropertyView'])->name('superuser.property.enter');
+        Route::post('superuser/property/exit', [SuperuserController::class, 'exitPropertyView'])->name('superuser.property.exit');
+        Route::post('superuser/leases/{lease}/approve', [SuperuserController::class, 'approveLease'])->name('superuser.leases.approve');
+        Route::post('superuser/leases/{lease}/reject', [SuperuserController::class, 'rejectLease'])->name('superuser.leases.reject');
+        Route::post('superuser/maintenance/{ticket}/approve', [SuperuserController::class, 'approveMaintenance'])->name('superuser.maintenance.approve');
+        Route::post('superuser/maintenance/{ticket}/reject', [SuperuserController::class, 'rejectMaintenance'])->name('superuser.maintenance.reject');
         Route::patch('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password.change');
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update');
         Route::post('accounting/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');

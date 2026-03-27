@@ -53,35 +53,33 @@ class PaymentController extends Controller
 
     public function store(Request $request, AccountingService $accountingService)
     {
-        $user = $request->user();
-        $managerPropertyId = null;
+        $effectivePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'Manager is not assigned to any property.');
-            abort_if(!Property::where('id', $user->property_id)->exists(), 422, 'Assigned property not found.');
-            $managerPropertyId = (int) $user->property_id;
+        if ($this->shouldScopeToProperty($request)) {
+            abort_if($effectivePropertyId === null, 422, 'No property context available.');
+            abort_if(!Property::where('id', $effectivePropertyId)->exists(), 422, 'Assigned property not found.');
         }
 
         $data = $request->validate([
             'invoice_id' => [
                 'nullable',
                 Rule::exists('invoices', 'id')->when(
-                    $managerPropertyId,
-                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $managerPropertyId))
+                    $effectivePropertyId,
+                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
                 ),
             ],
             'tenant_id' => [
                 'required',
                 Rule::exists('tenants', 'id')->when(
-                    $managerPropertyId,
-                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $managerPropertyId))
+                    $effectivePropertyId,
+                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
                 ),
             ],
             'unit_id'   => [
                 'required',
                 Rule::exists('units', 'id')->when(
-                    $managerPropertyId,
-                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $managerPropertyId))
+                    $effectivePropertyId,
+                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
                 ),
             ],
             'month'     => 'required|string',
@@ -98,12 +96,9 @@ class PaymentController extends Controller
 
         $propertyId = (int) ($unit->property_id ?: $tenant->property_id ?: 0);
 
-        if ($managerPropertyId !== null) {
+        if ($effectivePropertyId !== null) {
             abort_if(!$propertyId, 422, 'Selected unit/tenant is not linked to any property.');
-        }
-
-        if ($managerPropertyId !== null) {
-            abort_if($propertyId !== $managerPropertyId, 403);
+            abort_if($propertyId !== $effectivePropertyId, 403);
         }
 
         $data['property_id'] = $propertyId;
@@ -260,24 +255,18 @@ class PaymentController extends Controller
 
     private function scopeByUserProperty($query, Request $request, string $column): void
     {
-        $user = $request->user();
-
-        if ($user?->role === 'manager') {
-            if (empty($user->property_id)) {
-                $query->whereRaw('1 = 0');
-                return;
-            }
-
-            $query->where($column, $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where($column, $propertyId);
     }
 
     private function authorizePaymentProperty(Request $request, Payment $payment): void
     {
-        $user = $request->user();
-        if ($user?->role !== 'manager') return;
-
+        if (!$this->shouldScopeToProperty($request)) return;
+        $effectiveId = $this->effectivePropertyId($request);
+        if ($effectiveId === null) return;
         $paymentPropertyId = $payment->property_id ?: $payment->unit?->property_id;
-        abort_if((int) $paymentPropertyId !== (int) $user->property_id, 403);
+        abort_if((int) $paymentPropertyId !== $effectiveId, 403);
     }
 }

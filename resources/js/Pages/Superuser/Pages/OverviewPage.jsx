@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { router } from '@inertiajs/react';
 
 const statusClass = (status) => {
   if (status === 'active') return 'active';
@@ -83,6 +84,14 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
               <option key={property.id} value={property.id}>{property.name}</option>
             ))}
           </select>
+          {selectedPropertyId !== 'all' && (
+            <button
+              className="btn btn-primary"
+              onClick={() => router.post(`/superuser/property/${selectedPropertyId}/enter`)}
+            >
+              View Property Panel
+            </button>
+          )}
         </div>
       </div>
 

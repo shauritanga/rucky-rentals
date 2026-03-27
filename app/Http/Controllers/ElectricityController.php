@@ -19,19 +19,19 @@ class ElectricityController extends Controller
     // ── Shared property scoping helper ──────────────────────────────
     private function scopeForUser(Builder $query, Request $request): void
     {
-        $user = $request->user();
-        if ($user?->role === 'manager') {
-            empty($user->property_id)
-                ? $query->whereRaw('1 = 0')
-                : $query->where('property_id', $user->property_id);
-        }
+        if (!$this->shouldScopeToProperty($request)) return;
+        $propertyId = $this->effectivePropertyId($request);
+        if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
+        $query->where('property_id', $propertyId);
     }
 
     // ── Settings key prefix — scopes SystemSetting keys per property ─
-    // Managers get "p{property_id}." prefix; superuser gets "p0." (global).
+    // Managers/superuser-in-view get "p{property_id}." prefix; superuser gets "p0." (global).
     private function settingPrefix(Request $request): string
     {
-        $pid = $request->user()?->property_id;
+        $pid = $this->shouldScopeToProperty($request)
+            ? $this->effectivePropertyId($request)
+            : $request->user()?->property_id;
         return 'p' . ($pid ?? 0) . '.';
     }
 
@@ -141,13 +141,10 @@ class ElectricityController extends Controller
         $unit = Unit::findOrFail($data['unit_id']);
         $user = $request->user();
 
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'You are not assigned to any property.');
-            abort_if(
-                (int) $unit->property_id !== (int) $user->property_id,
-                403,
-                'This unit does not belong to your property.'
-            );
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId === null, 422, 'No property context available.');
+            abort_if((int) $unit->property_id !== $effectiveId, 403, 'This unit does not belong to your property.');
         }
 
         MeterReading::updateOrCreate(
@@ -175,12 +172,10 @@ class ElectricityController extends Controller
         ]);
 
         $user = $request->user();
-        if ($user?->role === 'manager') {
-            abort_if(empty($user->property_id), 422, 'You are not assigned to any property.');
-        }
+        $outagePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : ($user->property_id ?? null);
 
         Outage::create(array_merge($data, [
-            'property_id' => $user->property_id ?? null,
+            'property_id' => $outagePropertyId,
         ]));
 
         return back()->with('success', 'Outage logged.');
