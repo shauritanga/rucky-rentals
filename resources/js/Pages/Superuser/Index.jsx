@@ -20,7 +20,7 @@ const VIEW_META = {
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
 
-export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [] }) {
+export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [], archivedManagers = [] }) {
   const [activeView, setActiveView] = useState('overview');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
@@ -152,7 +152,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         />
       )}
 
-      {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} onOpenManagerModal={() => setShowManagerModal(true)} />}
+      {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} archivedManagers={archivedManagers} onOpenManagerModal={() => setShowManagerModal(true)} />}
       {activeView === 'roles' && <RolesPage settings={settings} />}
       {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}

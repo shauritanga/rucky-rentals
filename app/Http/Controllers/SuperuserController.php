@@ -50,9 +50,14 @@ class SuperuserController extends Controller
             });
 
         $managers = User::query()
-            ->whereIn('role', ['manager', 'superuser'])
+            ->whereIn('role', ['manager', 'accountant', 'viewer', 'superuser'])
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'role', 'property_id']);
+
+        $archivedManagers = User::onlyTrashed()
+            ->whereIn('role', ['manager', 'accountant', 'viewer'])
+            ->orderByDesc('deleted_at')
+            ->get(['id', 'name', 'email', 'role', 'property_id', 'deleted_at']);
 
         $auditLogs = AuditLog::query()
             ->latest()
@@ -78,6 +83,7 @@ class SuperuserController extends Controller
             'settings'           => $settings,
             'pendingLeases'      => $pendingLeases,
             'pendingMaintenance' => $pendingMaintenance,
+            'archivedManagers'   => $archivedManagers,
         ]);
     }
 
@@ -375,6 +381,66 @@ class SuperuserController extends Controller
         $ticket->update(['workflow_status' => 'rejected', 'status' => 'open']);
 
         return back()->with('success', 'Maintenance ticket rejected.');
+    }
+
+    // ── Manager Delete / Restore ─────────────────────────────────────
+
+    public function deleteManager(Request $request, User $user): \Illuminate\Http\RedirectResponse
+    {
+        abort_if($user->role === 'superuser', 403);
+
+        $data = $request->validate(['confirm_name' => 'required|string|max:120']);
+
+        if (trim($data['confirm_name']) !== $user->name) {
+            return back()->withErrors(['confirm_name' => 'Name confirmation does not match.']);
+        }
+
+        $propertyName = null;
+        $propertyId   = $user->property_id ? (int) $user->property_id : null;
+
+        if ($propertyId) {
+            $propertyName = Property::where('id', $propertyId)->value('name');
+            Property::where('manager_user_id', $user->id)->update(['manager_user_id' => null]);
+        }
+
+        $resource = sprintf('%s (%s)', $user->name, $user->role);
+        $user->delete();
+
+        $this->logAudit(
+            request: $request,
+            action: 'Manager removed',
+            resource: $resource,
+            propertyName: $propertyName,
+            category: 'team',
+            metadata: ['soft_deleted' => true],
+            propertyId: $propertyId,
+        );
+
+        return back()->with('success', "{$user->name} has been removed.");
+    }
+
+    public function restoreManager(Request $request, int $id): \Illuminate\Http\RedirectResponse
+    {
+        $user = User::onlyTrashed()
+            ->whereIn('role', ['manager', 'accountant', 'viewer'])
+            ->findOrFail($id);
+
+        $user->restore();
+        $user->update(['status' => 'active']);
+
+        $propertyName = $user->property_id ? Property::where('id', $user->property_id)->value('name') : null;
+
+        $this->logAudit(
+            request: $request,
+            action: 'Manager restored',
+            resource: sprintf('%s (%s)', $user->name, $user->role),
+            propertyName: $propertyName,
+            category: 'team',
+            metadata: ['restored' => true],
+            propertyId: $user->property_id ? (int) $user->property_id : null,
+        );
+
+        return back()->with('success', "{$user->name} has been restored.");
     }
 
 }
