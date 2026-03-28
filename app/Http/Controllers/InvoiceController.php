@@ -130,7 +130,7 @@ class InvoiceController extends Controller
                     // Pre-populate exchange rate for audit trail
                     if ($currency !== 'TZS') {
                         $rate = ExchangeRate::getRate(
-                            propertyId: $propertyId,
+                            propertyId: null,
                             fromCurrency: $currency,
                             toCurrency: 'TZS',
                             date: $invoice->issued_date ?? now()

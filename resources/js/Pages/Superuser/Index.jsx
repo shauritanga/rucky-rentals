@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { generateFloors } from '@/utils/floorConfig';
 import { Head, useForm, router } from '@inertiajs/react';
 import SuperuserLayout from '@/Layouts/SuperuserLayout';
 import OverviewPage from '@/Pages/Superuser/Pages/OverviewPage';
@@ -46,7 +47,11 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     status: 'active',
     unit_count: 0,
     occupied_units: 0,
-    total_floors: 7,
+    // floor config
+    basements: 0,
+    has_ground_floor: false,
+    has_mezzanine: false,
+    upper_floors: 7,
   });
 
   const effectiveProperties = properties ?? [];
@@ -69,7 +74,10 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         setData('city', 'Dar es Salaam');
         setData('country', 'Tanzania');
         setData('status', 'active');
-        setData('total_floors', 7);
+        setData('basements', 0);
+        setData('has_ground_floor', false);
+        setData('has_mezzanine', false);
+        setData('upper_floors', 7);
         setShowModal(false);
       },
     });
@@ -165,7 +173,30 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
             <div className="modal-body">
               <div className="form-row"><div className="form-group"><label className="form-label">Property Name *</label><input className="form-input" value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="e.g. Rucky Heights" required /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Address *</label><input className="form-input" value={data.address} onChange={(e) => setData('address', e.target.value)} placeholder="Full street address" required /></div><div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={(e) => setData('city', e.target.value)} placeholder="Dar es Salaam" /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Total Units</label><input className="form-input" type="number" value={data.unit_count} onChange={(e) => setData('unit_count', e.target.value)} placeholder="0" min="0" /></div><div className="form-group"><label className="form-label">Total Floors</label><input className="form-input" type="number" value={data.total_floors} onChange={(e) => setData('total_floors', e.target.value)} placeholder="7" min="1" /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Total Units</label><input className="form-input" type="number" value={data.unit_count} onChange={(e) => setData('unit_count', e.target.value)} placeholder="0" min="0" /></div></div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Upper Floors *</label><input className="form-input" type="number" value={data.upper_floors} onChange={(e) => setData('upper_floors', parseInt(e.target.value, 10) || 1)} placeholder="7" min="1" max="100" required /></div>
+                <div className="form-group"><label className="form-label">Basement Levels</label><input className="form-input" type="number" value={data.basements} onChange={(e) => setData('basements', Math.max(0, parseInt(e.target.value, 10) || 0))} placeholder="0" min="0" max="10" /></div>
+              </div>
+              <div className="form-row" style={{ gap: 24 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+                  <input type="checkbox" checked={data.has_ground_floor} onChange={(e) => setData('has_ground_floor', e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                  Has Ground Floor
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+                  <input type="checkbox" checked={data.has_mezzanine} onChange={(e) => setData('has_mezzanine', e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                  Has Mezzanine
+                </label>
+              </div>
+              {(() => {
+                const preview = generateFloors({ basements: data.basements, has_ground_floor: data.has_ground_floor, has_mezzanine: data.has_mezzanine, upper_floors: data.upper_floors });
+                return (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2, padding: '6px 10px', background: 'var(--surface-alt, rgba(0,0,0,0.03))', borderRadius: 6, lineHeight: 1.7 }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Floor preview: </span>
+                    {preview.map(f => f.label).join(' · ')}
+                  </div>
+                );
+              })()}
               <div className="form-row"><div className="form-group"><label className="form-label">Status</label>
                 <select className="form-input form-select" value={data.status} onChange={(e) => setData('status', e.target.value)}>
                   <option value="active">Active</option>

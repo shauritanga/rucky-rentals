@@ -66,9 +66,9 @@ class AccountingService
                 if ($currency !== 'TZS') {
                     $rateDate = $invoice->issued_date ?? now();
 
-                    // Look up exchange rate for USD -> TZS
+                    // Look up exchange rate for USD -> TZS (global, not property-scoped)
                     $rate = ExchangeRate::getRate(
-                        propertyId: $invoice->property_id,
+                        propertyId: null,
                         fromCurrency: $currency,
                         toCurrency: 'TZS',
                         date: $rateDate
@@ -236,9 +236,9 @@ class AccountingService
                 if ($currency !== 'TZS') {
                     $rateDate = $payment->paid_date ?? now();
 
-                    // Look up exchange rate for USD -> TZS
+                    // Look up exchange rate for USD -> TZS (global, not property-scoped)
                     $rate = ExchangeRate::getRate(
-                        propertyId: $payment->property_id,
+                        propertyId: null,
                         fromCurrency: $currency,
                         toCurrency: 'TZS',
                         date: $rateDate

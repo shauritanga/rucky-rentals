@@ -6,7 +6,7 @@ const STATUS_CLASS = { occupied: 'occupied', vacant: 'vacant', overdue: 'overdue
 const STATUS_LABEL = { occupied: 'Occupied', vacant: 'Vacant', overdue: 'Overdue', maintenance: 'Maintenance' };
 
 export default function Dashboard({ stats, recentPayments, maintenanceItems, units, occupancyByFloor, upcomingEvents = [] }) {
-  const { formatCompactTzsFromUsd, formatMoney } = useExchangeRate();
+  const { formatCompactTzs, formatMoney } = useExchangeRate();
 
   return (
     <AppLayout title="Dashboard" subtitle="March 2026">
@@ -35,7 +35,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
             <div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
             <span className="stat-delta down">↓ TZS 2,120,000</span>
           </div>
-          <div className="stat-value">{formatCompactTzsFromUsd(stats.monthlyRevenue)}</div>
+          <div className="stat-value">{formatCompactTzs(stats.monthlyRevenue)}</div>
           <div className="stat-label">Revenue / Month</div>
         </div>
         <div className="stat-card">
@@ -43,7 +43,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
             <div className="stat-icon red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
             <span className="stat-delta down">{stats.overdueUnits} pending</span>
           </div>
-          <div className="stat-value">{formatCompactTzsFromUsd(stats.overdueBalance)}</div>
+          <div className="stat-value">{formatCompactTzs(stats.overdueBalance)}</div>
           <div className="stat-label">Overdue Rent</div>
         </div>
       </div>
@@ -73,8 +73,22 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                 {units.slice(0, 7).map((u) => {
                   const lease = u.leases?.[0];
                   const tenant = lease?.tenant;
-                  const isOverdue = u.status === 'overdue';
-                  const isOccupied = u.status === 'occupied';
+                  const isOverdue     = u.status === 'overdue';
+                  const isOccupied    = u.status === 'occupied';
+                  const latestPayment = u.payments?.[0];
+                  const paymentStatus = latestPayment?.status;
+
+                  let dueLabel, dueClass;
+                  if (paymentStatus === 'paid') {
+                    dueLabel = 'Paid';                        dueClass = 'paid';
+                  } else if (isOverdue || paymentStatus === 'overdue') {
+                    dueLabel = formatMoney(u.rent, u.currency); dueClass = 'due';
+                  } else if (paymentStatus === 'pending' || isOccupied) {
+                    dueLabel = 'Pending';                     dueClass = '';
+                  } else {
+                    dueLabel = '—';                           dueClass = '';
+                  }
+
                   return (
                     <tr key={u.id}>
                       <td>
@@ -93,7 +107,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                       </td>
                       <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
                       <td className="amount">{formatMoney(u.rent, u.currency)}</td>
-                      <td className={`amount ${isOverdue ? 'due' : isOccupied ? 'paid' : ''}`}>{isOverdue ? formatMoney(u.rent, u.currency) : isOccupied ? 'Paid' : '—'}</td>
+                      <td className={`amount ${dueClass}`}>{dueLabel}</td>
                       <td><button className="action-dots">···</button></td>
                     </tr>
                   );

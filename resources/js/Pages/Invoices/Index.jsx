@@ -225,24 +225,22 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const unitRef = getLeaseUnitRef(lease);
     const monthlyRent = Number(lease.monthly_rent ?? lease.rent ?? 0) || 0;
     const paymentCycle = Number(lease.payment_cycle ?? 1) || 1;
-    const serviceChargeRate = Number(lease.service_charge_rate ?? SERVICE_CHARGE_RATE * 100) || 0;
+    const unitServiceCharge = Number(lease.unit?.service_charge ?? 0);
     const vatRate = Number(lease.vat_rate ?? VAT_RATE * 100) || 0;
     const possessionDate = lease.possession_date || lease.start_date || '';
     const rentStartDate = lease.rent_start_date || lease.start_date || '';
     const period = lease.start_date && lease.end_date ? `${lease.start_date} - ${lease.end_date}` : '';
     const rentBase = monthlyRent * paymentCycle;
-    const serviceCharge = Math.round(rentBase * (serviceChargeRate / 100) * 100) / 100;
-    const fitoutDays = (() => {
-      if (!lease.fitout_enabled || !possessionDate || !rentStartDate) return 0;
-      const start = new Date(`${possessionDate}T00:00:00`);
-      const rentStart = new Date(`${rentStartDate}T00:00:00`);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(rentStart.getTime())) return 0;
-      return Math.max(0, Math.round((rentStart - start) / 86400000));
-    })();
-    const dailyServiceCharge = monthlyRent > 0 ? (monthlyRent * (serviceChargeRate / 100)) / 30 : 0;
+    const serviceCharge = Math.round(unitServiceCharge * paymentCycle * 100) / 100;
+    const fitoutDays = lease.fitout_enabled ? (Number(lease.fitout_days) || 0) : 0;
+    const dailyServiceCharge = unitServiceCharge / 30;
     const fitoutExtraSC = fitoutDays > 0 ? Math.round(dailyServiceCharge * fitoutDays * 100) / 100 : 0;
-    const fitoutExtraVAT = fitoutExtraSC > 0 ? Math.round(fitoutExtraSC * (vatRate / 100) * 100) / 100 : 0;
-    const deposit = Number(lease.deposit ?? 0) || 0;
+    // Fit-out charges only appear if no prior invoice for this lease already contains them
+    const fitoutAlreadyInvoiced = invoices.some(inv =>
+      String(inv.lease_id) === String(lease.id) &&
+      inv.items?.some(item => String(item.description ?? '').includes('Fit-Out Period'))
+    );
+
     const nextItems = [{
       description: `Rental Payment - Unit ${unitRef || '-'}`,
       sub_description: period,
@@ -252,14 +250,14 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
     if (serviceCharge > 0) {
       nextItems.push({
-        description: `Service Charge (${Math.round(serviceChargeRate)}%)`,
+        description: `Service Charge`,
         sub_description: period || 'Building/common services',
         quantity: 1,
         unit_price: serviceCharge,
       });
     }
 
-    if (fitoutExtraSC > 0) {
+    if (!fitoutAlreadyInvoiced && fitoutExtraSC > 0) {
       nextItems.push({
         description: `Service Charge - Fit-Out Period (${fitoutDays} days)`,
         sub_description: `${possessionDate} to ${rentStartDate} (rent-free period)`,
@@ -268,23 +266,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       });
     }
 
-    if (fitoutExtraVAT > 0) {
-      nextItems.push({
-        description: `VAT on Fit-Out Service Charge (${Math.round(vatRate)}%)`,
-        sub_description: 'VAT applicable to fit-out service charge',
-        quantity: 1,
-        unit_price: fitoutExtraVAT,
-      });
-    }
-
-    if ((lease.status === 'pending_accountant' || lease.status === 'pending_pm') && deposit > 0) {
-      nextItems.push({
-        description: 'Security Deposit',
-        sub_description: '2x monthly rent (refundable)',
-        quantity: 1,
-        unit_price: deposit,
-      });
-    }
 
     return nextItems;
   };

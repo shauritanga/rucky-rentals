@@ -33,7 +33,11 @@ class Lease extends Model
         'approval_log',
     ];
 
-    protected $casts = ['approval_log' => 'array'];
+    protected $casts = [
+        'approval_log'   => 'array',
+        'fitout_enabled' => 'boolean',
+        'fitout_days'    => 'integer',
+    ];
 
     public function property()
     {

@@ -1,6 +1,227 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import echo from '@/echo';
+
+/* ─── Notification Bell ──────────────────────────────────────────── */
+function timeAgo(ts) {
+    if (!ts) return '';
+    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function NotificationBell({ onNavigate }) {
+    const { props } = usePage();
+    const [open, setOpen] = useState(false);
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [localUnread, setLocalUnread] = useState(null);
+    const ref = useRef(null);
+
+    const unread = localUnread !== null ? localUnread : (props.notifications_unread ?? 0);
+
+    // Close on outside click
+    useEffect(() => {
+        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const fetchNotifications = async () => {
+        try {
+            const res = await fetch('/superuser/notifications', { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            setItems(json.notifications ?? []);
+            setLocalUnread(json.unread_count ?? 0);
+        } catch {}
+    };
+
+    // Subscribe to real-time notifications via Reverb WebSocket
+    useEffect(() => {
+        const userId = props.auth?.user?.id;
+        if (!userId) return;
+
+        // Initial fetch on mount
+        fetchNotifications();
+
+        // Listen for pushed notifications on the user's private channel
+        const channel = echo.private(`App.Models.User.${userId}`);
+        channel.notification(() => {
+            fetchNotifications();
+        });
+
+        return () => {
+            echo.leave(`App.Models.User.${userId}`);
+        };
+    }, [props.auth?.user?.id]);
+
+    const handleOpen = () => {
+        setOpen((v) => !v);
+        if (!open) { setLoading(true); fetchNotifications().finally(() => setLoading(false)); }
+    };
+
+    const csrfToken = () => document.querySelector('meta[name=csrf-token]')?.content ?? '';
+
+    const handleMarkAllRead = async () => {
+        await fetch('/superuser/notifications/read', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken() },
+        });
+        setLocalUnread(0);
+        setItems((prev) => prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+    };
+
+    const handleClearAll = async () => {
+        await fetch('/superuser/notifications', {
+            method: 'DELETE',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken() },
+        });
+        setItems([]);
+        setLocalUnread(0);
+    };
+
+    const handleItemClick = () => {
+        handleMarkAllRead();
+        setOpen(false);
+        onNavigate?.('approvals');
+    };
+
+    const getIcon = (data) => {
+        if (data?.type === 'lease_approval_request') {
+            return (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--accent)' }}>
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+            );
+        }
+        return (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--amber)' }}>
+                <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+            </svg>
+        );
+    };
+
+    const getTitle = (data) => {
+        if (data?.type === 'lease_approval_request') return 'Lease Approval Request';
+        if (data?.stage === 'submitted') return 'Maintenance Request';
+        if (data?.stage === 'pending_manager') return 'Maintenance Pending Review';
+        return 'New Request';
+    };
+
+    const getSub = (data) => {
+        if (data?.type === 'lease_approval_request') return [data.tenant, data.property].filter(Boolean).join(' · ');
+        if (data?.title) return [data.ticket_number, data.priority].filter(Boolean).join(' · ');
+        return '';
+    };
+
+    return (
+        <div ref={ref} style={{ position: 'relative' }}>
+            <button
+                className="icon-btn"
+                title="Notifications"
+                onClick={handleOpen}
+                style={{ position: 'relative' }}
+            >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+                </svg>
+                {unread > 0 && (
+                    <span style={{
+                        position: 'absolute', top: 3, right: 3,
+                        minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px',
+                        background: '#e53935', color: '#fff',
+                        fontSize: 10, fontWeight: 700,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: '2px solid var(--bg-surface)',
+                    }}>
+                        {unread > 99 ? '99+' : unread}
+                    </span>
+                )}
+            </button>
+
+            {open && (
+                <div style={{
+                    position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                    width: 340, background: 'var(--bg-surface)',
+                    border: '1px solid var(--border)', borderRadius: 12,
+                    boxShadow: 'var(--shadow-float)', zIndex: 200,
+                    overflow: 'hidden',
+                }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>Notifications</span>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            {unread > 0 && (
+                                <button type="button" onClick={handleMarkAllRead}
+                                    style={{ fontSize: 11.5, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                    Mark all read
+                                </button>
+                            )}
+                            {items.length > 0 && (
+                                <button type="button" onClick={handleClearAll}
+                                    style={{ fontSize: 11.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                    Clear all
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* List */}
+                    <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                        {loading && (
+                            <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                                Loading…
+                            </div>
+                        )}
+                        {!loading && items.length === 0 && (
+                            <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                                You're all caught up ✓
+                            </div>
+                        )}
+                        {!loading && items.map((n) => {
+                            const isUnread = !n.read_at;
+                            return (
+                                <button
+                                    key={n.id}
+                                    type="button"
+                                    onClick={handleItemClick}
+                                    style={{
+                                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                                        width: '100%', textAlign: 'left', padding: '11px 16px',
+                                        background: isUnread ? 'var(--bg-elevated)' : 'transparent',
+                                        border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer',
+                                        transition: 'background .12s',
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-hover)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = isUnread ? 'var(--bg-elevated)' : 'transparent'}
+                                >
+                                    {isUnread && (
+                                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginTop: 4 }} />
+                                    )}
+                                    {!isUnread && <span style={{ width: 7, flexShrink: 0 }} />}
+                                    <span style={{ marginTop: 1 }}>{getIcon(n.data)}</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 13, fontWeight: isUnread ? 600 : 400, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {getTitle(n.data)}
+                                        </div>
+                                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {getSub(n.data)}
+                                        </div>
+                                    </div>
+                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }}>{timeAgo(n.created_at)}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 const NAV = [
   { id: 'overview', label: 'Overview', section: 'Main', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> },
@@ -113,10 +334,7 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
               ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
               : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>}
           </button>
-          <button className="icon-btn" title="Notifications">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
-            <span className="notif-dot"></span>
-          </button>
+          <NotificationBell onNavigate={onNavigate} />
         </header>
 
         <div className="content">{children}</div>

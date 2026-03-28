@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
+import { floorSortOrder } from '@/utils/floorConfig';
 
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
@@ -60,7 +61,7 @@ function UnitCard({ unit, onClick }) {
   );
 }
 
-export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = true }) {
+export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = true, settings = {} }) {
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
@@ -73,8 +74,13 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
     [floorOptions],
   );
 
+  const floorLabelMap = useMemo(
+    () => Object.fromEntries(availableFloors.map(f => [f.id, f.label])),
+    [availableFloors],
+  );
+
   const { data, setData, post, processing, reset } = useForm({
-    unit_number:'', floor:'1', type:'Office Suite', size_sqm:'', rate_per_sqm:'', currency:'TZS', status:'vacant', notes:''
+    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', notes:''
   });
 
   useEffect(() => {
@@ -82,16 +88,20 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
       setData('floor', '');
       return;
     }
-
-    const currentFloor = Number(data.floor);
-    if (!availableFloors.includes(currentFloor)) {
-      setData('floor', String(availableFloors[0]));
+    const ids = availableFloors.map(f => f.id);
+    if (!ids.includes(data.floor)) {
+      setData('floor', availableFloors[0].id);
     }
-  }, [availableFloors, data.floor, setData]);
+  }, [availableFloors]);
+
+  const depositRentMonths = Number(settings.deposit_rent_months ?? 1);
+  const depositScMonths   = Number(settings.deposit_service_charge_months ?? 1);
 
   const sizeSqmInput = Number(data.size_sqm) || 0;
   const ratePerSqmInput = Number(data.rate_per_sqm) || 0;
   const computedMonthlyRent = sizeSqmInput * ratePerSqmInput;
+  const computedServiceCharge = sizeSqmInput * (Number(data.service_charge_per_sqm) || 0);
+  const computedDeposit = (computedMonthlyRent * depositRentMonths) + (computedServiceCharge * depositScMonths);
 
   const filtered = units.filter(u => {
     const matchStatus = filter === 'all' || u.status === filter;
@@ -133,9 +143,9 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" placeholder="Search units…" value={search} onChange={e=>setSearch(e.target.value)} />
           </div>
-          <select className="form-input form-select" value={floorFilter} onChange={e=>setFloorFilter(e.target.value)} style={{width:116,padding:'6px 28px 6px 10px',fontSize:'12.5px'}}>
+          <select className="form-input form-select" value={floorFilter} onChange={e=>setFloorFilter(e.target.value)} style={{width:130,padding:'6px 28px 6px 10px',fontSize:'12.5px'}}>
             <option value="">All Floors</option>
-            {availableFloors.map((f)=><option key={f} value={f}>Floor {f}</option>)}
+            {availableFloors.map(f=><option key={f.id} value={f.id}>{f.label}</option>)}
           </select>
           <div className="view-toggle">
             <button className={`vt-btn ${view==='grid'?'active':''}`} onClick={()=>setView('grid')} title="Grid">
@@ -152,14 +162,13 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
         </div>
       </div>
 
-      {Object.keys(byFloor).sort((a,b)=>a-b).map(floor => {
+      {Object.keys(byFloor).sort((a,b)=>floorSortOrder(a)-floorSortOrder(b)).map(floor => {
         const floorUnits = byFloor[floor];
         const occ = floorUnits.filter(u=>u.status==='occupied'||u.status==='overdue').length;
-        const wings = {1:'A',2:'B',3:'C',4:'D',5:'E',6:'F'};
         return (
           <div className="floor-section" key={floor}>
             <div className="floor-section-header">
-              <span className="floor-section-title">Floor {floor} · Wing {wings[floor]||floor}</span>
+              <span className="floor-section-title">{floorLabelMap[floor] ?? `Floor ${floor}`}</span>
               <div className="floor-section-line"></div>
               <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{occ} occupied · {floorUnits.length-occ} available</span>
             </div>
@@ -197,7 +206,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
             <div className="drawer-header">
               <div>
                 <div className="drawer-unit-id">{selected.unit_number}</div>
-                <div className="drawer-unit-sub">Floor {selected.floor} · {selected.type} · {unitSizeSqm(selected).toFixed(1)} m²</div>
+                <div className="drawer-unit-sub">{floorLabelMap[selected.floor] ?? selected.floor} · {selected.type} · {unitSizeSqm(selected).toFixed(1)} m²</div>
               </div>
               <button className="drawer-close" onClick={()=>setSelected(null)}>✕</button>
             </div>
@@ -211,6 +220,8 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                   <div className="drawer-kv"><div className="drawer-kv-label">Rate per m²</div><div className="drawer-kv-value">{money(unitRatePerSqm(selected).toFixed(2), unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Currency</div><div className="drawer-kv-value">{unitCurrency(selected)}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Security Deposit</div><div className="drawer-kv-value">{money(selected.deposit, unitCurrency(selected))}</div></div>
+                  <div className="drawer-kv"><div className="drawer-kv-label">Service Charge / mo</div><div className="drawer-kv-value">{money(selected.service_charge ?? 0, unitCurrency(selected))}</div></div>
+                  <div className="drawer-kv"><div className="drawer-kv-label">Electricity</div><div className="drawer-kv-value">{selected.electricity_type === 'submeter' ? 'Submeter' : 'Direct (Own Meter)'}</div></div>
                 </div>
               </div>
               {selected.leases?.[0]?.tenant && (
@@ -283,7 +294,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               )}
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Unit Number</label><input className="form-input" value={data.unit_number} onChange={e=>setData('unit_number',e.target.value)} placeholder="e.g. A-103" required /></div>
-                <div className="form-group"><label className="form-label">Floor</label><select className="form-input form-select" value={data.floor} onChange={e=>setData('floor',e.target.value)} required disabled={availableFloors.length===0}>{availableFloors.map((f)=><option key={f} value={f}>Floor {f}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Floor</label><select className="form-input form-select" value={data.floor} onChange={e=>setData('floor',e.target.value)} required disabled={availableFloors.length===0}>{availableFloors.map(f=><option key={f.id} value={f.id}>{f.label}</option>)}</select></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Commercial Unit Type</label><select className="form-input form-select" value={data.type} onChange={e=>setData('type',e.target.value)}>{COMMERCIAL_UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
@@ -291,10 +302,18 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Currency</label><select className="form-input form-select" value={data.currency} onChange={e=>setData('currency',e.target.value)}><option value="TZS">TZS</option><option value="USD">USD</option></select></div>
-                <div className="form-group"><label className="form-label">Rate per m²</label><input className="form-input" type="number" step="0.01" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required /></div>
+                <div className="form-group"><label className="form-label">Rate per m² ({data.currency})</label><input className="form-input" type="number" step="0.01" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required /></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Service Charge Rate per m² ({data.currency})</label><input className="form-input" type="number" step="0.01" min="0" value={data.service_charge_per_sqm} onChange={e=>setData('service_charge_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '2000' : '2'} /></div>
+                <div className="form-group"><label className="form-label">Electricity Type</label><select className="form-input form-select" value={data.electricity_type} onChange={e=>setData('electricity_type',e.target.value)}><option value="direct">Direct (Own Meter)</option><option value="submeter">Submeter</option></select></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Computed Monthly Rent</label><input className="form-input" type="text" value={computedMonthlyRent > 0 ? money(computedMonthlyRent.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>
+                <div className="form-group"><label className="form-label">Computed Service Charge / mo</label><input className="form-input" type="text" value={computedServiceCharge > 0 ? money(computedServiceCharge.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Computed Security Deposit</label><input className="form-input" type="text" value={computedDeposit > 0 ? money(computedDeposit.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>
                 <div className="form-group"><label className="form-label">Status</label><select className="form-input form-select" value={data.status} onChange={e=>setData('status',e.target.value)}>{['vacant','occupied','maintenance'].map(s=><option key={s}>{s}</option>)}</select></div>
               </div>
             </div>

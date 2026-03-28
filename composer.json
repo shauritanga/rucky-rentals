@@ -11,6 +11,7 @@
         "guzzlehttp/guzzle": "^7.10",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/framework": "^13.0",
+        "laravel/reverb": "^1.9",
         "laravel/tinker": "^3.0",
         "symfony/mailgun-mailer": "^8.0",
         "tightenco/ziggy": "^2.6"

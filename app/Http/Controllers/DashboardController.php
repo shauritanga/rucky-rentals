@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExchangeRate;
 use App\Models\Invoice;
 use App\Models\Lease;
 use App\Models\MaintenanceRecord;
@@ -48,12 +49,39 @@ class DashboardController extends Controller
         $vacantUnits   = (clone $unitsBaseQuery)->where('status', 'vacant')->count();
         $overdueUnits  = (clone $unitsBaseQuery)->where('status', 'overdue')->count();
 
-        $monthlyRevenue = Lease::whereIn('status', ['active', 'expiring', 'overdue'])
+        // Sum monthly rent in TZS, respecting each lease's own currency.
+        // Never mix TZS and USD raw amounts — convert everything to TZS first.
+        $monthlyRevenueTzs = Lease::whereIn('status', ['active', 'expiring', 'overdue'])
             ->whereIn('unit_id', $unitIdsQuery)
-            ->sum('monthly_rent');
-        $overdueBalance = Payment::where('status', 'overdue')
+            ->get(['monthly_rent', 'currency'])
+            ->sum(function ($lease) {
+                $amount = (float) $lease->monthly_rent;
+                $currency = $lease->currency ?? 'TZS';
+                if ($currency === 'TZS') {
+                    return $amount;
+                }
+                // getLiveRate() reads from cache (same source as UI header badge),
+                // never from the stale DB table — keeps both dashboard views in sync.
+                return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
+            });
+
+        // Sum overdue payments in TZS, using the stored base amount where available,
+        // otherwise converting on the fly. Never mix currencies raw.
+        $overdueBalanceTzs = Payment::where('status', 'overdue')
             ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
-            ->sum('amount');
+            ->get(['amount', 'currency', 'amount_in_base'])
+            ->sum(function ($payment) {
+                // amount_in_base is pre-converted TZS stored at payment time — use it when present
+                if ($payment->amount_in_base !== null) {
+                    return (float) $payment->amount_in_base;
+                }
+                $amount = (float) $payment->amount;
+                $currency = $payment->currency ?? 'TZS';
+                if ($currency === 'TZS') {
+                    return $amount;
+                }
+                return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
+            });
 
         $recentPayments = Payment::with(['tenant', 'unit'])
             ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
@@ -68,7 +96,10 @@ class DashboardController extends Controller
             ->get();
 
         $units = (clone $unitsBaseQuery)
-            ->with(['leases.tenant'])
+            ->with([
+                'leases.tenant',
+                'payments' => fn ($q) => $q->latest()->limit(1),
+            ])
             ->orderBy('floor')
             ->orderBy('unit_number')
             ->limit(7)
@@ -159,8 +190,8 @@ class DashboardController extends Controller
                 'occupiedUnits'  => $occupiedUnits,
                 'vacantUnits'    => $vacantUnits,
                 'overdueUnits'   => $overdueUnits,
-                'monthlyRevenue' => $monthlyRevenue,
-                'overdueBalance' => $overdueBalance,
+                'monthlyRevenue' => $monthlyRevenueTzs,  // already in TZS — no client-side FX conversion needed
+                'overdueBalance' => $overdueBalanceTzs,  // already in TZS
             ],
             'recentPayments'   => $recentPayments,
             'maintenanceItems' => $maintenanceItems,

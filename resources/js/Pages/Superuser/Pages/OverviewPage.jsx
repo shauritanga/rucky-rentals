@@ -38,9 +38,9 @@ function formatLogTime(ts) {
 
 export default function OverviewPage({ properties = [], managers = [], auditLogs = [] }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState('all');
-  const { rate } = useExchangeRate();
-
-  const toTzs = (p) => (p.revenue_tzs ?? 0) + (p.revenue_usd ?? 0) * rate;
+  // formatCompactTzs formats a pre-converted TZS value — no rate multiplication.
+  // Revenue is converted server-side using getLiveRate() so all views are consistent.
+  const { formatCompactTzs } = useExchangeRate();
 
   const selectedProperty = useMemo(
     () => properties.find((property) => String(property.id) === String(selectedPropertyId)) || null,
@@ -53,9 +53,10 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
     const total = scopedProperties.length;
     const units = scopedProperties.reduce((sum, p) => sum + Number(p.unit_count || 0), 0);
     const occupied = scopedProperties.reduce((sum, p) => sum + Number(p.occupied_units || 0), 0);
-    const revenue = scopedProperties.reduce((sum, p) => sum + toTzs(p), 0);
+    // monthly_revenue_tzs is already in TZS — computed by the backend, never by the browser
+    const revenue = scopedProperties.reduce((sum, p) => sum + Number(p.monthly_revenue_tzs || 0), 0);
     return { total, units, occupied, revenue };
-  }, [scopedProperties, rate]);
+  }, [scopedProperties]);
 
   const scopedManagers = useMemo(() => {
     if (!selectedProperty) return managers;
@@ -114,7 +115,7 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
         </div>
         <div className="stat-card">
           <div className="stat-top"><div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div><span className="stat-delta up">revenue</span></div>
-          <div className="stat-value">TZS {(scopedStats.revenue || 0).toLocaleString()}</div><div className="stat-label">Monthly Revenue</div>
+          <div className="stat-value">{formatCompactTzs(scopedStats.revenue)}</div><div className="stat-label">Monthly Revenue</div>
         </div>
       </div>
 
@@ -133,7 +134,7 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
                     <td><div style={{ fontWeight: 600 }}>{property.name}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{property.city || '-'}</div></td>
                     <td>{property.manager?.name || 'Unassigned'}</td>
                     <td>{occupancy}%</td>
-                    <td style={{ fontWeight: 600 }}>TZS {Math.round(toTzs(property) / 1000)}k</td>
+                    <td style={{ fontWeight: 600 }}>{formatCompactTzs(property.monthly_revenue_tzs)}</td>
                     <td><span className={`badge ${statusClass(property.status)}`}>{property.status}</span></td>
                   </tr>
                 );

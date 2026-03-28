@@ -114,7 +114,7 @@ class PaymentController extends Controller
 
         if (($data['currency'] ?? 'TZS') !== 'TZS') {
             $rate = ExchangeRate::getRate(
-                propertyId: $propertyId,
+                propertyId: null,
                 fromCurrency: $data['currency'],
                 toCurrency: 'TZS',
                 date: $data['paid_date'] ?? now()

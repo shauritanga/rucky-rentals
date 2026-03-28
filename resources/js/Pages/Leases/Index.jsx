@@ -6,9 +6,9 @@ const fmt = (n) => Number(n).toLocaleString();
 const CURRENCY_FALLBACK = 'USD';
 const CYCLE_LABELS = { 3:'Quarterly · 3mo', 4:'4-Month', 6:'Semi-Annual · 6mo', 12:'Annual' };
 const CYCLE_PAYMENTS = { 3:'Quarterly', 4:'4-Month', 6:'Semi-Annual', 12:'Annual' };
-const STATUS_BADGE = { active:'active', expiring:'expiring', overdue:'overdue', pending_accountant:'pending_accountant', pending_pm:'pending_pm', rejected:'rejected', terminated:'pending' };
-const STATUS_KV_MAP = { active:'green', expiring:'amber', overdue:'red', pending_accountant:'amber', pending_pm:'accent', rejected:'red' };
-const STATUS_LABEL_MAP = { active:'Active', expiring:'Expiring Soon', overdue:'Overdue', pending_accountant:'Pending Accountant', pending_pm:'Pending PM', rejected:'Rejected' };
+const STATUS_BADGE = { active:'active', expiring:'expiring', overdue:'overdue', pending_accountant:'pending_accountant', pending_pm:'pending_accountant', rejected:'rejected', terminated:'pending' };
+const STATUS_KV_MAP = { active:'green', expiring:'amber', overdue:'red', pending_accountant:'amber', pending_pm:'amber', rejected:'red' };
+const STATUS_LABEL_MAP = { active:'Active', expiring:'Expiring Soon', overdue:'Overdue', pending_accountant:'Pending Approval', pending_pm:'Pending Approval', rejected:'Rejected' };
 const DURATION_OPTIONS = Array.from({ length: 15 }, (_, i) => {
   const years = i + 1;
   return { months: years * 12, label: `${years} Year${years > 1 ? 's' : ''} (${years * 12} months)` };
@@ -165,14 +165,14 @@ function buildPaymentSchedule(lease, isPending) {
   return rows;
 }
 
-export default function LeasesIndex({ leases, tenants, units }) {
+export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const { props } = usePage();
   const user = props?.auth?.user;
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
-  const [leaseMode, setLeaseMode] = useState('existing');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [tenantSearch, setTenantSearch] = useState('');
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
   const [possessionDate, setPossessionDate] = useState('2026-04-01');
@@ -180,16 +180,20 @@ export default function LeasesIndex({ leases, tenants, units }) {
   const [fitoutEnabled, setFitoutEnabled] = useState(false);
   const [fitoutToDate, setFitoutToDate] = useState('');
   const [whtRate, setWhtRate] = useState(10);
-  const [scRate, setScRate] = useState(5);
+  const [editingLeaseId, setEditingLeaseId] = useState(null);
+  const [editingFitout, setEditingFitout] = useState(false);
+  const [fitoutEditEnabled, setFitoutEditEnabled] = useState(false);
+  const [fitoutEditToDate, setFitoutEditToDate] = useState('');
   const [vatRate, setVatRate] = useState(18);
 
+  const depositRentMonths = Number(settings.deposit_rent_months ?? 1);
+  const depositScMonths   = Number(settings.deposit_service_charge_months ?? 1);
+
   const { data, setData, post, processing, reset } = useForm({
-    tenant_mode:'existing',
     tenant_id:'', unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     possession_date:'2026-04-01', rent_start_date:'2026-04-01', fitout_enabled:false, fitout_to_date:'', fitout_days:0,
-    wht_rate:10, service_charge_rate:5, vat_rate:18,
-    new_tenant_name:'', new_tenant_email:'', new_tenant_phone:'', new_tenant_national_id:''
+    wht_rate:10, vat_rate:18,
   });
 
   useEffect(() => {
@@ -220,14 +224,17 @@ export default function LeasesIndex({ leases, tenants, units }) {
     const rent = Number(data.monthly_rent) || 0;
     const cycle = Number(data.payment_cycle) || 0;
     const duration = Number(data.duration_months) || 0;
-    const serviceCharge = Math.round(rent * (Number(scRate || 0) / 100));
+    const serviceCharge = units.find(u => String(u.id) === String(data.unit_id))?.service_charge ?? 0;
     const subtotal = rent + serviceCharge;
     const vat = Math.round(subtotal * (Number(vatRate || 0) / 100));
     const gross = subtotal + vat;
     const wht = Math.round(rent * (Number(whtRate || 0) / 100));
     const net = gross - wht;
     const instalment = net * cycle;
-    const deposit = Number(data.deposit) || (rent > 0 ? rent * 2 : 0);
+    const unitSC = units.find(u => String(u.id) === String(data.unit_id))?.service_charge ?? 0;
+    const deposit = Number(data.deposit) || (rent > 0
+      ? (rent * depositRentMonths) + (unitSC * depositScMonths)
+      : 0);
     const annual = gross * 12;
     const fitoutDays = fitoutEnabled && possessionDate && fitoutToDate
       ? Math.max(0, Math.round((new Date(`${fitoutToDate}T00:00:00`) - new Date(`${possessionDate}T00:00:00`)) / 86400000) + 1)
@@ -253,7 +260,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
       fitoutExtraVAT,
       period: `${fmtDateShort(rentStartDate)} -> ${fmtDateShort(data.end_date)} (${duration} months)`,
     };
-  }, [data.monthly_rent, data.payment_cycle, data.duration_months, data.deposit, data.end_date, rentStartDate, scRate, vatRate, whtRate, fitoutEnabled, possessionDate, fitoutToDate]);
+  }, [data.monthly_rent, data.payment_cycle, data.duration_months, data.deposit, data.end_date, data.unit_id, rentStartDate, vatRate, whtRate, fitoutEnabled, possessionDate, fitoutToDate, units, depositRentMonths, depositScMonths]);
 
   const filtered = leases.filter(l => {
     const matchFilter = filter === 'all' || l.status === filter;
@@ -263,8 +270,12 @@ export default function LeasesIndex({ leases, tenants, units }) {
   });
 
   const counts = {};
-  ['all','active','expiring','overdue','pending_accountant','pending_pm','rejected'].forEach(s => {
-    counts[s] = s === 'all' ? leases.length : leases.filter(l=>l.status===s).length;
+  ['all','active','expiring','overdue','pending_accountant','rejected'].forEach(s => {
+    counts[s] = s === 'all'
+      ? leases.length
+      : s === 'pending_accountant'
+        ? leases.filter(l => l.status==='pending_accountant' || l.status==='pending_pm').length
+        : leases.filter(l => l.status===s).length;
   });
   const monthlyRevenueByCurrency = useMemo(() => {
     return leases.reduce((acc, lease) => {
@@ -287,14 +298,21 @@ export default function LeasesIndex({ leases, tenants, units }) {
   });
 
   const unitsByFloor = useMemo(() => {
+    const activeUnitIds = new Set(
+      leases
+        .filter(l => ['active', 'expiring', 'overdue'].includes(l.status) && String(l.id) !== String(editingLeaseId))
+        .map(l => String(l.unit_id))
+    );
     const grouped = {};
-    units.forEach((u) => {
-      const floor = Number(u.floor) || 0;
-      if (!grouped[floor]) grouped[floor] = [];
-      grouped[floor].push(u);
-    });
+    units
+      .filter(u => !activeUnitIds.has(String(u.id)))
+      .forEach((u) => {
+        const floor = Number(u.floor) || 0;
+        if (!grouped[floor]) grouped[floor] = [];
+        grouped[floor].push(u);
+      });
     return Object.entries(grouped).sort((a, b) => Number(a[0]) - Number(b[0]));
-  }, [units]);
+  }, [units, leases, editingLeaseId]);
 
   const selectedUnit = useMemo(
     () => units.find((u) => String(u.id) === String(data.unit_id)),
@@ -304,16 +322,13 @@ export default function LeasesIndex({ leases, tenants, units }) {
 
   const openLeaseModal = () => {
     reset();
-    setLeaseMode('existing');
     setTenantSearch('');
     setShowTenantDropdown(false);
-    setData('tenant_mode', 'existing');
     setPossessionDate('2026-04-01');
     setRentStartDate('2026-04-01');
     setFitoutEnabled(false);
     setFitoutToDate('');
     setWhtRate(10);
-    setScRate(5);
     setVatRate(18);
     setData('start_date', '2026-04-01');
     setData('duration_months', 12);
@@ -323,17 +338,44 @@ export default function LeasesIndex({ leases, tenants, units }) {
     setData('monthly_rent', '');
     setData('deposit', '');
     setData('terms', '');
-    setData('new_tenant_name', '');
-    setData('new_tenant_email', '');
-    setData('new_tenant_phone', '');
-    setData('new_tenant_national_id', '');
+    setEditingLeaseId(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (lease) => {
+    reset();
+    setEditingLeaseId(lease.id);
+    setTenantSearch(lease.tenant?.name || '');
+    setWhtRate(Number(lease.wht_rate ?? 10));
+    setVatRate(Number(lease.vat_rate ?? 18));
+    setPossessionDate(lease.possession_date || lease.start_date || '2026-04-01');
+    setRentStartDate(lease.rent_start_date || lease.start_date || '2026-04-01');
+    setFitoutEnabled(!!lease.fitout_enabled);
+    setFitoutToDate(lease.fitout_to_date || '');
+    setData(d => ({
+      ...d,
+      tenant_id: String(lease.tenant_id || lease.tenant?.id || ''),
+      unit_id: String(lease.unit_id || lease.unit?.id || ''),
+      start_date: lease.start_date || '',
+      end_date: lease.end_date || '',
+      duration_months: lease.duration_months || 12,
+      payment_cycle: lease.payment_cycle || 3,
+      monthly_rent: lease.monthly_rent ?? '',
+      deposit: lease.deposit ?? '',
+      wht_rate: lease.wht_rate ?? 10,
+      vat_rate: lease.vat_rate ?? 18,
+      terms: lease.terms ?? '',
+      possession_date: lease.possession_date || lease.start_date || '',
+      rent_start_date: lease.rent_start_date || lease.start_date || '',
+      fitout_enabled: !!lease.fitout_enabled,
+      fitout_to_date: lease.fitout_to_date || '',
+      fitout_days: lease.fitout_days || 0,
+    }));
     setShowModal(true);
   };
 
   const selectTenant = (tenant) => {
     setData('tenant_id', tenant.id);
-    setData('tenant_mode', 'existing');
-    setLeaseMode('existing');
     setTenantSearch('');
     setShowTenantDropdown(false);
   };
@@ -342,13 +384,63 @@ export default function LeasesIndex({ leases, tenants, units }) {
     setData('unit_id', unitId);
     const u = units.find(x => String(x.id) === String(unitId));
     if (u) {
-      setData(d => ({ ...d, monthly_rent: u.rent, deposit: u.rent * 2 }));
+      const autoDeposit = (u.rent * depositRentMonths) + ((u.service_charge ?? 0) * depositScMonths);
+      setData(d => ({ ...d, monthly_rent: u.rent, deposit: autoDeposit }));
     }
   };
 
   const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
+
+  const openFitoutEdit = () => {
+    setFitoutEditEnabled(!!selected?.fitout_enabled);
+    setFitoutEditToDate(selected?.fitout_to_date || '');
+    setEditingFitout(true);
+  };
+
+  const saveFitout = () => {
+    const days = fitoutEditEnabled && selected?.possession_date && fitoutEditToDate
+      ? Math.max(0, Math.round(
+          (new Date(`${fitoutEditToDate}T00:00:00`) - new Date(`${selected.possession_date}T00:00:00`)) / 86400000
+        ) + 1)
+      : 0;
+    router.patch(`/leases/${selected.id}`, {
+      action: 'update_fitout',
+      fitout_enabled: fitoutEditEnabled,
+      fitout_to_date: fitoutEditEnabled ? fitoutEditToDate : null,
+      fitout_days: days,
+    }, { onSuccess: () => setEditingFitout(false) });
+  };
   const submit = (e) => {
     e.preventDefault();
+    const closeModal = () => {
+      reset();
+      setShowModal(false);
+      setEditingLeaseId(null);
+      setTenantSearch('');
+      setShowTenantDropdown(false);
+    };
+    if (editingLeaseId) {
+      router.patch(`/leases/${editingLeaseId}`, {
+        action: 'edit',
+        tenant_id: data.tenant_id,
+        unit_id: data.unit_id,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        duration_months: data.duration_months,
+        payment_cycle: data.payment_cycle,
+        possession_date: possessionDate || data.start_date,
+        rent_start_date: rentStartDate || data.start_date,
+        fitout_enabled: fitoutEnabled,
+        fitout_to_date: fitoutEnabled ? fitoutToDate : null,
+        fitout_days: summary.fitoutDays || 0,
+        monthly_rent: data.monthly_rent,
+        deposit: data.deposit,
+        wht_rate: Number(whtRate || 0),
+        vat_rate: Number(vatRate || 0),
+        terms: data.terms,
+      }, { onSuccess: closeModal });
+      return;
+    }
     post('/leases', {
       data: {
         ...data,
@@ -357,19 +449,16 @@ export default function LeasesIndex({ leases, tenants, units }) {
         fitout_enabled: fitoutEnabled,
         fitout_to_date: fitoutEnabled ? fitoutToDate : null,
         fitout_days: summary.fitoutDays || 0,
+        tenant_mode: 'existing',
         wht_rate: Number(whtRate || 0),
-        service_charge_rate: Number(scRate || 0),
+        service_charge_rate: 0,
         vat_rate: Number(vatRate || 0),
       },
-      onSuccess: () => {
-        reset();
-        setShowModal(false);
-        setTenantSearch('');
-        setShowTenantDropdown(false);
-        setLeaseMode('existing');
-      }
+      onSuccess: closeModal,
     });
   };
+
+  useEffect(() => { setEditingFitout(false); }, [selected?.id]);
 
   const isPending = selected ? ['pending_accountant', 'pending_pm', 'rejected'].includes(selected.status) : false;
   const approvalLog = useMemo(() => parseApprovalLog(selected?.approval_log), [selected]);
@@ -381,8 +470,6 @@ export default function LeasesIndex({ leases, tenants, units }) {
     if (!selected) return;
     const lease = selected;
     openLeaseModal();
-    setData('tenant_mode', 'existing');
-    setLeaseMode('existing');
     setData('tenant_id', lease.tenant_id || lease.tenant?.id || '');
     setData('unit_id', lease.unit_id || lease.unit?.id || '');
     setPossessionDate(lease.end_date || lease.start_date || '2026-04-01');
@@ -393,6 +480,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
     setData('monthly_rent', lease.monthly_rent || '');
     setData('deposit', lease.deposit || '');
     setData('terms', lease.terms || '');
+    setEditingLeaseId(null);
     setSelected(null);
   };
 
@@ -414,7 +502,7 @@ export default function LeasesIndex({ leases, tenants, units }) {
 
       <div className="toolbar">
         <div className="filters">
-          {[['all','All'],['active','Active'],['pending_accountant','Awaiting Accountant'],['pending_pm','Awaiting PM'],['expiring','Expiring'],['overdue','Overdue'],['rejected','Rejected']].map(([f,l])=>(
+          {[['all','All'],['active','Active'],['pending_accountant','Pending Approval'],['expiring','Expiring'],['overdue','Overdue'],['rejected','Rejected']].map(([f,l])=>(
             <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>setFilter(f)}>{l} <span className="pill-count">{counts[f]||0}</span></button>
           ))}
         </div>
@@ -443,9 +531,9 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 <td><span className={`lease-cycle-pill c${l.payment_cycle}`}>{CYCLE_LABELS[l.payment_cycle]}</span></td>
                 <td style={{fontWeight:600}}>{formatMoney(l.monthly_rent, l.currency || l.unit?.currency)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
-                  {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':l.status==='pending_accountant'?'⏳ Accountant':l.status==='pending_pm'?'⏳ Prop. Manager':l.status==='rejected'?'✕ Rejected':'—'}
+                  {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':(l.status==='pending_accountant'||l.status==='pending_pm')?'⏳ Pending':l.status==='rejected'?'✕ Rejected':'—'}
                 </td>
-                <td><span className={`badge ${STATUS_BADGE[l.status]||'pending'}`}>{l.status?.replace('_',' ')}</span></td>
+                <td><span className={`badge ${STATUS_BADGE[l.status]||'pending'}`}>{STATUS_LABEL_MAP[l.status] ?? l.status?.replace('_',' ')}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(l)}}>···</button></td>
               </tr>
             ))}
@@ -543,6 +631,54 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 </div>
               </div>
 
+              <div className="drawer-section ldr-section">
+                <div className="drawer-section-title ldr-section-title" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  <span>Fit-Out Period</span>
+                  {user?.role === 'superuser' && selected?.status === 'active' && !editingFitout && (
+                    <button className="btn-secondary" style={{fontSize:11,padding:'3px 10px',height:'auto'}} type="button" onClick={openFitoutEdit}>Edit</button>
+                  )}
+                </div>
+                {editingFitout ? (
+                  <div style={{background:'var(--bg-elevated)',borderRadius:9,padding:'13px 14px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                      <label style={{fontSize:13,fontWeight:500,color:'var(--text-secondary)',cursor:'pointer',display:'flex',alignItems:'center',gap:7}}>
+                        <input type="checkbox" checked={fitoutEditEnabled} onChange={e => setFitoutEditEnabled(e.target.checked)} style={{width:15,height:15}} />
+                        Fit-Out Enabled
+                      </label>
+                    </div>
+                    {fitoutEditEnabled && (
+                      <div className="form-row" style={{marginBottom:10}}>
+                        <div className="form-group">
+                          <label className="form-label">Fit-Out End Date <span style={{color:'var(--text-muted)',fontSize:11}}>Rent starts day after</span></label>
+                          <input className="form-input" type="date" value={fitoutEditToDate} onChange={e => setFitoutEditToDate(e.target.value)} />
+                        </div>
+                        {fitoutEditToDate && selected?.possession_date && (
+                          <div className="form-group">
+                            <label className="form-label">Duration</label>
+                            <div style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 12px',fontSize:'13.5px',color:'var(--amber)',fontWeight:600}}>
+                              {Math.max(0, Math.round((new Date(`${fitoutEditToDate}T00:00:00`) - new Date(`${selected.possession_date}T00:00:00`)) / 86400000) + 1)} days
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{display:'flex',gap:8}}>
+                      <button className="btn-primary" style={{fontSize:12,padding:'5px 14px',height:'auto'}} type="button" onClick={saveFitout}>Save</button>
+                      <button className="btn-secondary" style={{fontSize:12,padding:'5px 14px',height:'auto'}} type="button" onClick={() => setEditingFitout(false)}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="kv-grid ldr-kv-grid">
+                    <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Fit-Out</div><div className="kv-value ldr-kv-value" style={{color: selected.fitout_enabled ? 'var(--amber)' : 'var(--text-muted)'}}>{selected.fitout_enabled ? 'Enabled' : 'None'}</div></div>
+                    {selected.fitout_enabled && <>
+                      <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Possession Date</div><div className="kv-value ldr-kv-value">{fmtDateShort(selected.possession_date)}</div></div>
+                      <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Fit-Out Until</div><div className="kv-value ldr-kv-value">{fmtDateShort(selected.fitout_to_date)}</div></div>
+                      <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Fit-Out Days</div><div className="kv-value ldr-kv-value" style={{color:'var(--amber)',fontWeight:700}}>{selected.fitout_days} days</div></div>
+                    </>}
+                  </div>
+                )}
+              </div>
+
               <div className="drawer-section ldr-section" style={{opacity: isPending ? 0.45 : 1}}>
                 <div className="drawer-section-title ldr-section-title">Payment Schedule</div>
                 <div className="card" style={{overflow:'hidden'}}>
@@ -615,17 +751,22 @@ export default function LeasesIndex({ leases, tenants, units }) {
             <div className="drawer-footer ldr-footer">
               {isPending ? (
                 <>
+                  {(user?.role === 'superuser' || user?.role === 'manager') && (
+                    <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>openEditModal(selected)}>Edit Lease</button>
+                  )}
                   <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>setSelected(null)}>Download Draft</button>
-                  <button className="btn-danger" onClick={()=>{router.delete(`/leases/${selected.id}`);setSelected(null);}}>
+                  <button className="btn-danger" onClick={() => setShowDeleteConfirm(true)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                   </button>
                 </>
               ) : (
                 <>
-                  <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>setSelected(null)}>Edit Lease</button>
+                  {user?.role === 'superuser' && (
+                    <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>openEditModal(selected)}>Edit Lease</button>
+                  )}
                   <button className="btn-secondary" onClick={renewFromDrawer}>Renew</button>
                   <button className="btn-secondary" onClick={()=>setSelected(null)}>Download</button>
-                  <button className="btn-danger" onClick={()=>{router.delete(`/leases/${selected.id}`);setSelected(null);}}>
+                  <button className="btn-danger" onClick={() => setShowDeleteConfirm(true)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                   </button>
                 </>
@@ -635,83 +776,83 @@ export default function LeasesIndex({ leases, tenants, units }) {
         </div>
       </div>
 
+      {/* Delete Confirmation Modal */}
+      <div className={`modal-overlay ${showDeleteConfirm ? 'open' : ''}`} onClick={e => e.target === e.currentTarget && setShowDeleteConfirm(false)}>
+        <div className="modal" style={{width: 420}}>
+          <div className="modal-header">
+            <div className="modal-title">Delete Lease</div>
+            <button className="modal-close" onClick={() => setShowDeleteConfirm(false)}>✕</button>
+          </div>
+          <div className="modal-body">
+            <p style={{margin: 0, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6}}>
+              Are you sure you want to delete the lease for{' '}
+              <strong>{selected?.tenant?.name}</strong> on unit{' '}
+              <strong>{selected?.unit?.unit_number}</strong>?{' '}
+              This action cannot be undone.
+            </p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn-ghost" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
+            <button className="btn-danger" onClick={() => {
+              router.delete(`/leases/${selected.id}`);
+              setShowDeleteConfirm(false);
+              setSelected(null);
+            }}>Delete Lease</button>
+          </div>
+        </div>
+      </div>
+
       {/* New Lease Modal */}
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
         <div className="modal" style={{width:'min(640px, calc(100vw - 24px))',maxHeight:'calc(100dvh - 24px)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">New Lease Agreement</div><button className="modal-close" onClick={()=>setShowModal(false)}>✕</button></div>
+          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">{editingLeaseId ? `Edit Lease — Unit ${selected?.unit?.unit_number || ''}` : 'New Lease Agreement'}</div><button className="modal-close" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>✕</button></div>
           <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
             <div className="modal-body" style={{overflowY:'auto',flex:1,minHeight:0}}>
-              <div style={{marginBottom:18}}>
+              <div style={{marginBottom:14}}>
                 <label className="form-label" style={{marginBottom:8,display:'block'}}>Tenant *</label>
-                <div className="nl-toggle-bar">
-                  <button type="button" className={`nl-toggle-btn ${leaseMode==='existing'?'active':''}`} onClick={()=>{setLeaseMode('existing');setData('tenant_mode','existing');}}>
-                    Existing Tenant
-                  </button>
-                  <button type="button" className={`nl-toggle-btn ${leaseMode==='new'?'active':''}`} onClick={()=>{setLeaseMode('new');setData('tenant_mode','new');setData('tenant_id','');}}>
-                    New Tenant
-                  </button>
+                <div style={{position:'relative'}}>
+                  <div className="search-box" style={{width:'100%',background:'var(--bg-elevated)'}}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                    <input
+                      type="text"
+                      placeholder="Search tenants..."
+                      value={tenantSearch}
+                      onFocus={()=>setShowTenantDropdown(true)}
+                      onBlur={()=>setTimeout(()=>setShowTenantDropdown(false),120)}
+                      onChange={(e)=>{setTenantSearch(e.target.value);setShowTenantDropdown(true);}}
+                    />
+                  </div>
+
+                  <div className={`nl-tenant-dropdown ${showTenantDropdown?'open':''}`}>
+                    {filteredTenants.length === 0 && <div className="nl-no-results">No tenants found</div>}
+                    {filteredTenants.map(t => {
+                      const tenantLease = leases.find(l => String(l.tenant_id) === String(t.id) && ['active','expiring','overdue','pending_accountant','pending_pm'].includes(l.status));
+                      const unitLabel = tenantLease?.unit?.unit_number ? `Current: ${tenantLease.unit.unit_number}` : 'No active lease';
+                      return (
+                        <button type="button" key={t.id} className="nl-tenant-option" onMouseDown={(e)=>e.preventDefault()} onClick={()=>selectTenant(t)}>
+                          <div className="nl-opt-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div>
+                          <div style={{flex:1,minWidth:0,textAlign:'left'}}>
+                            <div className="nl-opt-name">{t.name}</div>
+                            <div className="nl-opt-meta">{t.email} · {t.phone || '—'}</div>
+                          </div>
+                          <span className="nl-opt-unit">{unitLabel}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+
+                {currentTenant && (
+                  <div className="nl-selected-card" style={{marginTop:10}}>
+                    <div className="nl-selected-avatar" style={{background:currentTenant.color,color:currentTenant.text_color}}>{currentTenant.initials}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div className="nl-selected-name">{currentTenant.name}</div>
+                      <div className="nl-selected-meta">{currentTenant.email} · {currentTenant.phone || '—'}</div>
+                    </div>
+                    <button type="button" className="nl-selected-clear" onClick={()=>setData('tenant_id','')} title="Clear selection">✕</button>
+                  </div>
+                )}
               </div>
-
-              {leaseMode === 'existing' && (
-                <div style={{marginBottom:14}}>
-                  <div style={{position:'relative'}}>
-                    <div className="search-box" style={{width:'100%',background:'var(--bg-elevated)'}}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                      <input
-                        type="text"
-                        placeholder="Search existing tenants..."
-                        value={tenantSearch}
-                        onFocus={()=>setShowTenantDropdown(true)}
-                        onBlur={()=>setTimeout(()=>setShowTenantDropdown(false),120)}
-                        onChange={(e)=>{setTenantSearch(e.target.value);setShowTenantDropdown(true);}}
-                      />
-                    </div>
-
-                    <div className={`nl-tenant-dropdown ${showTenantDropdown?'open':''}`}>
-                      {filteredTenants.length === 0 && <div className="nl-no-results">No tenants found</div>}
-                      {filteredTenants.map(t => {
-                        const tenantLease = leases.find(l => String(l.tenant_id) === String(t.id) && ['active','expiring','overdue','pending_accountant','pending_pm'].includes(l.status));
-                        const unitLabel = tenantLease?.unit?.unit_number ? `Current: ${tenantLease.unit.unit_number}` : 'No active lease';
-                        return (
-                          <button type="button" key={t.id} className="nl-tenant-option" onMouseDown={(e)=>e.preventDefault()} onClick={()=>selectTenant(t)}>
-                            <div className="nl-opt-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div>
-                            <div style={{flex:1,minWidth:0,textAlign:'left'}}>
-                              <div className="nl-opt-name">{t.name}</div>
-                              <div className="nl-opt-meta">{t.email} · {t.phone || '—'}</div>
-                            </div>
-                            <span className="nl-opt-unit">{unitLabel}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {currentTenant && (
-                    <div className="nl-selected-card" style={{marginTop:10}}>
-                      <div className="nl-selected-avatar" style={{background:currentTenant.color,color:currentTenant.text_color}}>{currentTenant.initials}</div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div className="nl-selected-name">{currentTenant.name}</div>
-                        <div className="nl-selected-meta">{currentTenant.email} · {currentTenant.phone || '—'}</div>
-                      </div>
-                      <button type="button" className="nl-selected-clear" onClick={()=>setData('tenant_id','')} title="Clear selection">✕</button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {leaseMode === 'new' && (
-                <div style={{marginBottom:14}}>
-                  <div className="form-row">
-                    <div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={data.new_tenant_name} onChange={e=>setData('new_tenant_name',e.target.value)} placeholder="e.g. Cynthia Oloo" /></div>
-                    <div className="form-group"><label className="form-label">National ID</label><input className="form-input" value={data.new_tenant_national_id} onChange={e=>setData('new_tenant_national_id',e.target.value)} placeholder="e.g. KE-12345678" /></div>
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={data.new_tenant_email} onChange={e=>setData('new_tenant_email',e.target.value)} placeholder="tenant@email.com" /></div>
-                    <div className="form-group"><label className="form-label">Phone *</label><input className="form-input" value={data.new_tenant_phone} onChange={e=>setData('new_tenant_phone',e.target.value)} placeholder="+254 7xx xxx xxx" /></div>
-                  </div>
-                </div>
-              )}
 
               <div style={{height:1,background:'var(--border-subtle)',margin:'16px 0'}}></div>
 
@@ -769,12 +910,24 @@ export default function LeasesIndex({ leases, tenants, units }) {
                 {fitoutEnabled && (
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                     <div>
+                      <label className="form-label">Fit-Out Start</label>
+                      <input className="form-input" type="date" value={possessionDate} readOnly style={{opacity:.65,cursor:'default'}} />
+                    </div>
+                    <div>
                       <label className="form-label">Fit-Out End Date <span style={{color:'var(--text-muted)',fontSize:11}}>Rent starts day after</span></label>
                       <input className="form-input" type="date" value={fitoutToDate} onChange={(e)=>setFitoutToDate(e.target.value)} />
                     </div>
                     <div>
                       <label className="form-label">Fit-Out Duration</label>
                       <div style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 12px',fontSize:'13.5px',color:'var(--amber)',fontWeight:600}}>{summary.fitoutDays > 0 ? `${summary.fitoutDays} day${summary.fitoutDays !== 1 ? 's' : ''} rent-free` : '—'}</div>
+                    </div>
+                    <div>
+                      <label className="form-label">Service Charge During Fit-Out</label>
+                      <div style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:8,padding:'8px 12px',fontSize:'13.5px',color:'var(--amber)',fontWeight:600}}>
+                        {summary.fitoutDays > 0
+                          ? formatMoney(summary.fitoutExtraSC, selectedUnitCurrency)
+                          : '—'}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -790,16 +943,15 @@ export default function LeasesIndex({ leases, tenants, units }) {
               </div>
 
               <div className="form-row">
-                <div className="form-group" style={{flex:'0 0 180px'}}><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Security Deposit (${selectedUnitCurrency})`} {data.monthly_rent && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>= 2 x monthly rent</span>}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto: 2x rent" /></div>
-                <div className="form-group" style={{flex:'0 0 110px'}}><label className="form-label">WHT Rate (%)</label><input className="form-input" type="number" min="0" max="100" value={whtRate} onChange={e=>setWhtRate(Number(e.target.value || 0))} /></div>
-                <div className="form-group" style={{flex:'0 0 120px'}}><label className="form-label">Service Charge (%)</label><input className="form-input" type="number" min="0" max="100" value={scRate} onChange={e=>setScRate(Number(e.target.value || 0))} /></div>
-                <div className="form-group" style={{flex:'0 0 100px'}}><label className="form-label">VAT Rate (%)</label><input className="form-input" type="number" min="0" max="100" value={vatRate} onChange={e=>setVatRate(Number(e.target.value || 0))} /></div>
+                <div className="form-group"><label className="form-label">{`Security Deposit (${selectedUnitCurrency})`}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
+                <div className="form-group"><label className="form-label">WHT Rate (%)</label><input className="form-input" type="number" min="0" max="100" value={whtRate} onChange={e=>setWhtRate(Number(e.target.value || 0))} /></div>
+                <div className="form-group"><label className="form-label">VAT Rate (%)</label><input className="form-input" type="number" min="0" max="100" value={vatRate} onChange={e=>setVatRate(Number(e.target.value || 0))} /></div>
               </div>
 
               {summary.rent > 0 && (
                 <div className="nl-summary-card" style={{marginBottom:14}}>
                   <div className="nl-summary-row"><span>Monthly Rent</span><strong>{formatMoney(summary.rent, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Service Charge ({Math.round(scRate)}%)</span><strong>{formatMoney(summary.serviceCharge, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Service Charge (unit flat rate)</span><strong>{formatMoney(summary.serviceCharge, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{formatMoney(summary.subtotal, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>VAT ({Math.round(vatRate)}%)</span><strong>{formatMoney(summary.vat, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{formatMoney(summary.gross, selectedUnitCurrency)}</strong></div>
@@ -824,10 +976,10 @@ export default function LeasesIndex({ leases, tenants, units }) {
               </div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>
+              <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={processing}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Create Lease
+                {editingLeaseId ? 'Save Changes' : 'Create Lease'}
               </button>
             </div>
           </form>

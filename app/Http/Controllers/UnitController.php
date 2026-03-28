@@ -6,6 +6,8 @@ use App\Models\Unit;
 use App\Models\Tenant;
 use App\Models\Lease;
 use App\Models\Property;
+use App\Models\SystemSetting;
+use App\Support\FloorConfig;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
@@ -33,11 +35,14 @@ class UnitController extends Controller
         $floorOptions = $this->resolveFloorOptions($request);
         $canCreateUnit = count($floorOptions) > 0;
 
+        $settings = SystemSetting::pluck('value', 'key');
+
         if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Units/Index', [
-                'units' => MockRentalData::units(),
-                'floorOptions' => $floorOptions,
+                'units'         => MockRentalData::units(),
+                'floorOptions'  => $floorOptions,
                 'canCreateUnit' => $canCreateUnit,
+                'settings'      => $settings,
             ]);
         }
 
@@ -46,44 +51,57 @@ class UnitController extends Controller
 
         $this->scopeUnitsForUser($unitsQuery, $request);
 
-        $units = $unitsQuery->orderBy('floor')->orderBy('unit_number')->get();
+        $units = $unitsQuery->orderBy('unit_number')->get()
+            ->sortBy(fn ($u) => FloorConfig::sortOrder($u->floor ?? ''))
+            ->values();
         return Inertia::render('Units/Index', [
-            'units' => $units,
-            'floorOptions' => $floorOptions,
+            'units'         => $units,
+            'floorOptions'  => $floorOptions,
             'canCreateUnit' => $canCreateUnit,
+            'settings'      => $settings,
         ]);
     }
 
     public function store(Request $request)
     {
         $user = $request->user();
-        $managerProperty = null;
-        $maxFloor = null;
+        $validFloorIds = [];
 
         if ($this->shouldScopeToProperty($request)) {
             $effectiveId = $this->effectivePropertyId($request);
             abort_if($effectiveId === null, 422, 'No property context available.');
             $managerProperty = Property::find($effectiveId);
             abort_if(!$managerProperty, 422, 'Assigned property not found.');
-            $maxFloor = max(1, (int) ($managerProperty->total_floors ?? 1));
+            $validFloorIds = FloorConfig::floorIds(FloorConfig::parse($managerProperty->floor_config));
         }
 
+        $floorRule = $validFloorIds
+            ? ['required', 'string', Rule::in($validFloorIds)]
+            : ['required', 'string'];
+
         $data = $request->validate([
-            'unit_number' => 'required|string|unique:units',
-            'floor'       => array_filter(['required', 'integer', 'min:1', $maxFloor ? 'max:' . $maxFloor : null]),
-            'type'        => ['required', 'string', Rule::in(self::COMMERCIAL_UNIT_TYPES)],
-            'size_sqm'    => 'required|numeric|min:0.1',
-            'rate_per_sqm' => 'required|numeric|min:0',
-            'currency'    => 'required|in:TZS,USD',
-            'status'      => 'required|in:occupied,vacant,overdue,maintenance',
-            'notes'       => 'nullable|string',
+            'unit_number'            => 'required|string|unique:units',
+            'floor'                  => $floorRule,
+            'type'                   => ['required', 'string', Rule::in(self::COMMERCIAL_UNIT_TYPES)],
+            'size_sqm'               => 'required|numeric|min:0.1',
+            'rate_per_sqm'           => 'required|numeric|min:0',
+            'service_charge_per_sqm' => 'nullable|numeric|min:0',
+            'currency'               => 'required|in:TZS,USD',
+            'status'                 => 'required|in:occupied,vacant,overdue,maintenance',
+            'electricity_type'       => 'nullable|in:direct,submeter',
+            'notes'                  => 'nullable|string',
         ]);
 
-        $data['size_sqm'] = (float) $data['size_sqm'];
-        $data['rate_per_sqm'] = (float) $data['rate_per_sqm'];
-        $data['size_sqft'] = (int) round($data['size_sqm'] / self::SQM_PER_SQFT);
-        $data['rent'] = round($data['size_sqm'] * $data['rate_per_sqm'], 2);
-        $data['deposit'] = round($data['rent'] * 2, 2);
+        $data['size_sqm']               = (float) $data['size_sqm'];
+        $data['rate_per_sqm']           = (float) $data['rate_per_sqm'];
+        $data['size_sqft']              = (int) round($data['size_sqm'] / self::SQM_PER_SQFT);
+        $data['rent']                   = round($data['size_sqm'] * $data['rate_per_sqm'], 2);
+        $data['service_charge_per_sqm'] = (float) ($data['service_charge_per_sqm'] ?? 0);
+        $data['service_charge']         = round($data['size_sqm'] * $data['service_charge_per_sqm'], 2);
+        $data['electricity_type']       = $data['electricity_type'] ?? 'direct';
+        $rentMonths                     = (float) SystemSetting::get('deposit_rent_months', 1);
+        $scMonths                       = (float) SystemSetting::get('deposit_service_charge_months', 1);
+        $data['deposit']                = round(($data['rent'] * $rentMonths) + ($data['service_charge'] * $scMonths), 2);
 
         if ($this->shouldScopeToProperty($request)) {
             $data['property_id'] = $this->effectivePropertyId($request);
@@ -111,30 +129,43 @@ class UnitController extends Controller
     public function update(Request $request, Unit $unit)
     {
         $user = $request->user();
-        $maxFloor = null;
+        $validFloorIds = [];
         if ($this->shouldScopeToProperty($request)) {
             $effectiveId = $this->effectivePropertyId($request);
             abort_if($effectiveId !== null && (int) $unit->property_id !== $effectiveId, 403);
             $managerProperty = $effectiveId ? Property::find($effectiveId) : null;
-            $maxFloor = $managerProperty ? max(1, (int) ($managerProperty->total_floors ?? 1)) : null;
+            if ($managerProperty) {
+                $validFloorIds = FloorConfig::floorIds(FloorConfig::parse($managerProperty->floor_config));
+            }
         }
 
+        $floorRule = $validFloorIds
+            ? ['required', 'string', Rule::in($validFloorIds)]
+            : ['required', 'string'];
+
         $data = $request->validate([
-            'unit_number' => 'required|string|unique:units,unit_number,' . $unit->id,
-            'floor'       => array_filter(['required', 'integer', 'min:1', $maxFloor ? 'max:' . $maxFloor : null]),
-            'type'        => 'required|string',
-            'size_sqm'    => 'required|numeric|min:0.1',
-            'rate_per_sqm' => 'required|numeric|min:0',
-            'currency'    => 'required|in:TZS,USD',
-            'status'      => 'required|in:occupied,vacant,overdue,maintenance',
-            'notes'       => 'nullable|string',
+            'unit_number'            => 'required|string|unique:units,unit_number,' . $unit->id,
+            'floor'                  => $floorRule,
+            'type'                   => 'required|string',
+            'size_sqm'               => 'required|numeric|min:0.1',
+            'rate_per_sqm'           => 'required|numeric|min:0',
+            'service_charge_per_sqm' => 'nullable|numeric|min:0',
+            'currency'               => 'required|in:TZS,USD',
+            'status'                 => 'required|in:occupied,vacant,overdue,maintenance',
+            'electricity_type'       => 'nullable|in:direct,submeter',
+            'notes'                  => 'nullable|string',
         ]);
 
-        $data['size_sqm'] = (float) $data['size_sqm'];
-        $data['rate_per_sqm'] = (float) $data['rate_per_sqm'];
-        $data['size_sqft'] = (int) round($data['size_sqm'] / self::SQM_PER_SQFT);
-        $data['rent'] = round($data['size_sqm'] * $data['rate_per_sqm'], 2);
-        $data['deposit'] = round($data['rent'] * 2, 2);
+        $data['size_sqm']               = (float) $data['size_sqm'];
+        $data['rate_per_sqm']           = (float) $data['rate_per_sqm'];
+        $data['size_sqft']              = (int) round($data['size_sqm'] / self::SQM_PER_SQFT);
+        $data['rent']                   = round($data['size_sqm'] * $data['rate_per_sqm'], 2);
+        $data['service_charge_per_sqm'] = (float) ($data['service_charge_per_sqm'] ?? 0);
+        $data['service_charge']         = round($data['size_sqm'] * $data['service_charge_per_sqm'], 2);
+        $data['electricity_type']       = $data['electricity_type'] ?? 'direct';
+        $rentMonths                     = (float) SystemSetting::get('deposit_rent_months', 1);
+        $scMonths                       = (float) SystemSetting::get('deposit_service_charge_months', 1);
+        $data['deposit']                = round(($data['rent'] * $rentMonths) + ($data['service_charge'] * $scMonths), 2);
 
         $unit->update($data);
 
@@ -199,10 +230,10 @@ class UnitController extends Controller
             if ($propertyId === null) return [];
             $property = Property::find($propertyId);
             if (!$property) return [];
-            $maxFloor = max(1, (int) ($property->total_floors ?? 1));
-            return range(1, $maxFloor);
+            return $property->floorList();
         }
-        return range(1, 7);
+        // Default for superuser without a property context
+        return FloorConfig::floors(FloorConfig::parse(null));
     }
 
 }

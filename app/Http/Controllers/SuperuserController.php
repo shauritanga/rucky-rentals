@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
+use App\Models\ExchangeRate;
+use App\Support\FloorConfig;
 use App\Models\Lease;
 use App\Models\MaintenanceRecord;
 use App\Models\Property;
@@ -44,14 +46,28 @@ class SuperuserController extends Controller
             ->orderBy('name')
             ->get()
             ->map(function ($property) {
-                $property->unit_count     = (int)   ($property->unit_count_live    ?? 0);
-                $property->occupied_units = (int)   ($property->occupied_units_live ?? 0);
-                $property->revenue_tzs    = (float) ($property->revenue_tzs         ?? 0);
-                $property->revenue_usd    = (float) ($property->revenue_usd         ?? 0);
+                $revTzs = (float) ($property->revenue_tzs ?? 0);
+                $revUsd = (float) ($property->revenue_usd ?? 0);
+
+                // Convert USD portion using the live display rate — same cache key as the
+                // UI header rate badge, so every view of this property shows the same figure.
+                // DO NOT use ExchangeRate::getRate() here — it reads the DB first, which may
+                // contain a stale manually-entered rate that differs from the live rate.
+                $usdRate = ($revUsd > 0) ? ExchangeRate::getLiveRate('USD', 'TZS') : 0;
+
+                $property->monthly_revenue_tzs = $revTzs + ($revUsd * $usdRate);
+
+                $property->unit_count     = (int) ($property->unit_count_live    ?? 0);
+                $property->occupied_units = (int) ($property->occupied_units_live ?? 0);
+
+                // Remove raw currency parts — frontend must never convert financial amounts
+                unset($property->revenue_tzs, $property->revenue_usd);
+
                 return $property;
             });
 
         $managers = User::query()
+            ->with('property:id,name')
             ->whereIn('role', ['manager', 'accountant', 'viewer', 'superuser'])
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'role', 'property_id']);
@@ -103,16 +119,29 @@ class SuperuserController extends Controller
     public function storeProperty(Request $request)
     {
         $data = $request->validate([
-            'name' => 'required|string|max:120',
-            'address' => 'nullable|string|max:255',
-            'city' => 'nullable|string|max:120',
-            'country' => 'nullable|string|max:120',
-            'status' => 'required|in:active,trial,inactive',
-            'unit_count' => 'nullable|integer|min:0',
-            'occupied_units' => 'nullable|integer|min:0',
-            'total_floors' => 'nullable|integer|min:1',
-            'manager_user_id' => 'nullable|exists:users,id',
+            'name'             => 'required|string|max:120',
+            'address'          => 'nullable|string|max:255',
+            'city'             => 'nullable|string|max:120',
+            'country'          => 'nullable|string|max:120',
+            'status'           => 'required|in:active,trial,inactive',
+            'manager_user_id'  => 'nullable|exists:users,id',
+            // floor config fields
+            'basements'        => 'nullable|integer|min:0|max:10',
+            'has_ground_floor' => 'nullable|boolean',
+            'has_mezzanine'    => 'nullable|boolean',
+            'upper_floors'     => 'required|integer|min:1|max:100',
         ]);
+
+        // Assemble floor_config and keep total_floors in sync for backward compat
+        $floorConfig = [
+            'basements'        => (int) ($data['basements'] ?? 0),
+            'has_ground_floor' => (bool) ($data['has_ground_floor'] ?? false),
+            'has_mezzanine'    => (bool) ($data['has_mezzanine'] ?? false),
+            'upper_floors'     => (int) $data['upper_floors'],
+        ];
+        unset($data['basements'], $data['has_ground_floor'], $data['has_mezzanine'], $data['upper_floors']);
+        $data['floor_config'] = $floorConfig;
+        $data['total_floors'] = $floorConfig['upper_floors'];
 
         $maxBldCode = Property::query()
             ->where('code', 'like', 'BLD%')
@@ -262,7 +291,8 @@ class SuperuserController extends Controller
     {
         $allowed = [
             'company_name', 'company_registration', 'vat_number', 'default_currency',
-            'default_country', 'support_email', 'min_lease_months', 'deposit_multiplier',
+            'default_country', 'support_email', 'min_lease_months',
+            'deposit_rent_months', 'deposit_service_charge_months',
             'late_fee_days', 'late_fee_percent', 'expiry_warning_days', 'auto_renew',
             'notif_new_property', 'notif_manager_changes', 'notif_failed_logins',
             'notif_lease_approved', 'notif_overdue_rent', 'notif_system_errors',
@@ -456,6 +486,43 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Maintenance ticket rejected.');
+    }
+
+    // ── Notifications ───────────────────────────────────────────────
+
+    public function getNotifications(): \Illuminate\Http\JsonResponse
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $notifications = Auth::user()->notifications()
+            ->latest()
+            ->take(20)
+            ->get()
+            ->map(fn($n) => [
+                'id'         => $n->id,
+                'data'       => $n->data,
+                'read_at'    => $n->read_at,
+                'created_at' => $n->created_at,
+            ]);
+
+        return response()->json([
+            'notifications' => $notifications,
+            'unread_count'  => Auth::user()->unreadNotifications()->count(),
+        ]);
+    }
+
+    public function markNotificationsRead(): \Illuminate\Http\JsonResponse
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        Auth::user()->unreadNotifications()->update(['read_at' => now()]);
+        return response()->json(['ok' => true]);
+    }
+
+    public function clearNotifications(): \Illuminate\Http\JsonResponse
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        Auth::user()->notifications()->delete();
+        return response()->json(['ok' => true]);
     }
 
     // ── Manager Delete / Restore ─────────────────────────────────────

@@ -4,10 +4,11 @@ namespace App\Notifications;
 
 use App\Models\Lease;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class LeaseDecisionNotification extends Notification
+class LeaseDecisionNotification extends Notification implements ShouldBroadcast
 {
     use Queueable;
 
@@ -20,7 +21,7 @@ class LeaseDecisionNotification extends Notification
 
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail', 'database', 'broadcast'];
     }
 
     public function toMail(object $notifiable): MailMessage

@@ -28,12 +28,13 @@ export default function SettingsPage({ settings = {} }) {
 
   // ── General — Lease Policy ───────────────────────────────────────────────
   const [lease, setLease] = useState({
-    min_lease_months:    settings.min_lease_months    ?? '12',
-    deposit_multiplier:  settings.deposit_multiplier  ?? '2',
-    late_fee_days:       settings.late_fee_days       ?? '7',
-    late_fee_percent:    settings.late_fee_percent    ?? '5',
-    expiry_warning_days: settings.expiry_warning_days ?? '60',
-    auto_renew:          settings.auto_renew          ?? 'no',
+    min_lease_months:             settings.min_lease_months             ?? '12',
+    deposit_rent_months:          settings.deposit_rent_months          ?? '1',
+    deposit_service_charge_months: settings.deposit_service_charge_months ?? '1',
+    late_fee_days:                settings.late_fee_days                ?? '7',
+    late_fee_percent:             settings.late_fee_percent             ?? '5',
+    expiry_warning_days:          settings.expiry_warning_days          ?? '60',
+    auto_renew:                   settings.auto_renew                   ?? 'no',
   });
 
   // ── Security ─────────────────────────────────────────────────────────────
@@ -169,8 +170,14 @@ export default function SettingsPage({ settings = {} }) {
                 <input className="form-input" type="number" min="1" value={lease.min_lease_months} onChange={e => setLease(p => ({ ...p, min_lease_months: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">Default Security Deposit (x rent)</label>
-                <input className="form-input" type="number" min="0" step="0.5" value={lease.deposit_multiplier} onChange={e => setLease(p => ({ ...p, deposit_multiplier: e.target.value }))} />
+                <label className="form-label">Security Deposit: Rent (months)</label>
+                <input className="form-input" type="number" min="0" step="0.5" value={lease.deposit_rent_months} onChange={e => setLease(p => ({ ...p, deposit_rent_months: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Security Deposit: Service Charge (months)</label>
+                <input className="form-input" type="number" min="0" step="0.5" value={lease.deposit_service_charge_months} onChange={e => setLease(p => ({ ...p, deposit_service_charge_months: e.target.value }))} />
               </div>
             </div>
             <div className="form-row">

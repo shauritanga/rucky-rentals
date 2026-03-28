@@ -5,14 +5,18 @@ namespace App\Http\Controllers;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
+use App\Models\SystemSetting;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Models\User;
+use App\Notifications\LeaseApprovalRequestNotification;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 
 class LeaseController extends Controller
@@ -24,9 +28,10 @@ class LeaseController extends Controller
 
         if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Leases/Index', [
-                'leases' => MockRentalData::leases(),
-                'tenants' => MockRentalData::tenants(),
-                'units' => MockRentalData::units(),
+                'leases'   => MockRentalData::leases(),
+                'tenants'  => MockRentalData::tenants(),
+                'units'    => MockRentalData::units(),
+                'settings' => SystemSetting::pluck('value', 'key'),
             ]);
         }
 
@@ -42,10 +47,11 @@ class LeaseController extends Controller
         $this->scopeByUserProperty($tenantsQuery, $request, 'property_id');
         $this->scopeByUserProperty($unitsQuery, $request, 'property_id');
 
-        $leases  = $leasesQuery->get();
-        $tenants = $tenantsQuery->get();
-        $units   = $unitsQuery->get();
-        return Inertia::render('Leases/Index', compact('leases', 'tenants', 'units'));
+        $leases   = $leasesQuery->get();
+        $tenants  = $tenantsQuery->get();
+        $units    = $unitsQuery->get();
+        $settings = SystemSetting::pluck('value', 'key');
+        return Inertia::render('Leases/Index', compact('leases', 'tenants', 'units', 'settings'));
     }
 
     public function store(Request $request)
@@ -59,18 +65,14 @@ class LeaseController extends Controller
         }
 
         $validated = $request->validate([
-            'tenant_mode'     => 'required|in:existing,new',
+            'tenant_mode'     => 'nullable|in:existing,new',
             'tenant_id'       => [
-                'nullable',
-                'required_if:tenant_mode,existing',
+                'required',
                 Rule::exists('tenants', 'id')->when(
                     $effectivePropertyId,
                     fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
                 ),
             ],
-            'new_tenant_name' => 'nullable|required_if:tenant_mode,new|string|max:255',
-            'new_tenant_email' => 'nullable|required_if:tenant_mode,new|email|max:255|unique:tenants,email',
-            'new_tenant_phone' => 'nullable|required_if:tenant_mode,new|string|max:255',
             'new_tenant_national_id' => 'nullable|string|max:255',
             'unit_id'         => [
                 'required',
@@ -172,7 +174,11 @@ class LeaseController extends Controller
             'service_charge_rate' => (float) ($validated['service_charge_rate'] ?? 5),
             'vat_rate' => (float) ($validated['vat_rate'] ?? 18),
             'monthly_rent' => $validated['monthly_rent'],
-            'deposit' => $validated['deposit'] ?? ($validated['monthly_rent'] * 2),
+            'deposit' => $validated['deposit'] ?? (function () use ($validated, $unit) {
+                $rentMonths = (float) SystemSetting::get('deposit_rent_months', 1);
+                $scMonths   = (float) SystemSetting::get('deposit_service_charge_months', 1);
+                return round(($validated['monthly_rent'] * $rentMonths) + (($unit->service_charge ?? 0) * $scMonths), 2);
+            })(),
             'terms' => $validated['terms'] ?? null,
             'status' => $status,
             'approval_log' => $approvalLog,
@@ -196,6 +202,18 @@ class LeaseController extends Controller
             category: 'lease',
             propertyId: (int) $propertyId,
         );
+
+        // Notify all superusers when a lease is submitted for approval
+        if ($lease->status === 'pending_accountant') {
+            $superusers = User::where('role', 'superuser')->get();
+            Notification::send(
+                $superusers,
+                new LeaseApprovalRequestNotification(
+                    $lease->fresh(['tenant', 'unit.property']),
+                    $user->name
+                )
+            );
+        }
 
         $message = $this->isSuperuserActing($request)
             ? 'Lease created and approved.'
@@ -254,6 +272,62 @@ class LeaseController extends Controller
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 0, 'action' => 'submitted', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease resubmitted after rejection.'];
             $lease->update(['status' => 'pending_accountant', 'approval_log' => json_encode($log)]);
+
+            $superusers = User::where('role', 'superuser')->get();
+            Notification::send(
+                $superusers,
+                new LeaseApprovalRequestNotification(
+                    $lease->fresh(['tenant', 'unit.property']),
+                    $user->name
+                )
+            );
+        } elseif ($action === 'edit') {
+            // Active/expiring/overdue leases → superuser only
+            if (in_array($lease->status, ['active', 'expiring', 'overdue'])) {
+                abort_if($user->role !== 'superuser' && !$this->isSuperuserActing($request), 403, 'Only superuser can edit an active lease.');
+            }
+            // Pending/rejected → any authenticated user with property access can edit
+
+            $editData = $request->validate([
+                'tenant_id'       => ['required', Rule::exists('tenants', 'id')],
+                'unit_id'         => ['required', Rule::exists('units', 'id')],
+                'start_date'      => 'required|date',
+                'end_date'        => 'required|date|after:start_date',
+                'duration_months' => 'required|integer|min:1',
+                'payment_cycle'   => 'required|integer|in:3,4,6,12',
+                'possession_date' => 'nullable|date',
+                'rent_start_date' => 'nullable|date',
+                'fitout_enabled'  => 'nullable|boolean',
+                'fitout_to_date'  => 'nullable|date',
+                'fitout_days'     => 'nullable|integer|min:0',
+                'monthly_rent'    => 'required|numeric|min:0',
+                'deposit'         => 'nullable|numeric|min:0',
+                'wht_rate'        => 'nullable|numeric|min:0|max:100',
+                'vat_rate'        => 'nullable|numeric|min:0|max:100',
+                'terms'           => 'nullable|string',
+            ]);
+
+            DB::transaction(function () use ($lease, $editData) {
+                $oldUnitId = $lease->unit_id;
+                $newUnitId = $editData['unit_id'];
+                $lease->update($editData);
+                if ((int) $oldUnitId !== (int) $newUnitId) {
+                    Unit::where('id', $oldUnitId)->update(['status' => 'available']);
+                    Unit::where('id', $newUnitId)->update(['status' => 'occupied']);
+                }
+            });
+        } elseif ($action === 'update_fitout') {
+            abort_if($user->role !== 'superuser' && !$this->isSuperuserActing($request), 403, 'Only superuser can edit fit-out settings.');
+            $fitoutData = $request->validate([
+                'fitout_enabled' => 'required|boolean',
+                'fitout_to_date' => 'nullable|date',
+                'fitout_days'    => 'nullable|integer|min:0',
+            ]);
+            $lease->update([
+                'fitout_enabled' => $fitoutData['fitout_enabled'],
+                'fitout_to_date' => $fitoutData['fitout_enabled'] ? ($fitoutData['fitout_to_date'] ?? null) : null,
+                'fitout_days'    => $fitoutData['fitout_enabled'] ? (int) ($fitoutData['fitout_days'] ?? 0) : 0,
+            ]);
         }
 
         $propertyName = Property::where('id', $lease->property_id)->value('name');

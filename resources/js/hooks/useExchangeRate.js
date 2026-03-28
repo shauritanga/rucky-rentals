@@ -65,6 +65,17 @@ export default function useExchangeRate() {
     return `TZS ${tzs.toLocaleString()}`;
   }, [rate]);
 
+  // Format an amount that is ALREADY in TZS — no exchange rate applied.
+  // Use this for values the backend has pre-converted (e.g. monthlyRevenue, overdueBalance).
+  const formatCompactTzs = useCallback((tzsAmount) => {
+    if (tzsAmount == null || Number.isNaN(Number(tzsAmount))) return '—';
+    const tzs = Math.round(Number(tzsAmount));
+    if (tzs >= 1_000_000_000) return `TZS ${(tzs / 1_000_000_000).toFixed(1)}B`;
+    if (tzs >= 1_000_000)     return `TZS ${(tzs / 1_000_000).toFixed(1)}M`;
+    if (tzs >= 1_000)         return `TZS ${(tzs / 1_000).toFixed(0)}k`;
+    return `TZS ${tzs.toLocaleString()}`;
+  }, []);
+
   // Display amount in its native currency — no conversion.
   const formatMoney = useCallback((amount, currency = 'USD') => {
     if (amount == null || Number.isNaN(Number(amount))) return '—';
@@ -87,6 +98,7 @@ export default function useExchangeRate() {
     refreshRate: () => fetchRate({ force: true }),
     formatTzsFromUsd,
     formatCompactTzsFromUsd,
+    formatCompactTzs,
     formatMoney,
   };
 }

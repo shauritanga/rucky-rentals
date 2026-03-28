@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\FloorConfig;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
@@ -16,9 +17,23 @@ class Property extends Model
         'status',
         'unit_count',
         'occupied_units',
-        'total_floors',
+        'total_floors',  // deprecated — kept for backward compat; use floor_config
+        'floor_config',
         'manager_user_id',
     ];
+
+    protected $casts = [
+        'floor_config' => 'array',
+    ];
+
+    /**
+     * Return the ordered floor list for this property.
+     * Each element: ['id' => string, 'label' => string, 'sort_order' => int]
+     */
+    public function floorList(): array
+    {
+        return FloorConfig::floors(FloorConfig::parse($this->floor_config));
+    }
 
     public function manager()
     {

@@ -14,18 +14,23 @@ class Unit extends Model
         'size_sqft',
         'size_sqm',
         'rate_per_sqm',
+        'service_charge_per_sqm',
         'currency',
         'rent',
         'status',
         'deposit',
+        'service_charge',
+        'electricity_type',
         'notes',
     ];
 
     protected $casts = [
-        'size_sqm' => 'float',
-        'rate_per_sqm' => 'float',
-        'rent' => 'float',
-        'deposit' => 'float',
+        'size_sqm'               => 'float',
+        'rate_per_sqm'           => 'float',
+        'service_charge_per_sqm' => 'float',
+        'rent'                   => 'float',
+        'deposit'                => 'float',
+        'service_charge'         => 'float',
     ];
 
     public function leases()
