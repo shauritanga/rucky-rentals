@@ -21,7 +21,7 @@ const NAV = [
 export default function AppLayout({ children, title, subtitle }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
   const { url, props } = usePage();
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
   const user = props?.auth?.user;
@@ -38,6 +38,7 @@ export default function AppLayout({ children, title, subtitle }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app-theme', theme);
   }, [theme]);
 
   const isActive = (href) => href === '/' ? url === '/' : url.startsWith(href);
