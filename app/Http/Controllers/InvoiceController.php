@@ -167,10 +167,12 @@ class InvoiceController extends Controller
 
             $this->attachInvoiceToInstallment($invoice);
 
-            // Refresh invoice to load newly created items
+            // Refresh invoice to load newly created items, then post to GL.
+            // We call postInvoice() explicitly here rather than relying on InvoiceObserver::created()
+            // because the observer fires on Invoice::create() before items exist, so it sees an
+            // empty items collection and returns without posting.
             $invoice->load('items');
-
-            // GL posting is handled by InvoiceObserver::created() — no explicit call needed here
+            app(\App\Services\AccountingService::class)->postInvoice($invoice);
         });
 
         $createdInvoice = Invoice::find($createdInvoiceId);

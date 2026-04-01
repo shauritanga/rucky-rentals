@@ -10,12 +10,12 @@ class InvoiceObserver
     public function __construct(private AccountingService $accountingService) {}
 
     /**
-     * Handle the Invoice "created" event.
-     * Post accrual entry if invoice is in issued state
+     * GL posting on creation is handled by InvoiceController::store() after items are attached.
+     * The observer fires before items exist, so we cannot post here.
      */
     public function created(Invoice $invoice): void
     {
-        $this->accountingService->postInvoice($invoice);
+        // intentionally empty — see InvoiceController::store()
     }
 
     /**
