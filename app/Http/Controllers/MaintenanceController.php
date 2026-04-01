@@ -50,20 +50,12 @@ class MaintenanceController extends Controller
             ->orderBy('next_due')
             ->get();
 
-        // Approval count — for superuser in view mode, show pending tickets for that property
+        // Approval count — only superuser handles approvals
         $approvalCount = 0;
-        if ($user?->role === 'superuser' && $this->shouldScopeToProperty($request)) {
-            $propertyId = $this->effectivePropertyId($request);
-            $approvalCount = MaintenanceRecord::whereIn('workflow_status', ['submitted', 'pending_manager'])
-                ->when($propertyId, fn ($q) => $q->where('property_id', $propertyId))
-                ->count();
-        } elseif ($user?->role === 'accountant') {
+        if ($user?->role === 'superuser') {
+            $propertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
             $approvalCount = MaintenanceRecord::where('workflow_status', 'submitted')
-                ->when(!empty($user->property_id), fn ($q) => $q->where('property_id', $user->property_id))
-                ->count();
-        } elseif ($user?->role === 'manager') {
-            $approvalCount = MaintenanceRecord::where('workflow_status', 'pending_manager')
-                ->when(!empty($user->property_id), fn ($q) => $q->where('property_id', $user->property_id))
+                ->when($propertyId, fn ($q) => $q->where('property_id', $propertyId))
                 ->count();
         }
 
@@ -159,7 +151,7 @@ class MaintenanceController extends Controller
             $user = $request->user();
 
             // Only superuser can approve tickets
-            if (in_array($next, ['approved', 'pending_manager'])) {
+            if ($next === 'approved') {
                 abort_if($user?->role !== 'superuser', 403, 'Only superuser can approve maintenance tickets.');
             }
 
@@ -183,8 +175,12 @@ class MaintenanceController extends Controller
                 }
             }
         } else {
-            $allowed = ['status', 'assignee', 'cost'];
-            $maintenanceTicket->update($request->only($allowed));
+            $updateData = $request->validate([
+                'status'   => 'nullable|string',
+                'assignee' => 'nullable|string|max:255',
+                'cost'     => 'nullable|numeric|min:0',
+            ]);
+            $maintenanceTicket->update(array_filter($updateData, fn($v) => $v !== null));
 
             $currentCost = (float) ($maintenanceTicket->cost ?? 0);
             $propertyId  = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;

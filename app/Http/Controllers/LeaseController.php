@@ -75,6 +75,9 @@ class LeaseController extends Controller
                     fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
                 ),
             ],
+            'new_tenant_name'        => 'required_if:tenant_mode,new|string|max:255',
+            'new_tenant_email'       => 'required_if:tenant_mode,new|email|max:255',
+            'new_tenant_phone'       => 'required_if:tenant_mode,new|string|max:20',
             'new_tenant_national_id' => 'nullable|string|max:255',
             'unit_id'         => [
                 'required',
@@ -95,8 +98,8 @@ class LeaseController extends Controller
             'end_date'        => 'required|date|after:start_date',
             'duration_months' => 'required|integer|min:1',
             'payment_cycle'   => 'required|integer|in:3,4,6,12',
-            'monthly_rent'    => 'required|numeric',
-            'deposit'         => 'nullable|numeric',
+            'monthly_rent'    => 'required|numeric|min:0.01',
+            'deposit'         => 'nullable|numeric|min:0',
             'terms'           => 'nullable|string',
         ]);
 
@@ -152,7 +155,7 @@ class LeaseController extends Controller
                 'text' => 'Auto-approved by superuser.',
             ]]);
         } else {
-            $status = 'pending_accountant';
+            $status = 'pending';
             $approvalLog = json_encode([
                 ['step' => 0, 'action' => 'submitted', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease submitted for approval.']
             ]);
@@ -207,7 +210,7 @@ class LeaseController extends Controller
         );
 
         // Notify all superusers when a lease is submitted for approval
-        if ($lease->status === 'pending_accountant') {
+        if ($lease->status === 'pending') {
             $superusers = User::where('role', 'superuser')->get();
             Notification::send(
                 $superusers,
@@ -236,11 +239,11 @@ class LeaseController extends Controller
 
         $action = $request->input('action');
 
-        if ($action === 'approve_superuser' && $user->role === 'superuser'
-            && in_array($lease->status, ['pending_accountant', 'pending_pm'])) {
+        if ($action === 'approve' && $lease->status === 'pending') {
+            abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = [
-                'step' => 2, 'action' => 'approved',
+                'step' => 1, 'action' => 'approved',
                 'by' => $user->name . ' (Superuser)',
                 'date' => now()->toDateString(),
                 'text' => 'Approved by superuser.',
@@ -250,34 +253,15 @@ class LeaseController extends Controller
                 $this->ensureInstallmentsGenerated($lease->fresh());
                 $this->postDepositEntry($lease->fresh());
             });
-        } elseif ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
-            // Only superuser can approve
-            abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
-            $log = json_decode($lease->approval_log, true) ?? [];
-            $log[] = ['step' => 1, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
-            DB::transaction(function () use ($lease, $log) {
-                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
-                $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->postDepositEntry($lease->fresh());
-            });
-        } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
-            // Only superuser can approve
-            abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
-            $log = json_decode($lease->approval_log, true) ?? [];
-            $log[] = ['step' => 2, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
-            DB::transaction(function () use ($lease, $log) {
-                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
-                $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->postDepositEntry($lease->fresh());
-            });
         } elseif ($action === 'reject') {
+            abort_if($user->role !== 'superuser', 403, 'Only superuser can reject leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
-            $log[] = ['step' => 0, 'action' => 'rejected', 'by' => $user->name, 'date' => now()->toDateString(), 'reason' => $request->input('reason', ''), 'text' => 'Lease rejected.'];
+            $log[] = ['step' => 0, 'action' => 'rejected', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'reason' => $request->input('reason', ''), 'text' => 'Lease rejected.'];
             $lease->update(['status' => 'rejected', 'approval_log' => json_encode($log)]);
         } elseif ($action === 'resubmit') {
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 0, 'action' => 'submitted', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease resubmitted after rejection.'];
-            $lease->update(['status' => 'pending_accountant', 'approval_log' => json_encode($log)]);
+            $lease->update(['status' => 'pending', 'approval_log' => json_encode($log)]);
 
             $superusers = User::where('role', 'superuser')->get();
             Notification::send(

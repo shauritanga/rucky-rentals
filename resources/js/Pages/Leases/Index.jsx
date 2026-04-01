@@ -6,9 +6,9 @@ const fmt = (n) => Number(n).toLocaleString();
 const CURRENCY_FALLBACK = 'USD';
 const CYCLE_LABELS = { 3:'Quarterly · 3mo', 4:'4-Month', 6:'Semi-Annual · 6mo', 12:'Annual' };
 const CYCLE_PAYMENTS = { 3:'Quarterly', 4:'4-Month', 6:'Semi-Annual', 12:'Annual' };
-const STATUS_BADGE = { active:'active', expiring:'expiring', overdue:'overdue', pending_accountant:'pending_accountant', pending_pm:'pending_accountant', rejected:'rejected', terminated:'pending' };
-const STATUS_KV_MAP = { active:'green', expiring:'amber', overdue:'red', pending_accountant:'amber', pending_pm:'amber', rejected:'red' };
-const STATUS_LABEL_MAP = { active:'Active', expiring:'Expiring Soon', overdue:'Overdue', pending_accountant:'Pending Approval', pending_pm:'Pending Approval', rejected:'Rejected' };
+const STATUS_BADGE = { active:'active', expiring:'expiring', overdue:'overdue', pending:'pending', rejected:'rejected', terminated:'pending' };
+const STATUS_KV_MAP = { active:'green', expiring:'amber', overdue:'red', pending:'amber', rejected:'red' };
+const STATUS_LABEL_MAP = { active:'Active', expiring:'Expiring Soon', overdue:'Overdue', pending:'Pending Approval', rejected:'Rejected' };
 const DURATION_OPTIONS = Array.from({ length: 15 }, (_, i) => {
   const years = i + 1;
   return { months: years * 12, label: `${years} Year${years > 1 ? 's' : ''} (${years * 12} months)` };
@@ -270,12 +270,10 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   });
 
   const counts = {};
-  ['all','active','expiring','overdue','pending_accountant','rejected'].forEach(s => {
+  ['all','active','expiring','overdue','pending','rejected'].forEach(s => {
     counts[s] = s === 'all'
       ? leases.length
-      : s === 'pending_accountant'
-        ? leases.filter(l => l.status==='pending_accountant' || l.status==='pending_pm').length
-        : leases.filter(l => l.status===s).length;
+      : leases.filter(l => l.status===s).length;
   });
   const monthlyRevenueByCurrency = useMemo(() => {
     return leases.reduce((acc, lease) => {
@@ -389,7 +387,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     }
   };
 
-  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
+  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve'?'active':action==='reject'?'rejected':s.status} : null) });
 
   const openFitoutEdit = () => {
     setFitoutEditEnabled(!!selected?.fitout_enabled);
@@ -460,7 +458,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
   useEffect(() => { setEditingFitout(false); }, [selected?.id]);
 
-  const isPending = selected ? ['pending_accountant', 'pending_pm', 'rejected'].includes(selected.status) : false;
+  const isPending = selected ? ['pending', 'rejected'].includes(selected.status) : false;
   const approvalLog = useMemo(() => parseApprovalLog(selected?.approval_log), [selected]);
   const leaseProgress = useMemo(() => (selected ? calcLeaseProgress(selected) : { pct: 0, daysLeft: 0 }), [selected]);
   const paymentSchedule = useMemo(() => (selected ? buildPaymentSchedule(selected, isPending) : []), [selected, isPending]);
@@ -502,7 +500,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
       <div className="toolbar">
         <div className="filters">
-          {[['all','All'],['active','Active'],['pending_accountant','Pending Approval'],['expiring','Expiring'],['overdue','Overdue'],['rejected','Rejected']].map(([f,l])=>(
+          {[['all','All'],['active','Active'],['pending','Pending Approval'],['expiring','Expiring'],['overdue','Overdue'],['rejected','Rejected']].map(([f,l])=>(
             <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>setFilter(f)}>{l} <span className="pill-count">{counts[f]||0}</span></button>
           ))}
         </div>
@@ -531,7 +529,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <td><span className={`lease-cycle-pill c${l.payment_cycle}`}>{CYCLE_LABELS[l.payment_cycle]}</span></td>
                 <td style={{fontWeight:600}}>{formatMoney(l.monthly_rent, l.currency || l.unit?.currency)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
-                  {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':(l.status==='pending_accountant'||l.status==='pending_pm')?'⏳ Pending':l.status==='rejected'?'✕ Rejected':'—'}
+                  {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':l.status==='pending'?'⏳ Pending':l.status==='rejected'?'✕ Rejected':'—'}
                 </td>
                 <td><span className={`badge ${STATUS_BADGE[l.status]||'pending'}`}>{STATUS_LABEL_MAP[l.status] ?? l.status?.replace('_',' ')}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(l)}}>···</button></td>
@@ -561,7 +559,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className="apv-stepper">
                     {[{ label: 'Submitted', role: 'Manager / Staff' }, { label: 'Superuser Approval', role: 'Superuser' }].map((step, i) => {
                       const isRejected = selected.status === 'rejected';
-                      const isPendingStep = ['pending_accountant', 'pending_pm'].includes(selected.status);
+                      const isPendingStep = selected.status === 'pending';
                       const isDone = !isRejected && i === 0 && isPendingStep;
                       const isActive = !isRejected && i === 1 && isPendingStep;
                       const cls = isDone ? 'done' : isActive ? 'active' : isRejected && i === 1 ? 'rejected' : '';
@@ -578,13 +576,13 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   </div>
 
                   <div className={`apv-action-banner ${selected.status === 'rejected' ? 'rejected' : 'can-approve'}`}>
-                    {['pending_accountant', 'pending_pm'].includes(selected.status) && (
+                    {selected.status === 'pending' && (
                       <>
                         <div className="apv-banner-title">Awaiting Superuser Approval</div>
                         <div className="apv-banner-sub">This lease is pending approval. Only the superuser can approve or reject leases.</div>
                         {user?.role === 'superuser' && (
                           <div className="apv-banner-actions">
-                            <button className="apv-btn-approve" onClick={() => approve(selected, 'approve_superuser')}>Approve</button>
+                            <button className="apv-btn-approve" onClick={() => approve(selected, 'approve')}>Approve</button>
                             <button className="apv-btn-reject" onClick={() => approve(selected, 'reject')}>Reject</button>
                           </div>
                         )}
@@ -826,7 +824,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className={`nl-tenant-dropdown ${showTenantDropdown?'open':''}`}>
                     {filteredTenants.length === 0 && <div className="nl-no-results">No tenants found</div>}
                     {filteredTenants.map(t => {
-                      const tenantLease = leases.find(l => String(l.tenant_id) === String(t.id) && ['active','expiring','overdue','pending_accountant','pending_pm'].includes(l.status));
+                      const tenantLease = leases.find(l => String(l.tenant_id) === String(t.id) && ['active','expiring','overdue','pending'].includes(l.status));
                       const unitLabel = tenantLease?.unit?.unit_number ? `Current: ${tenantLease.unit.unit_number}` : 'No active lease';
                       return (
                         <button type="button" key={t.id} className="nl-tenant-option" onMouseDown={(e)=>e.preventDefault()} onClick={()=>selectTenant(t)}>

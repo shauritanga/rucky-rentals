@@ -9,6 +9,7 @@ import RolesPage from '@/Pages/Superuser/Pages/RolesPage';
 import AuditPage from '@/Pages/Superuser/Pages/AuditPage';
 import SettingsPage from '@/Pages/Superuser/Pages/SettingsPage';
 import ApprovalsPage from '@/Pages/Superuser/Pages/ApprovalsPage';
+import OwnerRevenuePage from '@/Pages/Superuser/Pages/OwnerRevenuePage';
 
 
 const VIEW_META = {
@@ -17,6 +18,7 @@ const VIEW_META = {
   managers: { title: 'Managers & Users', subtitle: 'All system users', actionLabel: 'Add User' },
   roles: { title: 'Roles & Permissions', subtitle: 'Access control', actionLabel: 'Save Changes' },
   approvals: { title: 'Approvals', subtitle: 'Pending requests', actionLabel: null },
+  revenue: { title: 'Revenue & Disbursements', subtitle: 'Owner waterfall', actionLabel: null },
   audit: { title: 'Audit Trail', subtitle: 'System log', actionLabel: 'Export CSV' },
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
@@ -163,6 +165,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} archivedManagers={archivedManagers} onOpenManagerModal={() => setShowManagerModal(true)} />}
       {activeView === 'roles' && <RolesPage settings={settings} />}
       {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} />}
+      {activeView === 'revenue' && <OwnerRevenuePage properties={effectiveProperties} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage settings={settings} />}
 

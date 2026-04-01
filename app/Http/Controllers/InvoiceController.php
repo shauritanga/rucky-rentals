@@ -86,7 +86,7 @@ class InvoiceController extends Controller
             'items'        => 'required|array|min:1',
             'items.*.description' => 'required|string',
             'items.*.quantity'    => 'required|integer|min:1',
-            'items.*.unit_price'  => 'required|numeric',
+            'items.*.unit_price'  => 'required|numeric|min:0.01',
         ]);
 
         $status = ($data['status'] ?? null) === 'draft'

@@ -94,7 +94,7 @@ class SuperuserController extends Controller
                 'unit.property:id,name,manager_user_id',
                 'unit.property.manager:id,name,email',
             ])
-            ->whereIn('status', ['pending_accountant', 'pending_pm'])
+            ->where('status', 'pending')
             ->orderBy('created_at')
             ->get();
 
@@ -105,7 +105,7 @@ class SuperuserController extends Controller
                 'property:id,name,manager_user_id',
                 'property.manager:id,name,email',
             ])
-            ->whereIn('workflow_status', ['submitted', 'pending_manager'])
+            ->where('workflow_status', 'submitted')
             ->orderBy('created_at')
             ->get();
 
@@ -122,6 +122,8 @@ class SuperuserController extends Controller
 
     public function storeProperty(Request $request)
     {
+        abort_if($request->user()->role !== 'superuser', 403);
+
         $data = $request->validate([
             'name'             => 'required|string|max:120',
             'address'          => 'nullable|string|max:255',
@@ -192,6 +194,8 @@ class SuperuserController extends Controller
 
     public function assignManager(Request $request, Property $property)
     {
+        abort_if($request->user()->role !== 'superuser', 403);
+
         $data = $request->validate([
             'manager_user_id' => 'required|exists:users,id',
         ]);
@@ -222,6 +226,8 @@ class SuperuserController extends Controller
 
     public function storeManager(Request $request)
     {
+        abort_if($request->user()->role !== 'superuser', 403);
+
         $data = $request->validate([
             'name' => 'required|string|max:120',
             'email' => 'required|email|max:120|unique:users,email',
@@ -293,6 +299,8 @@ class SuperuserController extends Controller
 
     public function updateSettings(Request $request)
     {
+        abort_if($request->user()->role !== 'superuser', 403);
+
         $allowed = [
             'company_name', 'company_registration', 'vat_number', 'default_currency',
             'default_country', 'support_email', 'min_lease_months',
@@ -322,6 +330,8 @@ class SuperuserController extends Controller
 
     public function updateRoles(Request $request)
     {
+        abort_if($request->user()->role !== 'superuser', 403);
+
         $request->validate(['permissions' => 'required|array']);
 
         SystemSetting::set('role_permissions', json_encode($request->permissions));
@@ -357,7 +367,7 @@ class SuperuserController extends Controller
     public function approveLease(Request $request, Lease $lease)
     {
         abort_if(Auth::user()->role !== 'superuser', 403);
-        abort_if(!in_array($lease->status, ['pending_accountant', 'pending_pm']), 422, 'Lease is not pending approval.');
+        abort_if($lease->status !== 'pending', 422, 'Lease is not pending approval.');
 
         $message = trim($request->input('message', 'Approved by superuser.')) ?: 'Approved by superuser.';
         $actor   = Auth::user()->name;
@@ -533,6 +543,7 @@ class SuperuserController extends Controller
 
     public function deleteManager(Request $request, User $user): \Illuminate\Http\RedirectResponse
     {
+        abort_if($request->user()->role !== 'superuser', 403);
         abort_if($user->role === 'superuser', 403);
 
         $data = $request->validate(['confirm_name' => 'required|string|max:120']);
@@ -567,6 +578,8 @@ class SuperuserController extends Controller
 
     public function restoreManager(Request $request, int $id): \Illuminate\Http\RedirectResponse
     {
+        abort_if($request->user()->role !== 'superuser', 403);
+
         $user = User::onlyTrashed()
             ->whereIn('role', ['manager', 'accountant', 'viewer'])
             ->findOrFail($id);
@@ -657,13 +670,30 @@ class SuperuserController extends Controller
         $mgmtFee = round($gross * $feeRate, 2);
         $net     = $netRent - $maintenance - $fuel - $mgmtFee;
 
-        // Per-property breakdown
+        // Per-property breakdown (aggregated queries instead of N+1)
+        $grossByProp = Payment::where('status', 'paid')
+            ->whereBetween('paid_date', [$start, $end])
+            ->groupBy('property_id')
+            ->selectRaw("property_id, SUM($payExpr) as total")
+            ->pluck('total', 'property_id');
+
+        $maintByProp = MaintenanceRecord::where('status', 'resolved')
+            ->whereBetween('reported_date', [$start, $end])
+            ->groupBy('property_id')
+            ->selectRaw('property_id, SUM(cost) as total')
+            ->pluck('total', 'property_id');
+
+        $fuelByProp = FuelLog::whereBetween('log_date', [$start, $end])
+            ->groupBy('property_id')
+            ->selectRaw('property_id, SUM(total_cost) as total')
+            ->pluck('total', 'property_id');
+
         $properties = Property::with('manager:id,name')->orderBy('name')->get(['id', 'name'])
-            ->map(function ($prop) use ($start, $end, $feeRate, $payExpr) {
+            ->map(function ($prop) use ($grossByProp, $maintByProp, $fuelByProp, $feeRate) {
                 $pid   = $prop->id;
-                $g     = (float) Payment::where('property_id', $pid)->where('status', 'paid')->whereBetween('paid_date', [$start, $end])->sum(DB::raw($payExpr));
-                $maint = (float) MaintenanceRecord::where('property_id', $pid)->where('status', 'resolved')->whereBetween('reported_date', [$start, $end])->sum('cost');
-                $fl    = (float) FuelLog::where('property_id', $pid)->whereBetween('log_date', [$start, $end])->sum('total_cost');
+                $g     = (float) ($grossByProp[$pid] ?? 0);
+                $maint = (float) ($maintByProp[$pid] ?? 0);
+                $fl    = (float) ($fuelByProp[$pid] ?? 0);
                 $fee   = round($g * $feeRate, 2);
                 return [
                     'id'          => $pid,

@@ -194,7 +194,7 @@ export default function Electricity({
                                     </div>
                                 </div>
                                 <div className="actions">
-                                    <button className="btn-primary" onClick={() => post('/electricity/invoices/issue', { kind: 'direct' })}>
+                                    <button className="btn-primary" onClick={() => post('/electricity/bills/issue', { kind: 'direct' })}>
                                         Issue Direct Drafts
                                     </button>
                                 </div>
@@ -351,7 +351,7 @@ export default function Electricity({
                                     <div className="page-sub">Submeter tenants buy electricity on demand. These sales never attract generator billing.</div>
                                 </div>
                                 <div className="actions">
-                                    <button className="btn-primary" onClick={() => post('/electricity/invoices/issue', { kind: 'submeter' })}>
+                                    <button className="btn-primary" onClick={() => post('/electricity/bills/issue', { kind: 'submeter' })}>
                                         Issue Submeter Drafts
                                     </button>
                                 </div>

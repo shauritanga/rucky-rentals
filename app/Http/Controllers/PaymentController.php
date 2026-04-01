@@ -83,7 +83,7 @@ class PaymentController extends Controller
                 ),
             ],
             'month'     => 'required|string',
-            'amount'    => 'required|numeric',
+            'amount'    => 'required|numeric|min:0.01',
             'method'    => 'nullable|string',
             'reference' => 'nullable|string|max:255',
             'status'    => 'required|in:paid,overdue,pending',
@@ -93,6 +93,12 @@ class PaymentController extends Controller
 
         $unit = Unit::findOrFail($data['unit_id']);
         $tenant = Tenant::findOrFail($data['tenant_id']);
+
+        abort_if(
+            $unit->property_id && $tenant->property_id && (int) $unit->property_id !== (int) $tenant->property_id,
+            422,
+            'Unit and tenant must belong to the same property.'
+        );
 
         $propertyId = (int) ($unit->property_id ?: $tenant->property_id ?: 0);
 

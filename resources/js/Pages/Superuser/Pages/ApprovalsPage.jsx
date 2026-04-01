@@ -22,8 +22,7 @@ function fmt(amount, currency = 'TZS') {
 
 function StatusBadge({ status }) {
     const map = {
-        pending_accountant: { label: 'Pending Accountant', color: 'rgba(245,158,11,0.15)', text: 'rgb(180,120,0)', border: 'rgba(245,158,11,0.35)' },
-        pending_pm:         { label: 'Pending PM',          color: 'rgba(99,102,241,0.12)',  text: 'rgb(99,102,241)', border: 'rgba(99,102,241,0.3)' },
+        pending: { label: 'Pending Approval', color: 'rgba(245,158,11,0.15)', text: 'rgb(180,120,0)', border: 'rgba(245,158,11,0.35)' },
     };
     const s = map[status] ?? { label: status, color: 'rgba(100,100,100,0.1)', text: 'var(--text-muted)', border: 'transparent' };
     return (

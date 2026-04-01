@@ -14,7 +14,7 @@ class MaintenanceApprovalNotification extends Notification implements ShouldBroa
 
     public function __construct(
         public MaintenanceRecord $ticket,
-        public string $stage  // 'submitted' | 'pending_manager' | 'approved'
+        public string $stage  // 'submitted' | 'approved'
     ) {}
 
     public function via(object $notifiable): array
@@ -25,17 +25,15 @@ class MaintenanceApprovalNotification extends Notification implements ShouldBroa
     public function toMail(object $notifiable): MailMessage
     {
         $subject = match ($this->stage) {
-            'submitted'       => "Maintenance ticket needs your review — {$this->ticket->ticket_number}",
-            'pending_manager' => "Maintenance ticket pending your approval — {$this->ticket->ticket_number}",
-            'approved'        => "Maintenance ticket approved — work can now proceed",
-            default           => "Maintenance ticket update — {$this->ticket->ticket_number}",
+            'submitted' => "Maintenance ticket needs your review — {$this->ticket->ticket_number}",
+            'approved'  => "Maintenance ticket approved — work can now proceed",
+            default     => "Maintenance ticket update — {$this->ticket->ticket_number}",
         };
 
         $body = match ($this->stage) {
-            'submitted'       => 'A new maintenance ticket has been submitted and requires your review.',
-            'pending_manager' => 'The accountant has reviewed this ticket. It now awaits your final approval before work can begin.',
-            'approved'        => 'Your maintenance request has been fully approved. Work can now proceed.',
-            default           => 'There has been an update to a maintenance ticket.',
+            'submitted' => 'A new maintenance ticket has been submitted and requires your review.',
+            'approved'  => 'Your maintenance request has been fully approved. Work can now proceed.',
+            default     => 'There has been an update to a maintenance ticket.',
         };
 
         return (new MailMessage)

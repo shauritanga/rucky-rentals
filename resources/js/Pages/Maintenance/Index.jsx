@@ -16,7 +16,6 @@ const CAT_ICONS = {
 const REQUEST_FILTERS = [
   ['all',             'All'],
   ['submitted',       'Submitted'],
-  ['pending_manager', 'Pending Manager'],
   ['approved',        'Approved'],
   ['in_progress',     'In Progress'],
   ['resolved',        'Resolved'],
@@ -24,7 +23,6 @@ const REQUEST_FILTERS = [
 
 const STATUS_META = {
   submitted:       { label: 'Submitted',       bg: 'var(--bg-elevated)',  color: 'var(--text-secondary)' },
-  pending_manager: { label: 'Pending Manager', bg: 'var(--amber-dim)',    color: 'var(--amber)'          },
   approved:        { label: 'Approved',        bg: 'var(--green-dim)',    color: 'var(--green)'          },
   in_progress:     { label: 'In Progress',     bg: 'var(--accent-dim)',   color: 'var(--accent)'         },
   resolved:        { label: 'Resolved',        bg: 'var(--green-dim)',    color: 'var(--green)'          },
@@ -70,7 +68,7 @@ function workflowToDbStatus(status) {
 }
 
 function statusRank(status) {
-  return { submitted: 0, pending_manager: 1, approved: 2, in_progress: 3, resolved: 4, open: 0 }[status] ?? 0;
+  return { submitted: 0, approved: 1, in_progress: 2, resolved: 3, open: 0 }[status] ?? 0;
 }
 
 function safeNotes(value) {
@@ -177,7 +175,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
   }, [units]);
 
   const counts = useMemo(() => {
-    const next = { all: normalizedTickets.length, submitted: 0, pending_manager: 0, approved: 0, in_progress: 0, resolved: 0 };
+    const next = { all: normalizedTickets.length, submitted: 0, approved: 0, in_progress: 0, resolved: 0 };
     normalizedTickets.forEach((ticket) => {
       const ws = ticket.workflow_status;
       if (Object.prototype.hasOwnProperty.call(next, ws)) {
@@ -214,9 +212,9 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
     ? Math.min(requestsCurrentPage * REQUESTS_PAGE_SIZE, filteredTickets.length)
     : 0;
 
-  const openRequests = counts.submitted + counts.pending_manager + counts.approved + counts.in_progress;
+  const openRequests = counts.submitted + counts.approved + counts.in_progress;
   const urgentCount = normalizedTickets.filter(
-    (t) => ['high', 'critical'].includes(t.priority) && ['submitted', 'pending_manager', 'approved', 'in_progress'].includes(t.workflow_status),
+    (t) => ['high', 'critical'].includes(t.priority) && ['submitted', 'approved', 'in_progress'].includes(t.workflow_status),
   ).length;
   const totalCostUsd = normalizedTickets.reduce((sum, ticket) => sum + Number(ticket.total_cost || 0), 0);
 
@@ -627,7 +625,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 <div className="drawer-section">
                   <div className="drawer-section-title">Approval Workflow</div>
                   <div style={{ display: 'flex', gap: 0, alignItems: 'center', marginBottom: 16 }}>
-                    {[{ key: 'submitted', label: 'Submitted' }, { key: 'pending_manager', label: 'Pending Mgr' }, { key: 'approved', label: 'Approved' }, { key: 'in_progress', label: 'In Progress' }, { key: 'resolved', label: 'Resolved' }].map((step, i, arr) => {
+                    {[{ key: 'submitted', label: 'Submitted' }, { key: 'approved', label: 'Approved' }, { key: 'in_progress', label: 'In Progress' }, { key: 'resolved', label: 'Resolved' }].map((step, i, arr) => {
                       const currentStatus = normalizeWorkflowStatus(selected);
                       const done = statusRank(currentStatus) >= statusRank(step.key);
                       return (
@@ -640,9 +638,9 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                       );
                     })}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 4, background: 'var(--bg-elevated)', borderRadius: 10, padding: 6 }}>
-                    {['submitted', 'pending_manager', 'approved', 'in_progress', 'resolved'].map((s) => {
-                      const isApprovalStep = s === 'approved' || s === 'pending_manager';
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4, background: 'var(--bg-elevated)', borderRadius: 10, padding: 6 }}>
+                    {['submitted', 'approved', 'in_progress', 'resolved'].map((s) => {
+                      const isApprovalStep = s === 'approved';
                       if (isApprovalStep && user?.role !== 'superuser') return null;
                       const active = normalizeWorkflowStatus(selected) === s;
                       return (

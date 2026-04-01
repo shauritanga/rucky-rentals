@@ -304,7 +304,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     setData('unit_ref', unitRef);
     if (period) setData('period', period);
 
-    if (l.status === 'pending_accountant' || l.status === 'pending_pm') {
+    if (l.status === 'pending') {
       setInvType('proforma');
     }
 
