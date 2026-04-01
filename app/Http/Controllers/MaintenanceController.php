@@ -186,47 +186,35 @@ class MaintenanceController extends Controller
             $allowed = ['status', 'assignee', 'cost'];
             $maintenanceTicket->update($request->only($allowed));
 
+            // GL posting for status transitions (open→resolved, resolved→open) is handled
+            // exclusively by MaintenanceRecordObserver to avoid double-posting.
+            //
+            // The controller only handles the case the observer cannot: a cost amount change
+            // while the ticket is ALREADY resolved (status stays 'resolved', only cost changes).
             $currentCost = (float) ($maintenanceTicket->cost ?? 0);
             $propertyId  = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
             $reference   = 'MAINT-' . $maintenanceTicket->id;
 
-            if ($maintenanceTicket->status === 'resolved' && $currentCost > 0) {
-                if ($previousStatus === 'resolved' && abs($previousCost - $currentCost) > 0.00001) {
+            if ($previousStatus === 'resolved' && $maintenanceTicket->status === 'resolved') {
+                if ($currentCost <= 0) {
+                    // Cost zeroed out on an already-resolved ticket — void the GL entry.
                     $poster->voidByReference($propertyId, $reference);
-                }
-
-                if ($previousStatus !== 'resolved' || $previousCost <= 0 || abs($previousCost - $currentCost) > 0.00001) {
+                } elseif (abs($previousCost - $currentCost) > 0.00001) {
+                    // Cost changed while already resolved — void old, re-post with new amount.
+                    $poster->voidByReference($propertyId, $reference);
                     $poster->post(
                         propertyId: $propertyId,
                         entryDate: now()->toDateString(),
-                        description: 'Maintenance expense recognized',
+                        description: 'Maintenance expense updated',
                         reference: $reference,
                         sourceType: 'maintenance',
                         sourceId: $maintenanceTicket->id,
                         lines: [
-                            [
-                                'account_code' => '5000',
-                                'account_name' => 'Maintenance Expense',
-                                'type'         => 'expense',
-                                'category'     => 'Operating Expenses',
-                                'debit'        => $currentCost,
-                                'credit'       => 0,
-                            ],
-                            [
-                                'account_code' => '2000',
-                                'account_name' => 'Accounts Payable',
-                                'type'         => 'liability',
-                                'category'     => 'Current Liabilities',
-                                'debit'        => 0,
-                                'credit'       => $currentCost,
-                            ],
+                            ['account_code' => '5000', 'debit' => $currentCost, 'credit' => 0],
+                            ['account_code' => '2000', 'debit' => 0,            'credit' => $currentCost],
                         ]
                     );
                 }
-            }
-
-            if (($previousStatus === 'resolved' && $maintenanceTicket->status !== 'resolved') || ($previousStatus === 'resolved' && $previousCost > 0 && $currentCost <= 0)) {
-                $poster->voidByReference($propertyId, $reference);
             }
         }
 

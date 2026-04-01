@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\AccountingEvent;
 use App\Models\Invoice;
+use App\Models\JournalEntry;
+use App\Models\Lease;
 use App\Models\Payment;
 use App\Models\MaintenanceRecord;
 use App\Models\ExchangeRate;
@@ -35,7 +37,7 @@ class AccountingService
      *     Cr: 2200  VAT Payable         187.63   (VAT on rent + SC)
      *
      * VAT is treated as inclusive (back-calculated from gross amounts).
-     * Service charge items are identified by "service charge" in description (case-insensitive).
+     * Service charge items are identified by item_type = 'service_charge' (falls back to description matching for legacy rows).
      * All amounts are converted to TZS base currency before posting.
      */
     public function postInvoice(Invoice $invoice): void
@@ -52,8 +54,10 @@ class AccountingService
 
         // Load items and split by type
         $items = $invoice->items()->get();
-        $scItems   = $items->filter(fn($i) => stripos($i->description ?? '', 'service charge') !== false);
-        $rentItems = $items->reject(fn($i)  => stripos($i->description ?? '', 'service charge') !== false);
+        $scItems   = $items->filter(fn($i) => ($i->item_type ?? null) === 'service_charge'
+            || (($i->item_type ?? 'other') === 'other' && stripos($i->description ?? '', 'service charge') !== false));
+        $rentItems = $items->reject(fn($i)  => ($i->item_type ?? null) === 'service_charge'
+            || (($i->item_type ?? 'other') === 'other' && stripos($i->description ?? '', 'service charge') !== false));
 
         $scGross   = (float) $scItems->sum('total');
         $rentGross = (float) $rentItems->sum('total');
@@ -346,6 +350,7 @@ class AccountingService
                         'invoice_id'     => $payment->invoice_id,
                         'credit_account' => $creditAccountCode,
                         'wht_rate'       => $whtRate,
+                        'cash_basis'     => $payment->invoice_id ? false : true,
                     ],
                     postedEntries: [$journalEntry->id],
                 );
@@ -622,6 +627,96 @@ class AccountingService
                     errorMessage: $e->getMessage(),
                 );
 
+                throw $e;
+            }
+        });
+    }
+
+    /**
+     * Post deposit refund GL entry when a lease is terminated.
+     *
+     * Only fires if the original DEP-{lease_id} entry was actually posted (i.e. the
+     * lease was active and a deposit was received). For pending/draft leases that were
+     * never activated the DEP entry never existed, so no refund is needed.
+     *
+     * GL entry:
+     *   Dr: 2100  Deposits Payable   amount   (clears the liability)
+     *     Cr: 1000  Cash at Bank       amount   (cash paid back to tenant)
+     *
+     * Reference: DEP-REF-{lease_id}  (idempotent)
+     */
+    public function postDepositRefund(Lease $lease): void
+    {
+        $deposit = (float) ($lease->deposit ?? 0);
+        if ($deposit <= 0) {
+            return;
+        }
+
+        // Only post refund if the original deposit entry exists (was ever posted).
+        // We check for any DEP-{id} entry regardless of status — if it was voided
+        // it means we already reversed it, so no refund entry is needed.
+        $originalExists = JournalEntry::query()
+            ->where('reference', 'DEP-' . $lease->id)
+            ->where('property_id', $lease->property_id)
+            ->exists();
+
+        if (!$originalExists) {
+            return;
+        }
+
+        $currency = strtoupper((string) ($lease->currency ?? 'TZS'));
+        $depositTzs = $currency === 'TZS'
+            ? $deposit
+            : round($deposit * ExchangeRate::getRate(
+                propertyId: null,
+                fromCurrency: $currency,
+                toCurrency: 'TZS',
+                date: $lease->start_date,
+            ), 2);
+
+        $reference = 'DEP-REF-' . $lease->id;
+
+        DB::transaction(function () use ($lease, $depositTzs, $reference) {
+            try {
+                $journalEntry = $this->poster->post(
+                    propertyId: $lease->property_id,
+                    entryDate: now()->toDateString(),
+                    description: 'Security deposit refunded',
+                    reference: $reference,
+                    lines: [
+                        ['account_code' => '2100', 'debit' => $depositTzs, 'credit' => 0],
+                        ['account_code' => '1000', 'debit' => 0,           'credit' => $depositTzs],
+                    ],
+                    sourceType: 'lease',
+                    sourceId: $lease->id,
+                );
+
+                AccountingEvent::logSuccess(
+                    propertyId: $lease->property_id,
+                    eventType: 'deposit_refunded',
+                    entityType: 'Lease',
+                    entityId: $lease->id,
+                    reference: $reference,
+                    description: 'Security deposit refund posted for lease #' . $lease->id,
+                    data: [
+                        'lease_id'   => $lease->id,
+                        'deposit'    => $lease->deposit,
+                        'currency'   => $lease->currency,
+                        'amount_tzs' => $depositTzs,
+                    ],
+                    postedEntries: [$journalEntry->id],
+                );
+            } catch (\Exception $e) {
+                AccountingEvent::logFailure(
+                    propertyId: $lease->property_id,
+                    eventType: 'deposit_refunded',
+                    entityType: 'Lease',
+                    entityId: $lease->id,
+                    reference: $reference,
+                    description: 'Deposit refund posting failed',
+                    data: ['lease_id' => $lease->id],
+                    errorMessage: $e->getMessage(),
+                );
                 throw $e;
             }
         });

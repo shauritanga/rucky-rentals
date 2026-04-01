@@ -149,9 +149,15 @@ class InvoiceController extends Controller
                 $lineTotal = (float) $item['quantity'] * (float) $item['unit_price'];
                 $invoiceTotal += $lineTotal;
 
+                // Derive item_type: use explicit value from request if provided,
+                // otherwise infer from description for backward compatibility.
+                $itemType = $item['item_type']
+                    ?? (stripos($item['description'] ?? '', 'service charge') !== false ? 'service_charge' : 'rent');
+
                 InvoiceItem::create([
                     'invoice_id'      => $invoice->id,
                     'description'     => $item['description'],
+                    'item_type'       => $itemType,
                     'sub_description' => $item['sub_description'] ?? null,
                     'quantity'        => $item['quantity'],
                     'unit_price'      => $item['unit_price'],

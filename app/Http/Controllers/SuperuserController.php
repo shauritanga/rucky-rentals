@@ -596,76 +596,56 @@ class SuperuserController extends Controller
 
         $propertyId = $request->filled('property_id') ? (int) $request->input('property_id') : null;
         [$start, $end] = $this->resolveRevenuePeriod($request);
-        $feeRate  = (float) SystemSetting::get('management_fee_rate', 0) / 100;
-        $payExpr  = 'COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))';
+        $feeRate = (float) SystemSetting::get('management_fee_rate', 0) / 100;
 
-        // Gross: all paid payments in the period
-        $gross = (float) Payment::query()
-            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'paid')
-            ->whereBetween('paid_date', [$start, $end])
-            ->sum(DB::raw($payExpr));
+        // GL-backed helper: sum debit or credit for an account code within the period
+        $glSum = function (string $accountCode, string $side, ?int $pid = null, ?string $refPattern = null) use ($start, $end): float {
+            return (float) DB::table('journal_lines')
+                ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+                ->where('journal_entries.status', 'posted')
+                ->where('journal_lines.account_code', $accountCode)
+                ->whereBetween('journal_entries.entry_date', [$start, $end])
+                ->when($pid !== null, fn($q) => $q->where('journal_entries.property_id', $pid))
+                ->when($refPattern !== null, fn($q) => $q->where('journal_entries.reference', 'like', $refPattern))
+                ->sum("journal_lines.{$side}");
+        };
 
-        // WHT: per-lease rate (default 10%) applied to the TZS amount of each payment
-        $wht = Payment::query()
-            ->with('invoice.lease:id,wht_rate')
-            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'paid')
-            ->whereBetween('paid_date', [$start, $end])
-            ->get()
-            ->sum(fn($p) =>
-                (float) ($p->amount_in_base ?? ($p->amount * ($p->exchange_rate ?? 1)))
-                * (($p->invoice?->lease?->wht_rate ?? 10) / 100)
-            );
+        // Waterfall sourced from GL accounts
+        $gross       = $glSum('1000', 'debit',  $propertyId, 'PAY-%');
+        $wht         = $glSum('1120', 'debit',  $propertyId);
+        $vat         = $glSum('2200', 'credit', $propertyId);
+        $sc          = $glSum('4100', 'credit', $propertyId);
+        $netRent     = $glSum('4000', 'credit', $propertyId);
+        $maintenance = $glSum('5000', 'debit',  $propertyId);
+        $mgmtFee     = $glSum('5500', 'debit',  $propertyId);
 
-        // VAT: back-calculated from VAT-inclusive amount using per-lease vat_rate (default 18%)
-        $vat = Payment::query()
-            ->with('invoice.lease:id,vat_rate')
-            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'paid')
-            ->whereBetween('paid_date', [$start, $end])
-            ->get()
-            ->sum(function ($p) {
-                $amt = (float) ($p->amount_in_base ?? ($p->amount * ($p->exchange_rate ?? 1)));
-                $r   = $p->invoice?->lease?->vat_rate ?? 18;
-                return $amt * ($r / (100 + $r)); // back-calculate from inclusive
-            });
+        // Fuel: account 5200 if posted; fall back to raw FuelLog for legacy/unposted logs
+        $fuel = $glSum('5200', 'debit', $propertyId);
+        if ($fuel <= 0) {
+            $fuel = (float) FuelLog::query()
+                ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
+                ->whereBetween('log_date', [$start, $end])
+                ->sum('total_cost');
+        }
 
-        // Service Charge: sum invoice items whose description contains "service charge"
-        $sc = (float) DB::table('invoice_items')
-            ->join('invoices',  'invoice_items.invoice_id', '=', 'invoices.id')
-            ->join('payments',  'payments.invoice_id',      '=', 'invoices.id')
-            ->where('payments.status', 'paid')
-            ->whereBetween('payments.paid_date', [$start, $end])
-            ->when($propertyId, fn($q) => $q->where('invoices.property_id', $propertyId))
-            ->where('invoice_items.description', 'ilike', '%service charge%')
-            ->sum('invoice_items.total');
-
-        $netRent = $gross - $wht - $vat - $sc;
-
-        // Operating expenses
-        $maintenance = (float) MaintenanceRecord::query()
-            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'resolved')
-            ->whereBetween('reported_date', [$start, $end])
-            ->sum('cost');
-
-        $fuel = (float) FuelLog::query()
-            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
-            ->whereBetween('log_date', [$start, $end])
-            ->sum('total_cost');
-
-        $mgmtFee = round($gross * $feeRate, 2);
-        $net     = $netRent - $maintenance - $fuel - $mgmtFee;
+        $net = $netRent - $maintenance - $fuel - $mgmtFee;
 
         // Per-property breakdown
         $properties = Property::with('manager:id,name')->orderBy('name')->get(['id', 'name'])
-            ->map(function ($prop) use ($start, $end, $feeRate, $payExpr) {
+            ->map(function ($prop) use ($start, $end, $feeRate, $glSum) {
                 $pid   = $prop->id;
-                $g     = (float) Payment::where('property_id', $pid)->where('status', 'paid')->whereBetween('paid_date', [$start, $end])->sum(DB::raw($payExpr));
-                $maint = (float) MaintenanceRecord::where('property_id', $pid)->where('status', 'resolved')->whereBetween('reported_date', [$start, $end])->sum('cost');
-                $fl    = (float) FuelLog::where('property_id', $pid)->whereBetween('log_date', [$start, $end])->sum('total_cost');
-                $fee   = round($g * $feeRate, 2);
+                $g     = $glSum('1000', 'debit',  $pid, 'PAY-%');
+                $maint = $glSum('5000', 'debit',  $pid);
+                $fee   = $glSum('5500', 'debit',  $pid);
+                if ($fee <= 0) {
+                    $fee = round($g * $feeRate, 2);
+                }
+                $fl = $glSum('5200', 'debit', $pid);
+                if ($fl <= 0) {
+                    $fl = (float) FuelLog::where('property_id', $pid)
+                        ->whereBetween('log_date', [$start, $end])
+                        ->sum('total_cost');
+                }
                 return [
                     'id'          => $pid,
                     'name'        => $prop->name,
@@ -674,7 +654,7 @@ class SuperuserController extends Controller
                     'maintenance' => $maint,
                     'fuel'        => $fl,
                     'fee'         => $fee,
-                    'net'         => round($g * (1 - $feeRate) - $maint - $fl, 2),
+                    'net'         => round($g - $maint - $fl - $fee, 2),
                 ];
             });
 

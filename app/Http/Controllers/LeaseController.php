@@ -375,6 +375,7 @@ class LeaseController extends Controller
 
         DB::transaction(function () use ($lease) {
             $this->voidDepositEntry($lease);
+            app(\App\Services\AccountingService::class)->postDepositRefund($lease);
             $lease->delete();
         });
 

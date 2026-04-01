@@ -512,7 +512,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                                                     <td style={{ fontWeight: 600 }}>{a.name}</td>
                                                     <td><span className={`acc-type ${a.type}`}>{titleCase(a.type)}</span></td>
                                                     <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{a.cat}</td>
-                                                    <td className="num" style={{ color: a.balance < 0 ? 'var(--red)' : undefined }}>{fmtMoney(a.balance)}</td>
+                                                    <td className="num" style={{ color: displayBalance(a) < 0 ? 'var(--red)' : undefined }}>{fmtMoney(displayBalance(a))}</td>
                                                     <td className="num" style={{ color: a.ytd > 0 ? 'var(--green)' : (a.ytd < 0 ? 'var(--red)' : 'var(--text-muted)') }}>{`${a.ytd >= 0 ? '+' : '-'}${fmtMoney(Math.abs(a.ytd))}`}</td>
                                                     <td><button className="btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => { setGlFilter(a.code); setActive('gl'); }}>-&gt; GL</button></td>
                                                 </tr>
