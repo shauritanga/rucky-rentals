@@ -25,9 +25,14 @@ class AccountingController extends Controller
             ->orderBy('code')
             ->get();
 
+        $from = $request->input('from');
+        $to   = $request->input('to');
+
         $entries = JournalEntry::query()
             ->with('lines')
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+            ->when($from, fn($q) => $q->where('entry_date', '>=', $from))
+            ->when($to,   fn($q) => $q->where('entry_date', '<=', $to))
             ->orderByDesc('entry_date')
             ->get();
 
@@ -119,7 +124,14 @@ class AccountingController extends Controller
         }
 
         DB::transaction(function () use ($data, $propertyId, $poster) {
-            $count = JournalEntry::count() + 1;
+            $count = JournalEntry::lockForUpdate()
+                ->select('entry_number')
+                ->pluck('entry_number')
+                ->map(function ($entryNumber) {
+                    return preg_match('/JE-(\d+)/', (string) $entryNumber, $matches) ? (int) $matches[1] : 0;
+                })
+                ->max() + 1;
+
             $je = JournalEntry::create([
                 'property_id'  => $propertyId,
                 'entry_number' => 'JE-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT),

@@ -49,6 +49,10 @@ class Unit extends Model
     {
         return $this->hasMany(MeterReading::class);
     }
+    public function electricitySales()
+    {
+        return $this->hasMany(ElectricitySale::class);
+    }
     public function maintenanceRecords()
     {
         return $this->hasMany(MaintenanceRecord::class);

@@ -36,6 +36,11 @@ class AccountSeeder extends Seeder
             ['code' => '5200', 'name' => 'Insurance Expense',    'type' => 'expense',  'cat' => 'Operating Expenses',   'balance' => 2520,   'ytd' => 2520],
             ['code' => '5300', 'name' => 'Depreciation Expense', 'type' => 'expense',  'cat' => 'Operating Expenses',   'balance' => 5400,   'ytd' => 5400],
             ['code' => '5400', 'name' => 'Admin & Office',       'type' => 'expense',  'cat' => 'Operating Expenses',   'balance' => 840,    'ytd' => 840],
+            // Owner revenue waterfall accounts
+            ['code' => '1120', 'name' => 'WHT Tax Credit',        'type' => 'asset',    'cat' => 'Current Assets',       'balance' => 0,      'ytd' => 0],
+            ['code' => '4100', 'name' => 'Service Charge Income',  'type' => 'revenue',  'cat' => 'Operating Revenue',    'balance' => 0,      'ytd' => 0],
+            ['code' => '5500', 'name' => 'Management Fee',         'type' => 'expense',  'cat' => 'Operating Expenses',   'balance' => 0,      'ytd' => 0],
+            ['code' => '2500', 'name' => 'Management Fee Payable', 'type' => 'liability','cat' => 'Current Liabilities',  'balance' => 0,      'ytd' => 0],
         ];
 
         foreach ($accounts as $a) {

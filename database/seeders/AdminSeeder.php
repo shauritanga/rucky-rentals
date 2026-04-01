@@ -11,7 +11,7 @@ class AdminSeeder extends Seeder
     public function run(): void
     {
         User::updateOrCreate(
-            ['email' => 'admin@ruckyrentals.co.tz'],
+            ['email' => 'admin@rukyrentals.co.tz'],
             [
                 'name'               => 'Super Admin',
                 'password'           => Hash::make('admin123'),
@@ -21,6 +21,6 @@ class AdminSeeder extends Seeder
             ]
         );
 
-        $this->command->info('Admin user seeded: admin@ruckyrentals.co.tz');
+        $this->command->info('Admin user seeded: admin@rukyrentals.co.tz');
     }
 }

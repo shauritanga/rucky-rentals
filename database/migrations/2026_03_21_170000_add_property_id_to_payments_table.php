@@ -16,7 +16,17 @@ return new class extends Migration
             $table->foreignId('property_id')->nullable()->after('id')->constrained()->nullOnDelete();
         });
 
-        DB::statement('UPDATE payments p SET property_id = u.property_id FROM units u WHERE p.unit_id = u.id');
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            DB::statement('
+                UPDATE payments
+                SET property_id = (
+                    SELECT property_id FROM units WHERE units.id = payments.unit_id
+                )
+                WHERE property_id IS NULL
+            ');
+        } else {
+            DB::statement('UPDATE payments p SET property_id = u.property_id FROM units u WHERE p.unit_id = u.id');
+        }
     }
 
     /**

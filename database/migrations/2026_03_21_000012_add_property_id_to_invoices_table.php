@@ -14,7 +14,17 @@ return new class extends Migration
         });
 
         // Backfill from linked lease when available.
-        DB::statement('UPDATE invoices SET property_id = leases.property_id FROM leases WHERE leases.id = invoices.lease_id AND invoices.property_id IS NULL');
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            DB::statement('
+                UPDATE invoices
+                SET property_id = (
+                    SELECT property_id FROM leases WHERE leases.id = invoices.lease_id
+                )
+                WHERE property_id IS NULL
+            ');
+        } else {
+            DB::statement('UPDATE invoices SET property_id = leases.property_id FROM leases WHERE leases.id = invoices.lease_id AND invoices.property_id IS NULL');
+        }
 
         // Legacy fallback: if only one property exists, map remaining null records to it.
         $propertyCount = DB::table('properties')->count();

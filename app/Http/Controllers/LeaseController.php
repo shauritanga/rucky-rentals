@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExchangeRate;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
@@ -10,6 +11,7 @@ use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\User;
 use App\Notifications\LeaseApprovalRequestNotification;
+use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Carbon\Carbon;
@@ -187,9 +189,10 @@ class LeaseController extends Controller
         DB::transaction(function () use (&$lease, $data, $unit) {
             $lease = Lease::create($data);
             $unit->update(['status' => 'occupied']);
-            // If auto-approved, generate installments immediately
+            // If auto-approved, generate installments and post deposit GL entry
             if ($lease->status === 'active') {
                 $this->ensureInstallmentsGenerated($lease->fresh());
+                $this->postDepositEntry($lease->fresh());
             }
         });
 
@@ -245,6 +248,7 @@ class LeaseController extends Controller
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
+                $this->postDepositEntry($lease->fresh());
             });
         } elseif ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
             // Only superuser can approve
@@ -254,6 +258,7 @@ class LeaseController extends Controller
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
+                $this->postDepositEntry($lease->fresh());
             });
         } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
             // Only superuser can approve
@@ -263,6 +268,7 @@ class LeaseController extends Controller
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
+                $this->postDepositEntry($lease->fresh());
             });
         } elseif ($action === 'reject') {
             $log = json_decode($lease->approval_log, true) ?? [];
@@ -368,6 +374,30 @@ class LeaseController extends Controller
         );
 
         return back()->with('success', 'Lease terminated.');
+    }
+
+    private function postDepositEntry(Lease $lease): void
+    {
+        $deposit = (float) ($lease->deposit ?? 0);
+        if ($deposit <= 0) return;
+
+        $currency = strtoupper((string) ($lease->currency ?? 'TZS'));
+        $depositTzs = $currency === 'TZS'
+            ? $deposit
+            : round($deposit * ExchangeRate::getLiveRate($currency, 'TZS'), 2);
+
+        app(AccountingAutoPoster::class)->post(
+            propertyId: $lease->property_id,
+            entryDate: $lease->start_date,
+            description: 'Security deposit received',
+            reference: 'DEP-' . $lease->id,
+            lines: [
+                ['account_code' => '1000', 'account_name' => 'Cash at Bank',     'debit' => $depositTzs, 'credit' => 0],
+                ['account_code' => '2100', 'account_name' => 'Deposits Payable', 'debit' => 0,           'credit' => $depositTzs],
+            ],
+            sourceType: 'lease',
+            sourceId: $lease->id,
+        );
     }
 
     private function scopeByUserProperty($query, Request $request, string $column): void

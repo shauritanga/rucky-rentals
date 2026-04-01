@@ -14,7 +14,17 @@ return new class extends Migration
         });
 
         // Backfill existing leases from their unit's property assignment.
-        DB::statement('UPDATE leases SET property_id = units.property_id FROM units WHERE units.id = leases.unit_id AND leases.property_id IS NULL');
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            DB::statement('
+                UPDATE leases
+                SET property_id = (
+                    SELECT property_id FROM units WHERE units.id = leases.unit_id
+                )
+                WHERE property_id IS NULL
+            ');
+        } else {
+            DB::statement('UPDATE leases SET property_id = units.property_id FROM units WHERE units.id = leases.unit_id AND leases.property_id IS NULL');
+        }
 
         // Legacy fallback: if only one property exists, assign remaining null rows.
         $propertyCount = DB::table('properties')->count();

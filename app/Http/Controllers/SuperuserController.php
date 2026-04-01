@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
 use App\Models\ExchangeRate;
+use App\Models\FuelLog;
+use App\Models\Payment;
 use App\Support\FloorConfig;
 use App\Models\Lease;
 use App\Models\MaintenanceRecord;
@@ -14,9 +16,11 @@ use App\Models\User;
 use App\Notifications\LeaseDecisionNotification;
 use App\Notifications\MaintenanceDecisionNotification;
 use App\Traits\LogsAudit;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
@@ -583,6 +587,120 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', "{$user->name} has been restored.");
+    }
+
+    public function ownerRevenue(Request $request): \Illuminate\Http\JsonResponse
+    {
+        abort_if($request->user()->role !== 'superuser', 403);
+
+        $propertyId = $request->filled('property_id') ? (int) $request->input('property_id') : null;
+        [$start, $end] = $this->resolveRevenuePeriod($request);
+        $feeRate  = (float) SystemSetting::get('management_fee_rate', 0) / 100;
+        $payExpr  = 'COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))';
+
+        // Gross: all paid payments in the period
+        $gross = (float) Payment::query()
+            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
+            ->where('status', 'paid')
+            ->whereBetween('paid_date', [$start, $end])
+            ->sum(DB::raw($payExpr));
+
+        // WHT: per-lease rate (default 10%) applied to the TZS amount of each payment
+        $wht = Payment::query()
+            ->with('invoice.lease:id,wht_rate')
+            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
+            ->where('status', 'paid')
+            ->whereBetween('paid_date', [$start, $end])
+            ->get()
+            ->sum(fn($p) =>
+                (float) ($p->amount_in_base ?? ($p->amount * ($p->exchange_rate ?? 1)))
+                * (($p->invoice?->lease?->wht_rate ?? 10) / 100)
+            );
+
+        // VAT: back-calculated from VAT-inclusive amount using per-lease vat_rate (default 18%)
+        $vat = Payment::query()
+            ->with('invoice.lease:id,vat_rate')
+            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
+            ->where('status', 'paid')
+            ->whereBetween('paid_date', [$start, $end])
+            ->get()
+            ->sum(function ($p) {
+                $amt = (float) ($p->amount_in_base ?? ($p->amount * ($p->exchange_rate ?? 1)));
+                $r   = $p->invoice?->lease?->vat_rate ?? 18;
+                return $amt * ($r / (100 + $r)); // back-calculate from inclusive
+            });
+
+        // Service Charge: sum invoice items whose description contains "service charge"
+        $sc = (float) DB::table('invoice_items')
+            ->join('invoices',  'invoice_items.invoice_id', '=', 'invoices.id')
+            ->join('payments',  'payments.invoice_id',      '=', 'invoices.id')
+            ->where('payments.status', 'paid')
+            ->whereBetween('payments.paid_date', [$start, $end])
+            ->when($propertyId, fn($q) => $q->where('invoices.property_id', $propertyId))
+            ->where('invoice_items.description', 'ilike', '%service charge%')
+            ->sum('invoice_items.total');
+
+        $netRent = $gross - $wht - $vat - $sc;
+
+        // Operating expenses
+        $maintenance = (float) MaintenanceRecord::query()
+            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
+            ->where('status', 'resolved')
+            ->whereBetween('reported_date', [$start, $end])
+            ->sum('cost');
+
+        $fuel = (float) FuelLog::query()
+            ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
+            ->whereBetween('log_date', [$start, $end])
+            ->sum('total_cost');
+
+        $mgmtFee = round($gross * $feeRate, 2);
+        $net     = $netRent - $maintenance - $fuel - $mgmtFee;
+
+        // Per-property breakdown
+        $properties = Property::with('manager:id,name')->orderBy('name')->get(['id', 'name'])
+            ->map(function ($prop) use ($start, $end, $feeRate, $payExpr) {
+                $pid   = $prop->id;
+                $g     = (float) Payment::where('property_id', $pid)->where('status', 'paid')->whereBetween('paid_date', [$start, $end])->sum(DB::raw($payExpr));
+                $maint = (float) MaintenanceRecord::where('property_id', $pid)->where('status', 'resolved')->whereBetween('reported_date', [$start, $end])->sum('cost');
+                $fl    = (float) FuelLog::where('property_id', $pid)->whereBetween('log_date', [$start, $end])->sum('total_cost');
+                $fee   = round($g * $feeRate, 2);
+                return [
+                    'id'          => $pid,
+                    'name'        => $prop->name,
+                    'manager'     => $prop->manager?->name,
+                    'gross'       => $g,
+                    'maintenance' => $maint,
+                    'fuel'        => $fl,
+                    'fee'         => $fee,
+                    'net'         => round($g * (1 - $feeRate) - $maint - $fl, 2),
+                ];
+            });
+
+        return response()->json([
+            'period'     => ['from' => $start, 'to' => $end],
+            'waterfall'  => compact('gross', 'wht', 'vat', 'sc', 'netRent', 'maintenance', 'fuel', 'mgmtFee', 'net'),
+            'fee_rate'   => $feeRate * 100,
+            'properties' => $properties,
+        ]);
+    }
+
+    private function resolveRevenuePeriod(Request $request): array
+    {
+        $preset = $request->input('period', 'this_month');
+        $now    = Carbon::now();
+        return match ($preset) {
+            'this_month'   => [$now->copy()->startOfMonth()->toDateString(),             $now->copy()->endOfMonth()->toDateString()],
+            'last_month'   => [$now->copy()->subMonth()->startOfMonth()->toDateString(), $now->copy()->subMonth()->endOfMonth()->toDateString()],
+            'this_quarter' => [$now->copy()->startOfQuarter()->toDateString(),           $now->copy()->endOfQuarter()->toDateString()],
+            'last_quarter' => [$now->copy()->subQuarter()->startOfQuarter()->toDateString(), $now->copy()->subQuarter()->endOfQuarter()->toDateString()],
+            'this_year'    => [$now->copy()->startOfYear()->toDateString(),              $now->copy()->endOfYear()->toDateString()],
+            'custom'       => [
+                $request->input('from', $now->copy()->startOfMonth()->toDateString()),
+                $request->input('to',   $now->toDateString()),
+            ],
+            default        => [$now->copy()->startOfMonth()->toDateString(), $now->copy()->endOfMonth()->toDateString()],
+        };
     }
 
 }

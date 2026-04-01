@@ -56,11 +56,13 @@ Route::middleware('auth')->group(function () {
 
         Route::get('electricity', [ElectricityController::class, 'index'])->name('electricity');
         Route::post('electricity/readings', [ElectricityController::class, 'storeReading'])->name('electricity.readings.store');
+        Route::post('electricity/sales', [ElectricityController::class, 'storeSale'])->name('electricity.sales.store');
         Route::post('electricity/outages', [ElectricityController::class, 'storeOutage'])->name('electricity.outages.store');
         Route::post('electricity/fuel', [ElectricityController::class, 'storeFuelLog'])->name('electricity.fuel.store');
         Route::post('electricity/bills/generate', [ElectricityController::class, 'generateBills'])->name('electricity.bills.generate');
         Route::post('electricity/bills/issue', [ElectricityController::class, 'issueInvoices'])->name('electricity.bills.issue');
-        Route::post('electricity/settings/grid', [ElectricityController::class, 'updateGridSettings'])->name('electricity.settings.grid');
+        Route::post('electricity/invoices/issue', [ElectricityController::class, 'issueInvoices'])->name('electricity.invoices.issue');
+        Route::post('electricity/settings/submeter', [ElectricityController::class, 'updateSubmeterSettings'])->name('electricity.settings.submeter');
         Route::post('electricity/settings/generator', [ElectricityController::class, 'updateGenSettings'])->name('electricity.settings.generator');
 
         Route::get('accounting', [AccountingController::class, 'index'])->name('accounting');
@@ -81,6 +83,7 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/leases/{lease}/reject', [SuperuserController::class, 'rejectLease'])->name('superuser.leases.reject');
         Route::post('superuser/maintenance/{ticket}/approve', [SuperuserController::class, 'approveMaintenance'])->name('superuser.maintenance.approve');
         Route::post('superuser/maintenance/{ticket}/reject', [SuperuserController::class, 'rejectMaintenance'])->name('superuser.maintenance.reject');
+        Route::get('superuser/revenue', [SuperuserController::class, 'ownerRevenue'])->name('superuser.revenue');
         Route::get('superuser/notifications', [SuperuserController::class, 'getNotifications'])->name('superuser.notifications.index');
         Route::post('superuser/notifications/read', [SuperuserController::class, 'markNotificationsRead'])->name('superuser.notifications.read');
         Route::delete('superuser/notifications', [SuperuserController::class, 'clearNotifications'])->name('superuser.notifications.clear');

@@ -9,7 +9,6 @@ use App\Models\LeaseInstallment;
 use App\Models\Property;
 use App\Models\Tenant;
 use App\Models\ExchangeRate;
-use App\Services\AccountingService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
@@ -52,7 +51,7 @@ class InvoiceController extends Controller
         return Inertia::render('Invoices/Index', compact('invoices', 'leases', 'tenants'));
     }
 
-    public function store(Request $request, AccountingService $accountingService)
+    public function store(Request $request)
     {
         $effectivePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
@@ -90,8 +89,6 @@ class InvoiceController extends Controller
             'items.*.unit_price'  => 'required|numeric',
         ]);
 
-        $count = Invoice::count() + 1;
-        $prefix = $data['type'] === 'proforma' ? 'PF' : 'INV';
         $status = ($data['status'] ?? null) === 'draft'
             ? 'draft'
             : ($data['type'] === 'proforma' ? 'proforma' : 'unpaid');
@@ -111,11 +108,14 @@ class InvoiceController extends Controller
 
         $createdInvoiceId = null;
 
-        DB::transaction(function () use ($data, $propertyId, $prefix, $count, $status, $accountingService, &$createdInvoiceId) {
+        DB::transaction(function () use ($data, $propertyId, $status, &$createdInvoiceId) {
+            $prefix = $data['type'] === 'proforma' ? 'PF' : 'INV';
+            $nextNumber = $this->nextInvoiceSequenceValue();
+
             $invoice = Invoice::create([
                 ...$data,
                 'property_id' => $propertyId,
-                'invoice_number' => $prefix . '-' . str_pad($count, 4, '0', STR_PAD_LEFT),
+                'invoice_number' => $prefix . '-' . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT),
                 'status'         => $status,
             ]);
             $createdInvoiceId = $invoice->id;
@@ -164,11 +164,7 @@ class InvoiceController extends Controller
             // Refresh invoice to load newly created items
             $invoice->load('items');
 
-            // Delegate accounting posting to service layer
-            // Service handles: idempotency, validation, event logging, atomicity
-            if ($invoice->type === 'invoice' && $invoice->status !== 'draft' && $invoiceTotal > 0) {
-                $accountingService->postInvoice($invoice);
-            }
+            // GL posting is handled by InvoiceObserver::created() — no explicit call needed here
         });
 
         $createdInvoice = Invoice::find($createdInvoiceId);
@@ -274,6 +270,28 @@ class InvoiceController extends Controller
 
         if ($installment) {
             $installment->update(['invoice_id' => $invoice->id]);
+        }
+    }
+
+    private function nextInvoiceSequenceValue(): int
+    {
+        $this->lockInvoiceNumberSequence();
+
+        $maxNumber = 0;
+
+        foreach (Invoice::query()->select('invoice_number')->lockForUpdate()->pluck('invoice_number') as $invoiceNumber) {
+            if (preg_match('/(\d+)$/', (string) $invoiceNumber, $matches) === 1) {
+                $maxNumber = max($maxNumber, (int) $matches[1]);
+            }
+        }
+
+        return $maxNumber + 1;
+    }
+
+    private function lockInvoiceNumberSequence(): void
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            DB::select('SELECT pg_advisory_xact_lock(?)', [856331]);
         }
     }
 }

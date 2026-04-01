@@ -209,10 +209,18 @@ class PaymentController extends Controller
         $invoice = Invoice::with('items')->find($invoiceId);
         if (!$invoice || $invoice->type === 'proforma') return;
 
-        $invoiceTotal = (float) $invoice->items->sum(fn($item) => (float) $item->total);
-        $paidTotal = (float) Payment::where('invoice_id', $invoice->id)->sum('amount');
+        // Use base-currency amounts so USD invoices reconcile correctly.
+        // total_in_base is set by AccountingService when posting; fall back to
+        // items sum × exchange_rate for invoices not yet converted.
+        $invoiceTotal = (float) ($invoice->total_in_base
+            ?: ($invoice->exchange_rate
+                ? $invoice->items->sum('total') * (float) $invoice->exchange_rate
+                : $invoice->items->sum('total')));
+        $paidTotal = (float) Payment::where('invoice_id', $invoice->id)
+            ->where('status', 'paid')
+            ->sum(DB::raw('COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))'));
 
-        if ($invoiceTotal > 0 && $paidTotal + 0.00001 >= $invoiceTotal) {
+        if ($invoiceTotal > 0 && $paidTotal + 0.01 >= $invoiceTotal) {
             $invoice->status = 'paid';
         } elseif ($paidTotal > 0) {
             $invoice->status = 'partially_paid';
@@ -237,7 +245,7 @@ class PaymentController extends Controller
             return;
         }
 
-        if ($invoiceTotal > 0 && $paidTotal + 0.00001 >= $invoiceTotal) {
+        if ($invoiceTotal > 0 && $paidTotal + 0.01 >= $invoiceTotal) {
             $status = 'paid';
         } elseif ($paidTotal > 0) {
             $status = 'partially_paid';

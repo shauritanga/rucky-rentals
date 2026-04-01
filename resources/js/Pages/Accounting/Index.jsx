@@ -3,6 +3,23 @@ import { router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
 const toNum = (v) => Number(v ?? 0) || 0;
+
+const currentYear = new Date().getFullYear();
+const periodOptions = [-1, 0, 1].flatMap((offset) => {
+    const y = currentYear + offset;
+    return [
+        { value: `Q1-${y}`, label: `Q1 ${y} (Jan–Mar)` },
+        { value: `Q2-${y}`, label: `Q2 ${y} (Apr–Jun)` },
+        { value: `Q3-${y}`, label: `Q3 ${y} (Jul–Sep)` },
+        { value: `Q4-${y}`, label: `Q4 ${y} (Oct–Dec)` },
+        { value: `FY-${y}`, label: `Full Year ${y}` },
+    ];
+});
+const defaultPeriod = () => {
+    const m = new Date().getMonth();
+    const q = m < 3 ? 'Q1' : m < 6 ? 'Q2' : m < 9 ? 'Q3' : 'Q4';
+    return `${q}-${new Date().getFullYear()}`;
+};
 const fmtMoney = (v) => `TZS ${toNum(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const titleCase = (s) => (s || '').charAt(0).toUpperCase() + (s || '').slice(1);
 
@@ -105,7 +122,7 @@ function periodAsAt(p) {
 
 export default function Accounting({ accounts = [], entries = [] }) {
     const [active, setActive] = useState('coa');
-    const [period, setPeriod] = useState('Q1-2026');
+    const [period, setPeriod] = useState(defaultPeriod);
 
     const [accountData, setAccountData] = useState(() => normalizeAccounts(accounts));
     const [entryData, setEntryData] = useState(() => normalizeEntries(entries));
@@ -120,7 +137,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
     const [showJEModal, setShowJEModal] = useState(false);
 
     const [accountForm, setAccountForm] = useState({ code: '', name: '', type: '', cat: '', opening: '', desc: '' });
-    const [jeForm, setJeForm] = useState({ date: '2026-03-19', ref: '', desc: '', lines: [{ acct: '', dr: 0, cr: 0 }, { acct: '', dr: 0, cr: 0 }] });
+    const [jeForm, setJeForm] = useState({ date: new Date().toISOString().slice(0, 10), ref: '', desc: '', lines: [{ acct: '', dr: 0, cr: 0 }, { acct: '', dr: 0, cr: 0 }] });
 
     const [toast, setToast] = useState('');
 
@@ -338,7 +355,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
     }, [jeForm.lines]);
 
     const openJEModal = () => {
-        setJeForm({ date: '2026-03-19', ref: '', desc: '', lines: [{ acct: '', dr: 0, cr: 0 }, { acct: '', dr: 0, cr: 0 }] });
+        setJeForm({ date: new Date().toISOString().slice(0, 10), ref: '', desc: '', lines: [{ acct: '', dr: 0, cr: 0 }, { acct: '', dr: 0, cr: 0 }] });
         setShowJEModal(true);
     };
 
@@ -444,13 +461,9 @@ export default function Accounting({ accounts = [], entries = [] }) {
         <>
             <div className="period-select">
                 <select value={period} onChange={(e) => { setPeriod(e.target.value); refreshAll(); }}>
-                    <option value="Q1-2026">Q1 2026 (Jan–Mar)</option>
-                    <option value="Q2-2026">Q2 2026 (Apr–Jun)</option>
-                    <option value="Q3-2026">Q3 2026 (Jul–Sep)</option>
-                    <option value="Q4-2026">Q4 2026 (Oct–Dec)</option>
-                    <option value="FY-2026">Full Year 2026</option>
-                    <option value="Q4-2025">Q4 2025 (Oct–Dec)</option>
-                    <option value="FY-2025">Full Year 2025</option>
+                    {periodOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                 </select>
             </div>
             <button className="icon-btn" onClick={refreshAll} title="Refresh from dashboard" style={{ color: 'var(--green)' }}>

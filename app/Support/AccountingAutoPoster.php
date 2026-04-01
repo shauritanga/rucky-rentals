@@ -15,11 +15,18 @@ class AccountingAutoPoster
      * This keeps automation resilient per property without manual setup.
      */
     private const ACCOUNT_TEMPLATES = [
-        '1000' => ['name' => 'Cash at Bank', 'type' => 'asset', 'category' => 'Current Assets'],
-        '1100' => ['name' => 'Rent Receivable', 'type' => 'asset', 'category' => 'Current Assets'],
-        '2000' => ['name' => 'Accounts Payable', 'type' => 'liability', 'category' => 'Current Liabilities'],
-        '4000' => ['name' => 'Rental Income', 'type' => 'revenue', 'category' => 'Operating Revenue'],
-        '5000' => ['name' => 'Maintenance Expense', 'type' => 'expense', 'category' => 'Operating Expenses'],
+        '1000' => ['name' => 'Cash at Bank',          'type' => 'asset',     'category' => 'Current Assets'],
+        '1100' => ['name' => 'Rent Receivable',        'type' => 'asset',     'category' => 'Current Assets'],
+        '1110' => ['name' => 'Security Deposits',      'type' => 'asset',     'category' => 'Current Assets'],
+        '1120' => ['name' => 'WHT Tax Credit',         'type' => 'asset',     'category' => 'Current Assets'],
+        '2000' => ['name' => 'Accounts Payable',       'type' => 'liability', 'category' => 'Current Liabilities'],
+        '2100' => ['name' => 'Deposits Payable',       'type' => 'liability', 'category' => 'Current Liabilities'],
+        '2500' => ['name' => 'Management Fee Payable', 'type' => 'liability', 'category' => 'Current Liabilities'],
+        '4000' => ['name' => 'Rental Income',          'type' => 'revenue',   'category' => 'Operating Revenue'],
+        '4100' => ['name' => 'Service Charge Income',  'type' => 'revenue',   'category' => 'Operating Revenue'],
+        '5000' => ['name' => 'Maintenance Expense',    'type' => 'expense',   'category' => 'Operating Expenses'],
+        '5100' => ['name' => 'Utilities Expense',      'type' => 'expense',   'category' => 'Operating Expenses'],
+        '5500' => ['name' => 'Management Fee',         'type' => 'expense',   'category' => 'Operating Expenses'],
     ];
 
     public function post(
@@ -100,6 +107,23 @@ class AccountingAutoPoster
         }
     }
 
+    /**
+     * Apply (or reverse) the balance impact of a posted journal entry.
+     *
+     * BALANCE SIGN CONVENTION — read before changing:
+     *   balance = Σ(debits) − Σ(credits)  for ALL account types.
+     *
+     *   This signed-delta approach means:
+     *     • Asset / Expense   (debit-normal): positive balance = net debit = value ✓
+     *     • Liability / Equity / Revenue (credit-normal): negative balance = net credit = value ✓
+     *
+     *   The frontend's displayBalance() negates liability/equity/revenue accounts before
+     *   showing them to users, so the numbers appear positive and intuitive in every report.
+     *
+     *   Do NOT change this to a "store absolute value" approach without also updating
+     *   every report calculation and displayBalance() in the frontend — the convention is
+     *   internally consistent and changing only half of it will break financial statements.
+     */
     public function applyBalances(JournalEntry $entry, bool $reverse = false): void
     {
         $multiplier = $reverse ? -1 : 1;
@@ -157,6 +181,7 @@ class AccountingAutoPoster
     private function nextEntryNumber(): string
     {
         $max = JournalEntry::query()
+            ->lockForUpdate()
             ->select('entry_number')
             ->pluck('entry_number')
             ->map(function ($id) {

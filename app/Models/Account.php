@@ -16,6 +16,7 @@ class Account extends Model
 
     public function journalLines()
     {
-        return $this->hasMany(JournalLine::class, 'account_code', 'code');
+        return $this->hasMany(JournalLine::class, 'account_code', 'code')
+            ->whereHas('journalEntry', fn($q) => $q->where('property_id', $this->property_id));
     }
 }

@@ -13,8 +13,18 @@ return new class extends Migration
             $table->string('currency', 3)->default('USD')->after('payment_cycle');
         });
 
-        // Backfill existing leases from their linked unit currency using raw SQL for PostgreSQL.
-        DB::statement('UPDATE leases SET currency = units.currency FROM units WHERE units.id = leases.unit_id');
+        // Backfill existing leases from their linked unit currency.
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            DB::statement('
+                UPDATE leases
+                SET currency = (
+                    SELECT currency FROM units WHERE units.id = leases.unit_id
+                )
+                WHERE currency IS NULL OR currency = "USD"
+            ');
+        } else {
+            DB::statement('UPDATE leases SET currency = units.currency FROM units WHERE units.id = leases.unit_id');
+        }
         DB::table('leases')->whereNull('currency')->update(['currency' => 'USD']);
     }
 
