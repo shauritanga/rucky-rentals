@@ -167,15 +167,18 @@ class AccountingAutoPoster
     {
         $template = self::ACCOUNT_TEMPLATES[$code] ?? null;
 
+        // Template takes precedence over caller-supplied defaults so that accounts
+        // are always created with the correct type/category regardless of what
+        // the individual post() call passes in the line array.
         return Account::query()->firstOrCreate(
             ['property_id' => $propertyId, 'code' => $code],
             [
-                'name' => $name !== '' ? $name : ($template['name'] ?? 'Auto Account ' . $code),
-                'type' => $type !== '' ? $type : ($template['type'] ?? 'asset'),
-                'category' => $category !== '' ? $category : ($template['category'] ?? 'General'),
-                'balance' => 0,
+                'name'         => $template['name']     ?? ($name !== '' ? $name : 'Auto Account ' . $code),
+                'type'         => $template['type']     ?? ($type !== '' ? $type : 'asset'),
+                'category'     => $template['category'] ?? ($category !== '' ? $category : 'General'),
+                'balance'      => 0,
                 'ytd_activity' => 0,
-                'description' => 'Auto-created by accounting automation.',
+                'description'  => 'Auto-created by accounting automation.',
             ]
         );
     }
