@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
+use App\Services\AccountingService;
 use App\Models\ExchangeRate;
 use App\Models\FuelLog;
 use App\Models\Payment;
@@ -682,6 +683,70 @@ class SuperuserController extends Controller
             'waterfall'  => compact('gross', 'wht', 'vat', 'sc', 'netRent', 'maintenance', 'fuel', 'mgmtFee', 'net'),
             'fee_rate'   => $feeRate * 100,
             'properties' => $properties,
+        ]);
+    }
+
+    /**
+     * Post management fee GL entry for a given period and property (or all properties).
+     *
+     * POST /superuser/revenue/post-fee
+     * Body: { period, property_id? }
+     *   period      — same preset values as ownerRevenue (this_month, last_month, …)
+     *   property_id — optional; if omitted, posts fee for all properties separately
+     */
+    public function postManagementFee(Request $request, AccountingService $accounting): \Illuminate\Http\JsonResponse
+    {
+        abort_if($request->user()->role !== 'superuser', 403);
+
+        $propertyId = $request->filled('property_id') ? (int) $request->input('property_id') : null;
+        [$start, $end] = $this->resolveRevenuePeriod($request);
+        $feeRate  = (float) SystemSetting::get('management_fee_rate', 0) / 100;
+        $payExpr  = 'COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))';
+
+        // Derive a clean period key from the date range (e.g. "2026-03")
+        $periodKey = Carbon::parse($start)->format('Y-m');
+
+        $posted = [];
+
+        $query = Property::query()->orderBy('name');
+        if ($propertyId) {
+            $query->where('id', $propertyId);
+        }
+
+        foreach ($query->get(['id', 'name']) as $property) {
+            $gross = (float) Payment::query()
+                ->where('property_id', $property->id)
+                ->where('status', 'paid')
+                ->whereBetween('paid_date', [$start, $end])
+                ->sum(DB::raw($payExpr));
+
+            $fee = round($gross * $feeRate, 2);
+            if ($fee <= 0) {
+                continue;
+            }
+
+            $entry = $accounting->postManagementFee(
+                propertyId: $property->id,
+                amount: $fee,
+                period: $periodKey,
+                entryDate: $end,
+            );
+
+            $posted[] = [
+                'property_id'   => $property->id,
+                'property_name' => $property->name,
+                'amount'        => $fee,
+                'journal_entry' => $entry->entry_number,
+            ];
+        }
+
+        if (empty($posted)) {
+            return response()->json(['message' => 'No management fee to post for this period.'], 200);
+        }
+
+        return response()->json([
+            'message' => count($posted) . ' management fee entr' . (count($posted) === 1 ? 'y' : 'ies') . ' posted.',
+            'entries' => $posted,
         ]);
     }
 

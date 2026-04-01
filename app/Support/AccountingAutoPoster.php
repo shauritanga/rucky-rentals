@@ -20,6 +20,7 @@ class AccountingAutoPoster
         '1110' => ['name' => 'Security Deposits',      'type' => 'asset',     'category' => 'Current Assets'],
         '1120' => ['name' => 'WHT Tax Credit',         'type' => 'asset',     'category' => 'Current Assets'],
         '2000' => ['name' => 'Accounts Payable',       'type' => 'liability', 'category' => 'Current Liabilities'],
+        '2200' => ['name' => 'VAT Payable',            'type' => 'liability', 'category' => 'Current Liabilities'],
         '2100' => ['name' => 'Deposits Payable',       'type' => 'liability', 'category' => 'Current Liabilities'],
         '2500' => ['name' => 'Management Fee Payable', 'type' => 'liability', 'category' => 'Current Liabilities'],
         '4000' => ['name' => 'Rental Income',          'type' => 'revenue',   'category' => 'Operating Revenue'],
@@ -44,6 +45,7 @@ class AccountingAutoPoster
             $existing = JournalEntry::query()
                 ->where('reference', $reference)
                 ->where('property_id', $propertyId)
+                ->where('status', 'posted')
                 ->first();
 
             if ($existing) {

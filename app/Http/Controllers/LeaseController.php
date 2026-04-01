@@ -314,12 +314,23 @@ class LeaseController extends Controller
             ]);
 
             DB::transaction(function () use ($lease, $editData) {
-                $oldUnitId = $lease->unit_id;
-                $newUnitId = $editData['unit_id'];
+                $oldUnitId     = $lease->unit_id;
+                $newUnitId     = $editData['unit_id'];
+                $oldDeposit    = (float) $lease->deposit;
+                $wasActive     = in_array($lease->status, ['active', 'expiring', 'overdue']);
+
                 $lease->update($editData);
+
                 if ((int) $oldUnitId !== (int) $newUnitId) {
                     Unit::where('id', $oldUnitId)->update(['status' => 'available']);
                     Unit::where('id', $newUnitId)->update(['status' => 'occupied']);
+                }
+
+                // If lease is active and deposit amount changed, re-post the deposit GL entry
+                $newDeposit = (float) ($editData['deposit'] ?? $oldDeposit);
+                if ($wasActive && abs($newDeposit - $oldDeposit) > 0.01) {
+                    $this->voidDepositEntry($lease);
+                    $this->postDepositEntry($lease->fresh());
                 }
             });
         } elseif ($action === 'update_fitout') {
@@ -362,7 +373,10 @@ class LeaseController extends Controller
         $propertyName = Property::where('id', $propertyId)->value('name');
         $resource     = sprintf('Lease #%d', $lease->id);
 
-        $lease->delete();
+        DB::transaction(function () use ($lease) {
+            $this->voidDepositEntry($lease);
+            $lease->delete();
+        });
 
         $this->logAudit(
             request: $request,
@@ -376,6 +390,14 @@ class LeaseController extends Controller
         return back()->with('success', 'Lease terminated.');
     }
 
+    private function voidDepositEntry(Lease $lease): void
+    {
+        app(AccountingAutoPoster::class)->voidByReference(
+            $lease->property_id,
+            'DEP-' . $lease->id,
+        );
+    }
+
     private function postDepositEntry(Lease $lease): void
     {
         $deposit = (float) ($lease->deposit ?? 0);
@@ -384,7 +406,12 @@ class LeaseController extends Controller
         $currency = strtoupper((string) ($lease->currency ?? 'TZS'));
         $depositTzs = $currency === 'TZS'
             ? $deposit
-            : round($deposit * ExchangeRate::getLiveRate($currency, 'TZS'), 2);
+            : round($deposit * ExchangeRate::getRate(
+                propertyId: null,
+                fromCurrency: $currency,
+                toCurrency: 'TZS',
+                date: $lease->start_date,
+              ), 2);
 
         app(AccountingAutoPoster::class)->post(
             propertyId: $lease->property_id,

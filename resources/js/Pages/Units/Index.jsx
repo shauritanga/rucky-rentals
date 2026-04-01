@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, router, useForm } from '@inertiajs/react';
 import { floorSortOrder } from '@/utils/floorConfig';
 
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
@@ -68,6 +68,9 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
   const [floorFilter, setFloorFilter] = useState('');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const availableFloors = useMemo(
     () => (Array.isArray(floorOptions) && floorOptions.length > 0 ? floorOptions : []),
@@ -79,7 +82,13 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
     [availableFloors],
   );
 
+  // ── Create form ──────────────────────────────────────────────────────────
   const { data, setData, post, processing, reset } = useForm({
+    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', notes:''
+  });
+
+  // ── Edit form ─────────────────────────────────────────────────────────────
+  const { data: editData, setData: setEditData, patch: patchUnit, processing: editProcessing, reset: resetEdit, errors: editErrors } = useForm({
     unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', notes:''
   });
 
@@ -97,11 +106,18 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
   const depositRentMonths = Number(settings.deposit_rent_months ?? 1);
   const depositScMonths   = Number(settings.deposit_service_charge_months ?? 1);
 
+  // Create form computed values
   const sizeSqmInput = Number(data.size_sqm) || 0;
   const ratePerSqmInput = Number(data.rate_per_sqm) || 0;
   const computedMonthlyRent = sizeSqmInput * ratePerSqmInput;
   const computedServiceCharge = sizeSqmInput * (Number(data.service_charge_per_sqm) || 0);
   const computedDeposit = (computedMonthlyRent * depositRentMonths) + (computedServiceCharge * depositScMonths);
+
+  // Edit form computed values
+  const editSizeSqm = Number(editData.size_sqm) || 0;
+  const editRent    = editSizeSqm * (Number(editData.rate_per_sqm) || 0);
+  const editSc      = editSizeSqm * (Number(editData.service_charge_per_sqm) || 0);
+  const editDeposit = (editRent * depositRentMonths) + (editSc * depositScMonths);
 
   const filtered = units.filter(u => {
     const matchStatus = filter === 'all' || u.status === filter;
@@ -115,6 +131,45 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
   const counts = { all: units.length, occupied: units.filter(u=>u.status==='occupied').length, vacant: units.filter(u=>u.status==='vacant').length, overdue: units.filter(u=>u.status==='overdue').length, maintenance: units.filter(u=>u.status==='maintenance').length };
 
   const submit = (e) => { e.preventDefault(); post('/units', { onSuccess: () => { reset(); setShowModal(false); } }); };
+
+  const openEditModal = (unit) => {
+    setEditData({
+      unit_number:            unit.unit_number ?? '',
+      floor:                  unit.floor ?? '',
+      type:                   unit.type ?? 'Office Suite',
+      size_sqm:               unit.size_sqm ?? '',
+      rate_per_sqm:           unit.rate_per_sqm ?? unitRatePerSqm(unit),
+      service_charge_per_sqm: unit.service_charge_per_sqm ?? (unitSizeSqm(unit) > 0 ? (Number(unit.service_charge ?? 0) / unitSizeSqm(unit)).toFixed(2) : ''),
+      currency:               unit.currency ?? 'TZS',
+      status:                 unit.status ?? 'vacant',
+      electricity_type:       unit.electricity_type ?? 'direct',
+      notes:                  unit.notes ?? '',
+    });
+    setShowEditModal(true);
+  };
+
+  const submitEdit = (e) => {
+    e.preventDefault();
+    patchUnit(`/units/${selected.id}`, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setShowEditModal(false);
+        setSelected(null);
+      },
+    });
+  };
+
+  const handleDelete = () => {
+    setDeleting(true);
+    router.delete(`/units/${selected.id}`, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setShowDeleteConfirm(false);
+        setSelected(null);
+      },
+      onFinish: () => setDeleting(false),
+    });
+  };
 
   const unitHistory = (unit) => {
     const tenant = unit?.leases?.[0]?.tenant;
@@ -262,19 +317,154 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               </div>
             </div>
             <div className="drawer-footer">
-              <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>setSelected(null)}>
+              <button
+                className="btn-primary"
+                style={{flex:1,justifyContent:'center'}}
+                onClick={() => openEditModal(selected)}
+              >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit Unit
               </button>
-              <button className="btn-secondary" onClick={()=>setSelected(null)}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export
-              </button>
-              <button className="btn-danger" onClick={()=>setSelected(null)}>
+              <button
+                className="btn-danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                title="Delete unit"
+              >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
               </button>
             </div>
           </>}
+        </div>
+      </div>
+
+      {/* Edit Unit Modal */}
+      <div className={`modal-overlay ${showEditModal ? 'open' : ''}`} onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
+        <div className="modal">
+          <div className="modal-header">
+            <div className="modal-title">Edit Unit — {selected?.unit_number}</div>
+            <button className="modal-close" onClick={() => setShowEditModal(false)}>✕</button>
+          </div>
+          <form onSubmit={submitEdit}>
+            <div className="modal-body">
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Unit Number</label>
+                  <input className="form-input" value={editData.unit_number} onChange={e => setEditData('unit_number', e.target.value)} required />
+                  {editErrors.unit_number && <div className="form-error">{editErrors.unit_number}</div>}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Floor</label>
+                  <select className="form-input form-select" value={editData.floor} onChange={e => setEditData('floor', e.target.value)} required>
+                    {availableFloors.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Commercial Unit Type</label>
+                  <select className="form-input form-select" value={editData.type} onChange={e => setEditData('type', e.target.value)}>
+                    {COMMERCIAL_UNIT_TYPES.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Size (m²)</label>
+                  <input className="form-input" type="number" step="0.01" min="0" value={editData.size_sqm} onChange={e => setEditData('size_sqm', e.target.value)} required />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Currency</label>
+                  <select className="form-input form-select" value={editData.currency} onChange={e => setEditData('currency', e.target.value)}>
+                    <option value="TZS">TZS</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Rate per m² ({editData.currency})</label>
+                  <input className="form-input" type="number" step="0.01" min="0" value={editData.rate_per_sqm} onChange={e => setEditData('rate_per_sqm', e.target.value)} required />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Service Charge per m² ({editData.currency})</label>
+                  <input className="form-input" type="number" step="0.01" min="0" value={editData.service_charge_per_sqm} onChange={e => setEditData('service_charge_per_sqm', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Electricity Type</label>
+                  <select className="form-input form-select" value={editData.electricity_type} onChange={e => setEditData('electricity_type', e.target.value)}>
+                    <option value="direct">Direct (Own Meter)</option>
+                    <option value="submeter">Submeter</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Monthly Rent (computed)</label>
+                  <input className="form-input" type="text" value={editRent > 0 ? money(editRent.toFixed(2), editData.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Service Charge / mo (computed)</label>
+                  <input className="form-input" type="text" value={editSc > 0 ? money(editSc.toFixed(2), editData.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Security Deposit (computed)</label>
+                  <input className="form-input" type="text" value={editDeposit > 0 ? money(editDeposit.toFixed(2), editData.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Status</label>
+                  <select className="form-input form-select" value={editData.status} onChange={e => setEditData('status', e.target.value)}>
+                    {['vacant','occupied','overdue','maintenance'].map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group" style={{flex:1}}>
+                  <label className="form-label">Notes</label>
+                  <input className="form-input" value={editData.notes} onChange={e => setEditData('notes', e.target.value)} placeholder="Optional notes" />
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-ghost" onClick={() => setShowEditModal(false)} disabled={editProcessing}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={editProcessing} aria-busy={editProcessing}>
+                {editProcessing ? (
+                  <><span className="btn-spinner" aria-hidden="true"></span><span>Saving…</span></>
+                ) : (
+                  <span>Save Changes</span>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      <div className={`modal-overlay ${showDeleteConfirm ? 'open' : ''}`} onClick={e => e.target === e.currentTarget && setShowDeleteConfirm(false)}>
+        <div className="modal" style={{width: 400}}>
+          <div className="modal-header">
+            <div className="modal-title">Delete Unit</div>
+            <button className="modal-close" onClick={() => setShowDeleteConfirm(false)}>✕</button>
+          </div>
+          <div className="modal-body">
+            <p style={{fontSize: 14, color: 'var(--text)', marginBottom: 8}}>
+              Are you sure you want to delete unit <strong>{selected?.unit_number}</strong>?
+            </p>
+            <p style={{fontSize: 13, color: 'var(--text-muted)'}}>
+              This cannot be undone. Any associated leases must be removed first.
+            </p>
+          </div>
+          <div className="modal-footer">
+            <button className="btn-ghost" onClick={() => setShowDeleteConfirm(false)} disabled={deleting}>Cancel</button>
+            <button className="btn-danger" onClick={handleDelete} disabled={deleting} aria-busy={deleting}>
+              {deleting ? (
+                <><span className="btn-spinner" aria-hidden="true"></span><span>Deleting…</span></>
+              ) : (
+                <span>Delete Unit</span>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 

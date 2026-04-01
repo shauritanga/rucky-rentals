@@ -26,14 +26,17 @@ class AccountingService
     public function __construct(private AccountingAutoPoster $poster) {}
 
     /**
-     * Post invoice accrual entry when invoice is issued
-     * 
-     * Transaction: Dr:1100 (Rent Receivable) / Cr:4000 (Rental Income)
-     * 
-     * Multi-currency support:
-     * - Invoices in USD are converted to TZS (base currency) using exchange rates
-     * - exchange_rate and total_in_base are stored for audit trail
-     * - All GL entries posted in base currency (TZS)
+     * Post invoice accrual entry when invoice is issued.
+     *
+     * GL lines (example: $1,180 gross, 18% VAT, $50 service charge):
+     *   Dr: 1100  Rent Receivable     1,180.00
+     *     Cr: 4000  Rental Income       950.00   (net rent, excl VAT)
+     *     Cr: 4100  Service Charge Inc   42.37   (net SC, excl VAT)
+     *     Cr: 2200  VAT Payable         187.63   (VAT on rent + SC)
+     *
+     * VAT is treated as inclusive (back-calculated from gross amounts).
+     * Service charge items are identified by "service charge" in description (case-insensitive).
+     * All amounts are converted to TZS base currency before posting.
      */
     public function postInvoice(Invoice $invoice): void
     {
@@ -47,26 +50,39 @@ class AccountingService
             return;
         }
 
-        // Calculate total from invoice items (invoices table doesn't have a total column)
-        $invoiceTotal = $invoice->items()->sum('total');
+        // Load items and split by type
+        $items = $invoice->items()->get();
+        $scItems   = $items->filter(fn($i) => stripos($i->description ?? '', 'service charge') !== false);
+        $rentItems = $items->reject(fn($i)  => stripos($i->description ?? '', 'service charge') !== false);
+
+        $scGross   = (float) $scItems->sum('total');
+        $rentGross = (float) $rentItems->sum('total');
+        $invoiceTotal = $scGross + $rentGross;
 
         if ($invoiceTotal <= 0) {
             return;
         }
 
-        DB::transaction(function () use ($invoice, $invoiceTotal) {
+        // VAT rate from the linked lease (inclusive — back-calculated from gross)
+        $vatRate = (float) ($invoice->lease->vat_rate ?? 0);
+        $vatOnSc   = $vatRate > 0 && $scGross   > 0 ? round($scGross   * ($vatRate / (100 + $vatRate)), 2) : 0.0;
+        $vatOnRent = $vatRate > 0 && $rentGross > 0 ? round($rentGross * ($vatRate / (100 + $vatRate)), 2) : 0.0;
+        $totalVat  = round($vatOnSc + $vatOnRent, 2);
+        $netRent   = round($rentGross - $vatOnRent, 2);
+        $netSc     = round($scGross   - $vatOnSc,   2);
+
+        DB::transaction(function () use ($invoice, $invoiceTotal, $netRent, $netSc, $totalVat, $vatRate) {
             $reference = 'INV-' . $invoice->id;
 
             try {
                 // Handle multi-currency conversion
-                $currency = $invoice->currency ?? 'TZS';
-                $amountToPost = (float) $invoiceTotal;
+                $currency     = $invoice->currency ?? 'TZS';
                 $exchangeRate = 1.0;
+                $fx = 1.0;
 
                 if ($currency !== 'TZS') {
                     $rateDate = $invoice->issued_date ?? now();
 
-                    // Look up exchange rate for USD -> TZS (global, not property-scoped)
                     $rate = ExchangeRate::getRate(
                         propertyId: null,
                         fromCurrency: $currency,
@@ -82,27 +98,46 @@ class AccountingService
                     }
 
                     $exchangeRate = $rate;
-                    $amountToPost = (float) $invoiceTotal * $exchangeRate;
+                    $fx = $rate;
 
-                    // Store conversion info on invoice for audit
                     $invoice->update([
                         'exchange_rate' => $exchangeRate,
-                        'total_in_base' => $amountToPost,
+                        'total_in_base' => round($invoiceTotal * $fx, 2),
                     ]);
                 }
 
+                // Convert all GL amounts to base currency
+                $arTotal  = round($invoiceTotal * $fx, 2);
+                $crRent   = round($netRent  * $fx, 2);
+                $crSc     = round($netSc    * $fx, 2);
+                $crVat    = round($totalVat * $fx, 2);
+
+                // Build balanced GL lines (Dr:1100 = Cr:4000 + Cr:4100 + Cr:2200)
                 $lines = [
-                    [
-                        'account_code' => '1100',
-                        'debit' => $amountToPost,
-                        'credit' => 0,
-                    ],
-                    [
-                        'account_code' => '4000',
-                        'debit' => 0,
-                        'credit' => $amountToPost,
-                    ],
+                    ['account_code' => '1100', 'debit' => $arTotal, 'credit' => 0],
                 ];
+
+                if ($crRent > 0) {
+                    $lines[] = ['account_code' => '4000', 'debit' => 0, 'credit' => $crRent];
+                }
+                if ($crSc > 0) {
+                    $lines[] = ['account_code' => '4100', 'debit' => 0, 'credit' => $crSc];
+                }
+                if ($crVat > 0) {
+                    $lines[] = ['account_code' => '2200', 'debit' => 0, 'credit' => $crVat];
+                }
+
+                // Floating-point safety: adjust last credit line to balance exactly
+                $creditSum = array_sum(array_column(array_filter($lines, fn($l) => $l['credit'] > 0), 'credit'));
+                $diff = round($arTotal - $creditSum, 2);
+                if (abs($diff) > 0 && count($lines) > 1) {
+                    for ($i = count($lines) - 1; $i >= 1; $i--) {
+                        if ($lines[$i]['credit'] > 0) {
+                            $lines[$i]['credit'] = round($lines[$i]['credit'] + $diff, 2);
+                            break;
+                        }
+                    }
+                }
 
                 $journalEntry = $this->poster->post(
                     propertyId: $invoice->property_id,
@@ -112,7 +147,6 @@ class AccountingService
                     lines: $lines
                 );
 
-                // Log successful posting
                 AccountingEvent::logSuccess(
                     propertyId: $invoice->property_id,
                     eventType: 'invoice_issued',
@@ -121,13 +155,17 @@ class AccountingService
                     reference: $reference,
                     description: 'Invoice ' . $invoice->invoice_number . ' accrual posted',
                     data: [
-                        'invoice_id' => $invoice->id,
-                        'invoice_number' => $invoice->invoice_number,
-                        'amount' => $invoiceTotal,
-                        'currency' => $currency,
-                        'exchange_rate' => $exchangeRate,
-                        'amount_in_base' => $amountToPost,
-                        'status' => $invoice->status,
+                        'invoice_id'      => $invoice->id,
+                        'invoice_number'  => $invoice->invoice_number,
+                        'amount'          => $invoiceTotal,
+                        'currency'        => $currency,
+                        'exchange_rate'   => $exchangeRate,
+                        'amount_in_base'  => $arTotal,
+                        'vat_rate'        => $vatRate,
+                        'vat_amount'      => $totalVat,
+                        'net_rent'        => $netRent,
+                        'net_sc'          => $netSc,
+                        'status'          => $invoice->status,
                     ],
                     postedEntries: [$journalEntry->id],
                 );
@@ -140,9 +178,9 @@ class AccountingService
                     reference: $reference,
                     description: 'Invoice accrual posting failed',
                     data: [
-                        'invoice_id' => $invoice->id,
+                        'invoice_id'     => $invoice->id,
                         'invoice_number' => $invoice->invoice_number,
-                        'amount' => $invoiceTotal,
+                        'amount'         => $invoiceTotal,
                     ],
                     errorMessage: $e->getMessage(),
                 );
@@ -197,15 +235,22 @@ class AccountingService
     }
 
     /**
-     * Post payment entry
-     * 
-     * If invoice-linked: Dr:1000 (Cash) / Cr:1100 (Rent Receivable)
-     * If not linked: Dr:1000 (Cash) / Cr:4000 (Rental Income) — cash-basis fallback
-     * 
-     * Multi-currency support:
-     * - Payments in USD are converted to TZS using exchange rates
-     * - exchange_rate and amount_in_base are stored for audit
-     * - GL entries posted in base currency
+     * Post payment entry.
+     *
+     * Invoice-linked (no WHT):
+     *   Dr: 1000  Cash at Bank        amount
+     *     Cr: 1100  Rent Receivable     amount
+     *
+     * Invoice-linked with WHT (tenant withholds tax):
+     *   Dr: 1000  Cash at Bank        amount × (1 − wht%)   (actual cash received)
+     *   Dr: 1120  WHT Tax Credit      amount × wht%         (recoverable from TRA)
+     *     Cr: 1100  Rent Receivable     amount               (clears full AR balance)
+     *
+     * Not linked (cash-basis fallback):
+     *   Dr: 1000  Cash at Bank        amount
+     *     Cr: 4000  Rental Income       amount
+     *
+     * All amounts are converted to TZS base currency before posting.
      */
     public function postPayment(Payment $payment): void
     {
@@ -218,25 +263,26 @@ class AccountingService
             $reference = 'PAY-' . $payment->id;
 
             try {
-                // Determine credit account based on invoice link
+                // Determine credit account and WHT rate based on invoice link
                 $creditAccountCode = '4000'; // Default: Revenue (cash-basis)
+                $whtRate = 0.0;
 
                 if ($payment->invoice_id) {
-                    $invoice = Invoice::find($payment->invoice_id);
+                    $invoice = Invoice::with('lease')->find($payment->invoice_id);
                     if ($invoice && $invoice->type === 'invoice') {
                         $creditAccountCode = '1100'; // Receivable (accrual-aware)
+                        $whtRate = (float) ($invoice->lease->wht_rate ?? 0);
                     }
                 }
 
                 // Handle multi-currency conversion
-                $currency = $payment->currency ?? 'TZS';
+                $currency     = $payment->currency ?? 'TZS';
                 $amountToPost = (float) $payment->amount;
                 $exchangeRate = 1.0;
 
                 if ($currency !== 'TZS') {
                     $rateDate = $payment->paid_date ?? now();
 
-                    // Look up exchange rate for USD -> TZS (global, not property-scoped)
                     $rate = ExchangeRate::getRate(
                         propertyId: null,
                         fromCurrency: $currency,
@@ -254,25 +300,27 @@ class AccountingService
                     $exchangeRate = $rate;
                     $amountToPost = (float) $payment->amount * $exchangeRate;
 
-                    // Store conversion info on payment for audit
                     $payment->update([
-                        'exchange_rate' => $exchangeRate,
+                        'exchange_rate'  => $exchangeRate,
                         'amount_in_base' => $amountToPost,
                     ]);
                 }
 
-                $lines = [
-                    [
-                        'account_code' => '1000',
-                        'debit' => $amountToPost,
-                        'credit' => 0,
-                    ],
-                    [
-                        'account_code' => $creditAccountCode,
-                        'debit' => 0,
-                        'credit' => $amountToPost,
-                    ],
-                ];
+                // Build GL lines, splitting for WHT if applicable
+                if ($whtRate > 0 && $creditAccountCode === '1100') {
+                    $whtAmount  = round($amountToPost * ($whtRate / 100), 2);
+                    $cashAmount = round($amountToPost - $whtAmount, 2);
+                    $lines = [
+                        ['account_code' => '1000', 'debit' => $cashAmount,    'credit' => 0],
+                        ['account_code' => '1120', 'debit' => $whtAmount,     'credit' => 0],
+                        ['account_code' => '1100', 'debit' => 0,              'credit' => $amountToPost],
+                    ];
+                } else {
+                    $lines = [
+                        ['account_code' => '1000',               'debit' => $amountToPost, 'credit' => 0],
+                        ['account_code' => $creditAccountCode,   'debit' => 0,             'credit' => $amountToPost],
+                    ];
+                }
 
                 $journalEntry = $this->poster->post(
                     propertyId: $payment->property_id,
@@ -290,13 +338,14 @@ class AccountingService
                     reference: $reference,
                     description: 'Payment posted',
                     data: [
-                        'payment_id' => $payment->id,
-                        'amount' => $payment->amount,
-                        'currency' => $currency,
-                        'exchange_rate' => $exchangeRate,
+                        'payment_id'     => $payment->id,
+                        'amount'         => $payment->amount,
+                        'currency'       => $currency,
+                        'exchange_rate'  => $exchangeRate,
                         'amount_in_base' => $amountToPost,
-                        'invoice_id' => $payment->invoice_id,
+                        'invoice_id'     => $payment->invoice_id,
                         'credit_account' => $creditAccountCode,
+                        'wht_rate'       => $whtRate,
                     ],
                     postedEntries: [$journalEntry->id],
                 );
@@ -310,7 +359,7 @@ class AccountingService
                     description: 'Payment posting failed',
                     data: [
                         'payment_id' => $payment->id,
-                        'amount' => $payment->amount,
+                        'amount'     => $payment->amount,
                     ],
                     errorMessage: $e->getMessage(),
                 );
@@ -364,9 +413,12 @@ class AccountingService
     }
 
     /**
-     * Post maintenance ticket expense when resolved
-     * 
+     * Post maintenance ticket expense when resolved.
+     *
      * Transaction: Dr:5000 (Maintenance Expense) / Cr:2000 (Accounts Payable)
+     *
+     * Multi-currency: if the record has a non-TZS currency, the cost is converted
+     * to TZS using the historical rate on the resolved date, and cost_in_base is stored.
      */
     public function postMaintenanceRecord(MaintenanceRecord $record): void
     {
@@ -379,17 +431,37 @@ class AccountingService
             $reference = 'MAINT-' . $record->id;
 
             try {
+                $currency     = strtoupper((string) ($record->currency ?? 'TZS'));
+                $cost         = (float) $record->cost;
+                $exchangeRate = 1.0;
+                $costInBase   = $cost;
+
+                if ($currency !== 'TZS') {
+                    $rateDate = $record->resolved_date ?? now();
+
+                    $rate = ExchangeRate::getRate(
+                        propertyId: null,
+                        fromCurrency: $currency,
+                        toCurrency: 'TZS',
+                        date: $rateDate
+                    );
+
+                    if ($rate === null) {
+                        throw new \Exception(
+                            "Exchange rate not found for {$currency} to TZS on " .
+                                Carbon::parse($rateDate)->toDateString()
+                        );
+                    }
+
+                    $exchangeRate = $rate;
+                    $costInBase   = round($cost * $exchangeRate, 2);
+
+                    $record->update(['cost_in_base' => $costInBase]);
+                }
+
                 $lines = [
-                    [
-                        'account_code' => '5000',
-                        'debit' => (float) $record->cost,
-                        'credit' => 0,
-                    ],
-                    [
-                        'account_code' => '2000',
-                        'debit' => 0,
-                        'credit' => (float) $record->cost,
-                    ],
+                    ['account_code' => '5000', 'debit' => $costInBase, 'credit' => 0],
+                    ['account_code' => '2000', 'debit' => 0,           'credit' => $costInBase],
                 ];
 
                 $journalEntry = $this->poster->post(
@@ -408,9 +480,12 @@ class AccountingService
                     reference: $reference,
                     description: 'Maintenance expense posted',
                     data: [
-                        'record_id' => $record->id,
-                        'amount' => $record->cost,
-                        'description' => $record->description,
+                        'record_id'     => $record->id,
+                        'amount'        => $cost,
+                        'currency'      => $currency,
+                        'exchange_rate' => $exchangeRate,
+                        'amount_in_base'=> $costInBase,
+                        'description'   => $record->description,
                     ],
                     postedEntries: [$journalEntry->id],
                 );
@@ -424,7 +499,7 @@ class AccountingService
                     description: 'Maintenance posting failed',
                     data: [
                         'record_id' => $record->id,
-                        'amount' => $record->cost,
+                        'amount'    => $record->cost,
                     ],
                     errorMessage: $e->getMessage(),
                 );
@@ -468,6 +543,81 @@ class AccountingService
                     data: [
                         'record_id' => $record->id,
                         'amount' => $record->cost,
+                    ],
+                    errorMessage: $e->getMessage(),
+                );
+
+                throw $e;
+            }
+        });
+    }
+
+    /**
+     * Post management fee accrual for a given property and period.
+     *
+     * GL entry:
+     *   Dr: 5500  Management Fee Expense   amount
+     *     Cr: 2500  Management Fee Payable   amount
+     *
+     * Idempotent: reference MGMTFEE-{propertyId}-{period} ensures only one entry per period.
+     *
+     * @param int    $propertyId  Property this fee belongs to
+     * @param float  $amount      Fee amount in TZS (base currency)
+     * @param string $period      Period identifier e.g. "2026-03"
+     * @param string $entryDate   ISO date string for the GL entry
+     */
+    public function postManagementFee(int $propertyId, float $amount, string $period, string $entryDate): \App\Models\JournalEntry
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('Management fee amount must be positive.');
+        }
+
+        $reference = 'MGMTFEE-' . $propertyId . '-' . $period;
+
+        return DB::transaction(function () use ($propertyId, $amount, $period, $entryDate, $reference) {
+            try {
+                $lines = [
+                    ['account_code' => '5500', 'debit' => $amount, 'credit' => 0],
+                    ['account_code' => '2500', 'debit' => 0,       'credit' => $amount],
+                ];
+
+                $journalEntry = $this->poster->post(
+                    propertyId: $propertyId,
+                    entryDate: $entryDate,
+                    description: "Management fee: {$period}",
+                    reference: $reference,
+                    lines: $lines
+                );
+
+                AccountingEvent::logSuccess(
+                    propertyId: $propertyId,
+                    eventType: 'management_fee_posted',
+                    entityType: 'Property',
+                    entityId: $propertyId,
+                    reference: $reference,
+                    description: "Management fee for {$period} posted",
+                    data: [
+                        'property_id' => $propertyId,
+                        'amount'      => $amount,
+                        'period'      => $period,
+                        'entry_date'  => $entryDate,
+                    ],
+                    postedEntries: [$journalEntry->id],
+                );
+
+                return $journalEntry;
+            } catch (\Exception $e) {
+                AccountingEvent::logFailure(
+                    propertyId: $propertyId,
+                    eventType: 'management_fee_posted',
+                    entityType: 'Property',
+                    entityId: $propertyId,
+                    reference: $reference,
+                    description: 'Management fee posting failed',
+                    data: [
+                        'property_id' => $propertyId,
+                        'amount'      => $amount,
+                        'period'      => $period,
                     ],
                     errorMessage: $e->getMessage(),
                 );

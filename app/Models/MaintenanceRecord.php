@@ -22,6 +22,8 @@ class MaintenanceRecord extends Model
         'assignee',
         'reported_by',
         'cost',
+        'currency',
+        'cost_in_base',
         'reported_date',
         'notes',
     ];

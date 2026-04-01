@@ -84,6 +84,7 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/maintenance/{ticket}/approve', [SuperuserController::class, 'approveMaintenance'])->name('superuser.maintenance.approve');
         Route::post('superuser/maintenance/{ticket}/reject', [SuperuserController::class, 'rejectMaintenance'])->name('superuser.maintenance.reject');
         Route::get('superuser/revenue', [SuperuserController::class, 'ownerRevenue'])->name('superuser.revenue');
+        Route::post('superuser/revenue/post-fee', [SuperuserController::class, 'postManagementFee'])->name('superuser.revenue.post-fee');
         Route::get('superuser/notifications', [SuperuserController::class, 'getNotifications'])->name('superuser.notifications.index');
         Route::post('superuser/notifications/read', [SuperuserController::class, 'markNotificationsRead'])->name('superuser.notifications.read');
         Route::delete('superuser/notifications', [SuperuserController::class, 'clearNotifications'])->name('superuser.notifications.clear');
