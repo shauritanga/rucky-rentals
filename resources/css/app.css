@@ -481,6 +481,38 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .ledger-table tbody tr{transition:background .1s;cursor:pointer}
 .ledger-table tbody tr:hover{background:var(--bg-hover)}
 .ledger-table tr:last-child td{border-bottom:none}
+.direct-readings-table{table-layout:auto}
+.direct-readings-table th:nth-child(4),
+.direct-readings-table td:nth-child(4),
+.direct-readings-table th:nth-child(5),
+.direct-readings-table td:nth-child(5),
+.direct-readings-table th:nth-child(6),
+.direct-readings-table td:nth-child(6),
+.direct-readings-table th:nth-child(7),
+.direct-readings-table td:nth-child(7),
+.direct-readings-table th:nth-child(8),
+.direct-readings-table td:nth-child(8){text-align:right}
+.direct-readings-table th:nth-child(2),
+.direct-readings-table td:nth-child(2),
+.direct-readings-table th:nth-child(9),
+.direct-readings-table td:nth-child(9),
+.direct-readings-table th:nth-child(10),
+.direct-readings-table td:nth-child(10){white-space:nowrap}
+.direct-readings-table th:nth-child(3),
+.direct-readings-table td:nth-child(3){overflow:hidden;text-overflow:ellipsis}
+.electricity-sales-table{table-layout:auto}
+.electricity-sales-table th:nth-child(4),
+.electricity-sales-table td:nth-child(4),
+.electricity-sales-table th:nth-child(5),
+.electricity-sales-table td:nth-child(5),
+.electricity-sales-table th:nth-child(6),
+.electricity-sales-table td:nth-child(6){text-align:right}
+.electricity-sales-table th:nth-child(7),
+.electricity-sales-table td:nth-child(7),
+.electricity-sales-table th:nth-child(8),
+.electricity-sales-table td:nth-child(8){white-space:nowrap}
+.electricity-sales-table th:nth-child(3),
+.electricity-sales-table td:nth-child(3){overflow:hidden;text-overflow:ellipsis}
 .src-pill{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:20px}
 .src-pill::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
 .src-pill.grid{background:var(--accent-dim);color:var(--accent)}
