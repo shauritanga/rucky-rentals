@@ -251,7 +251,32 @@ export default function Accounting({ accounts = [], entries = [] }) {
         const assets = accountData.filter((a) => a.type === 'asset' || a.type === 'contra').map((a) => ({ ...a, balance: displayBalance(a) }));
         const liabilities = accountData.filter((a) => a.type === 'liability').map((a) => ({ ...a, balance: displayBalance(a) }));
         const equityBase = accountData.filter((a) => a.type === 'equity').map((a) => ({ ...a, balance: displayBalance(a) }));
-        const currentEarnings = plData.net;
+
+        // Current Period Earnings = net income derived from ALL posted GL lines (same scope
+        // as account balances which are cumulative). Revenue credits minus debits, minus
+        // expense debits minus credits — matches the accounting equation Assets = L + E.
+        const allPosted = entryData.filter((e) => e.status === 'posted');
+        const allLineAmounts = new Map();
+        allPosted.forEach((entry) => {
+            entry.lines.forEach((line) => {
+                const curr = allLineAmounts.get(line.acct) ?? { dr: 0, cr: 0 };
+                allLineAmounts.set(line.acct, { dr: curr.dr + line.dr, cr: curr.cr + line.cr });
+            });
+        });
+        const totalRevenue = accountData
+            .filter((a) => a.type === 'revenue')
+            .reduce((s, a) => {
+                const { dr = 0, cr = 0 } = allLineAmounts.get(a.code) ?? {};
+                return s + (cr - dr);
+            }, 0);
+        const totalExpense = accountData
+            .filter((a) => a.type === 'expense')
+            .reduce((s, a) => {
+                const { dr = 0, cr = 0 } = allLineAmounts.get(a.code) ?? {};
+                return s + (dr - cr);
+            }, 0);
+        const currentEarnings = totalRevenue - totalExpense;
+
         const equity = [
             ...equityBase,
             {
@@ -277,7 +302,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
             totalEquity,
             difference: totalAssets - (totalLiabilities + totalEquity),
         };
-    }, [accountData, plData]);
+    }, [accountData, entryData, plData]);
 
     const cfData = useMemo(() => {
         const accountByCode = new Map(accountData.map((a) => [a.code, a]));
