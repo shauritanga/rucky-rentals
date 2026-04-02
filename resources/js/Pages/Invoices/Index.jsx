@@ -58,7 +58,7 @@ const invoiceStatusLabel = (status = '') => {
   return labels[status] || String(status || '').replace('_', ' ');
 };
 
-function InvoiceDoc({ inv, currency = 'USD' }) {
+function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
   const total = (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
   const fitoutBadge = (description = '') => {
     const text = String(description || '').toLowerCase();
@@ -78,9 +78,10 @@ function InvoiceDoc({ inv, currency = 'USD' }) {
   const subtotal = rentAmount + serviceChargeAmount;
   const vatAmount = explicitVat || Math.round(subtotal * VAT_RATE);
   const grossTotal = subtotal + vatAmount;
-  const whtRate = 0.1;
-  const whtAmount = rentAmount > 0 ? Math.round(rentAmount * whtRate) : 0;
-  const netPayable = rentAmount > 0 ? grossTotal - whtAmount : total;
+  const whtRate = (Number(lease?.wht_rate ?? 10)) / 100;
+  const whtBase = subtotal; // rent + service charge, VAT-exclusive
+  const whtAmount = whtBase > 0 ? Math.round(whtBase * whtRate) : 0;
+  const netPayable = whtBase > 0 ? grossTotal - whtAmount : total;
   const isPaid = inv.status === 'paid';
   const isOver = inv.status === 'overdue';
   return (
@@ -131,14 +132,14 @@ function InvoiceDoc({ inv, currency = 'USD' }) {
         </tbody>
       </table>
       <div style={{marginLeft:'auto',width:320}}>
-        {rentAmount > 0 ? (
+        {whtBase > 0 ? (
           <>
             <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Rent</span><span>{formatMoney(rentAmount, currency)}</span></div>
             <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Service Charge</span><span>{formatMoney(serviceChargeAmount, currency)}</span></div>
             <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:600}}><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
             <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>VAT (18%)</span><span>{formatMoney(vatAmount, currency)}</span></div>
             <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)',fontWeight:700}}><span>Gross Total</span><span>{formatMoney(grossTotal, currency)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--red)',borderTop:'1px solid var(--border-subtle)'}}><span>Less: WHT (10% of rent)</span><span>({formatMoney(whtAmount, currency)})</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--red)',borderTop:'1px solid var(--border-subtle)'}}><span>Less: WHT (10% of rent + service charge, excl. VAT)</span><span>({formatMoney(whtAmount, currency)})</span></div>
             <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Net Payable by Tenant</span><span style={{color:'var(--accent)'}}>{formatMoney(netPayable, currency)}</span></div>
           </>
         ) : (
@@ -148,7 +149,7 @@ function InvoiceDoc({ inv, currency = 'USD' }) {
           </>
         )}
       </div>
-      {rentAmount > 0 && (
+      {whtBase > 0 && (
         <div style={{marginTop:10,padding:'10px 14px',background:'var(--amber-dim)',borderRadius:8,fontSize:12,color:'var(--amber)'}}>
           <strong>WHT Reminder:</strong> Tenant to remit <strong>{formatMoney(whtAmount, currency)}</strong> directly to TRA. Ref: {inv.invoice_number}.
         </div>
@@ -436,7 +437,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               </div>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:24,scrollbarWidth:'thin',scrollbarColor:'var(--border) transparent'}}>
-              <InvoiceDoc inv={selected} currency={resolveInvoiceCurrency(selected, leases)} />
+              <InvoiceDoc inv={selected} currency={resolveInvoiceCurrency(selected, leases)} lease={leases.find((l) => Number(l.id) === Number(selected?.lease_id))} />
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:8,flexShrink:0,background:'var(--bg-surface)'}}>
               {(selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
