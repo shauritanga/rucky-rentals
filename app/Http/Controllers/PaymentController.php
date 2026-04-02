@@ -10,6 +10,7 @@ use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\ExchangeRate;
 use App\Services\AccountingService;
+use App\Services\PaymentReceiptService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Carbon\Carbon;
@@ -51,7 +52,7 @@ class PaymentController extends Controller
         return Inertia::render('Payments/Index', compact('payments', 'tenants', 'units', 'invoices'));
     }
 
-    public function store(Request $request, AccountingService $accountingService)
+    public function store(Request $request, AccountingService $accountingService, PaymentReceiptService $paymentReceiptService)
     {
         $effectivePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
@@ -89,10 +90,14 @@ class PaymentController extends Controller
             'status'    => 'required|in:paid,overdue,pending',
             'paid_date' => 'nullable|date',
             'notes'     => 'nullable|string',
+            'issue_receipt' => 'nullable|boolean',
+            'wht_confirmed' => 'nullable|boolean',
+            'wht_reference' => 'nullable|string|max:255',
         ]);
 
         $unit = Unit::findOrFail($data['unit_id']);
         $tenant = Tenant::findOrFail($data['tenant_id']);
+        $invoice = !empty($data['invoice_id']) ? Invoice::with('items')->findOrFail($data['invoice_id']) : null;
 
         $propertyId = (int) ($unit->property_id ?: $tenant->property_id ?: 0);
 
@@ -106,7 +111,6 @@ class PaymentController extends Controller
         // Resolve currency/rate before create so observer posts with correct values.
         $data['currency'] = 'TZS';
         if (!empty($data['invoice_id'])) {
-            $invoice = Invoice::find($data['invoice_id']);
             if ($invoice) {
                 $data['currency'] = $invoice->currency ?? 'TZS';
             }
@@ -130,8 +134,47 @@ class PaymentController extends Controller
             $data['amount_in_base'] = (float) $data['amount'] * (float) $rate;
         }
 
-        DB::transaction(function () use ($data, $accountingService) {
+        $issueReceipt = (bool) ($data['issue_receipt'] ?? false);
+        $whtConfirmed = (bool) ($data['wht_confirmed'] ?? false);
+        $data['issue_receipt'] = $issueReceipt;
+        $data['wht_confirmed'] = $whtConfirmed;
+        $data['wht_reference'] = $data['wht_reference'] ?? null;
+
+        if ($issueReceipt && empty($data['invoice_id'])) {
+            return back()->withErrors([
+                'invoice_id' => 'Receipt issuance requires an invoice-linked payment.',
+            ]);
+        }
+
+        $breakdown = $paymentReceiptService->buildPaymentBreakdown($invoice, (float) $data['amount']);
+        $data['breakdown_rent'] = $breakdown['rent'];
+        $data['breakdown_service_charge'] = $breakdown['service_charge'];
+        $data['breakdown_electricity'] = $breakdown['electricity'];
+
+        $isPartialPayment = false;
+        if ($invoice) {
+            $invoiceTotal = (float) $invoice->items->sum('total');
+            $alreadyPaid = (float) Payment::where('invoice_id', $invoice->id)
+                ->where('status', 'paid')
+                ->sum('amount');
+            $outstanding = max(0, round($invoiceTotal - $alreadyPaid, 2));
+            $isPartialPayment = $outstanding > 0 && ((float) $data['amount'] + 0.01) < $outstanding;
+        }
+
+        $paymentReceiptService->assertReceiptEligibility(
+            issueReceipt: $issueReceipt,
+            whtConfirmed: $whtConfirmed,
+            hasLeaseRelatedCharges: (bool) $breakdown['has_lease_related'],
+            isPartialPayment: $isPartialPayment
+        );
+
+        DB::transaction(function () use ($data, $accountingService, $paymentReceiptService) {
             $payment = Payment::create($data);
+            if ($data['issue_receipt'] ?? false) {
+                $invoice = !empty($payment->invoice_id) ? Invoice::with('items')->find($payment->invoice_id) : null;
+                $receipt = $paymentReceiptService->createReceiptForPayment($payment, $invoice);
+                $payment->update(['receipt_id' => $receipt->id]);
+            }
 
             // Service layer handles posting logic (observer will also watch for status changes)
             if ($data['status'] === 'paid') {

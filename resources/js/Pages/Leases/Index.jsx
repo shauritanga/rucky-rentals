@@ -228,7 +228,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const subtotal = rent + serviceCharge;
     const vat = Math.round(subtotal * (Number(vatRate || 0) / 100));
     const gross = subtotal + vat;
-    const wht = Math.round(rent * (Number(whtRate || 0) / 100));
+    // WHT base: rent + service charge, VAT-exclusive.
+    const wht = Math.round(subtotal * (Number(whtRate || 0) / 100));
     const net = gross - wht;
     const instalment = net * cycle;
     const unitSC = units.find(u => String(u.id) === String(data.unit_id))?.service_charge ?? 0;
@@ -955,7 +956,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{formatMoney(summary.subtotal, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>VAT ({Math.round(vatRate)}%)</span><strong>{formatMoney(summary.vat, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{formatMoney(summary.gross, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(whtRate)}% of rent)</span><strong style={{color:'var(--red)'}}>{`(${formatMoney(summary.wht, selectedUnitCurrency)})`}</strong></div>
+                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(whtRate)}% of rent + service charge, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${formatMoney(summary.wht, selectedUnitCurrency)})`}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{formatMoney(summary.net, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{formatMoney(summary.wht, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{formatMoney(summary.instalment, selectedUnitCurrency)}</strong></div>

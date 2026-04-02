@@ -241,7 +241,11 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
   const user = props?.auth?.user;
   const displayName = user?.name || 'Super Admin';
-  const roleLabel = user?.role ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'System Owner';
+  const roleLabel = user?.role
+    ? (user.role === 'lease_manager'
+      ? 'Lease Assistant'
+      : user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+    : 'System Owner';
   const initials = displayName
     .split(' ')
     .filter(Boolean)

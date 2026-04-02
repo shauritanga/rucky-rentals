@@ -6,12 +6,25 @@ import useExchangeRate from '@/hooks/useExchangeRate';
 const CAT_ICONS = {
   Plumbing: '🔧',
   Electrical: '💡',
-  HVAC: '❄️',
+  'Air Condition': '❄️',
+  HVAC: '❄️', // legacy category label compatibility
+  Lift: '🛗',
   General: '🪛',
   Security: '🔒',
   Structural: '🏗️',
   Cleaning: '🧹',
 };
+
+const CATEGORY_OPTIONS = [
+  'Plumbing',
+  'Electrical',
+  'Air Condition',
+  'Lift',
+  'General',
+  'Security',
+  'Structural',
+  'Cleaning',
+];
 
 const REQUEST_FILTERS = [
   ['all',             'All'],
@@ -42,7 +55,9 @@ const PRIORITY_META = {
 const MATERIAL_HINTS = {
   Plumbing: [{ name: 'PVC pipe — 1 inch', unit: 'pc', factor: 0.18, qty: 2 }, { name: 'Ball valve — 1/2 inch', unit: 'pc', factor: 0.12, qty: 1 }],
   Electrical: [{ name: 'Circuit breaker 20A', unit: 'pc', factor: 0.2, qty: 1 }, { name: 'Cable — 2.5mm twin', unit: 'm', factor: 0.1, qty: 4 }],
-  HVAC: [{ name: 'HVAC refrigerant R22', unit: 'kg', factor: 0.24, qty: 2 }],
+  'Air Condition': [{ name: 'AC refrigerant R22', unit: 'kg', factor: 0.24, qty: 2 }],
+  HVAC: [{ name: 'AC refrigerant R22', unit: 'kg', factor: 0.24, qty: 2 }], // legacy category label compatibility
+  Lift: [{ name: 'Lift control relay', unit: 'pc', factor: 0.22, qty: 1 }],
   General: [{ name: 'Hinge set', unit: 'set', factor: 0.12, qty: 1 }],
   Security: [{ name: 'Mortise lock', unit: 'pc', factor: 0.16, qty: 1 }],
   Structural: [{ name: 'Roofing sealant', unit: 'tube', factor: 0.14, qty: 2 }],
@@ -51,6 +66,11 @@ const MATERIAL_HINTS = {
 
 const MATERIALS_PAGE_SIZE = 10;
 const REQUESTS_PAGE_SIZE = 10;
+
+function normalizeCategory(value) {
+  if (String(value || '').trim() === 'HVAC') return 'Air Condition';
+  return value || 'General';
+}
 
 function normalizeWorkflowStatus(ticket) {
   if (ticket.workflow_status) return ticket.workflow_status;
@@ -147,8 +167,10 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
       const labour = Number(ticket.cost || 0);
       const materialCost = 0;
       const recordNumber = buildRecordNumber(ticket);
+      const category = normalizeCategory(ticket.category);
       return {
         ...ticket,
+        category,
         record_number: recordNumber,
         workflow_status: workflowStatus,
         labour,
@@ -156,7 +178,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
         total_cost: labour + materialCost,
         materials: Array.isArray(ticket.materials) && ticket.materials.length
           ? ticket.materials
-          : (MATERIAL_HINTS[ticket.category] || []).map((m) => ({
+          : (MATERIAL_HINTS[category] || []).map((m) => ({
               name: m.name,
               unit: m.unit,
               qty: m.qty,
@@ -441,7 +463,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
               </div>
               <select className="form-input form-select" value={catFilter} onChange={(e) => setCatFilter(e.target.value)} style={{ width: 130, padding: '6px 28px 6px 10px', fontSize: 12.5 }}>
                 <option value="">All Categories</option>
-                {Object.keys(CAT_ICONS).map((c) => <option key={c} value={c}>{c}</option>)}
+                {CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               <button className="btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={() => setShowModal(true)}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -534,8 +556,8 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-            <div className="card"><div className="card-header"><div className="card-title">Upcoming (30 days)</div></div><div style={{ padding: '0 8px 8px' }}>{upcomingSchedule.length ? upcomingSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[task.category] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No tasks due in 30 days</div>}</div></div>
-            <div className="card"><div className="card-header"><div className="card-title">Overdue</div></div><div style={{ padding: '0 8px 8px' }}>{overdueSchedule.length ? overdueSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[task.category] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--red)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No overdue tasks</div>}</div></div>
+            <div className="card"><div className="card-header"><div className="card-title">Upcoming (30 days)</div></div><div style={{ padding: '0 8px 8px' }}>{upcomingSchedule.length ? upcomingSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; const taskCategory = normalizeCategory(task.category); return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[taskCategory] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No tasks due in 30 days</div>}</div></div>
+            <div className="card"><div className="card-header"><div className="card-title">Overdue</div></div><div style={{ padding: '0 8px 8px' }}>{overdueSchedule.length ? overdueSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; const taskCategory = normalizeCategory(task.category); return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[taskCategory] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--red)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No overdue tasks</div>}</div></div>
           </div>
           <div className="card">
             <div className="card-header"><div className="card-title">All Scheduled Tasks</div></div>
@@ -547,7 +569,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 const FREQ = { weekly:'Weekly', monthly:'Monthly', quarterly:'Quarterly', biannual:'Every 6 months', annual:'Annual' };
                 const unitRef = task.unit_ref || task.unit || '—';
                 const nextDue = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—';
-                return <tr key={task.id}><td><div style={{fontWeight:600}}>{task.title}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{task.category}</div></td><td>{unitRef}</td><td style={{fontSize:13}}>{FREQ[task.frequency] || task.frequency}</td><td style={{color:isOverdue?'var(--red)':'var(--text-secondary)',fontWeight:isOverdue?600:400}}>{nextDue}</td><td style={{fontSize:13}}>{task.assignee || '—'}</td><td><span style={{fontSize:12,fontWeight:600,color:isOverdue?'var(--red)':isCompleted?'var(--green)':'var(--accent)'}}>● {isOverdue?'Overdue':isCompleted?'Completed':'Upcoming'}</span></td><td style={{display:'flex',gap:6}}>{!isCompleted && <button className="btn-ghost" style={{fontSize:12,padding:'4px 8px'}} onClick={() => router.patch(`/scheduled-maintenance/${task.id}`, { status: 'completed' }, { onSuccess: () => setSubmitMessage('Task marked complete.') })}>Done</button>}<button className="btn-ghost" style={{fontSize:12,padding:'4px 8px',color:'var(--red)'}} onClick={() => router.delete(`/scheduled-maintenance/${task.id}`, {}, { onSuccess: () => setSubmitMessage('Task removed.') })}>Remove</button></td></tr>;
+                return <tr key={task.id}><td><div style={{fontWeight:600}}>{task.title}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{normalizeCategory(task.category)}</div></td><td>{unitRef}</td><td style={{fontSize:13}}>{FREQ[task.frequency] || task.frequency}</td><td style={{color:isOverdue?'var(--red)':'var(--text-secondary)',fontWeight:isOverdue?600:400}}>{nextDue}</td><td style={{fontSize:13}}>{task.assignee || '—'}</td><td><span style={{fontSize:12,fontWeight:600,color:isOverdue?'var(--red)':isCompleted?'var(--green)':'var(--accent)'}}>● {isOverdue?'Overdue':isCompleted?'Completed':'Upcoming'}</span></td><td style={{display:'flex',gap:6}}>{!isCompleted && <button className="btn-ghost" style={{fontSize:12,padding:'4px 8px'}} onClick={() => router.patch(`/scheduled-maintenance/${task.id}`, { status: 'completed' }, { onSuccess: () => setSubmitMessage('Task marked complete.') })}>Done</button>}<button className="btn-ghost" style={{fontSize:12,padding:'4px 8px',color:'var(--red)'}} onClick={() => router.delete(`/scheduled-maintenance/${task.id}`, {}, { onSuccess: () => setSubmitMessage('Task removed.') })}>Remove</button></td></tr>;
               })}</tbody>
             </table>
           </div>
@@ -733,9 +755,9 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
       </div>
 
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
-        <div className="modal" style={{ width: 660, maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal" style={{ width: 'min(660px, calc(100vw - 24px))', height: 'min(820px, 92dvh)', maxHeight: 'min(92vh, calc(100dvh - 20px))', display: 'flex', flexDirection: 'column' }}>
           <div className="modal-header" style={{ flexShrink: 0 }}><div className="modal-title">New Maintenance Request</div><button className="modal-close" onClick={() => setShowModal(false)}>✕</button></div>
-          <form onSubmit={submitRequest} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <form onSubmit={submitRequest} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto' }}>
               {submitError && (
                 <div style={{ background: 'var(--red-dim, #fef2f2)', color: 'var(--red)', border: '1px solid var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 12 }}>{submitError}</div>
@@ -743,7 +765,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
               <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Request Details</div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Unit *</label><select className="form-input form-select" value={data.unit_ref} onChange={(e) => setData('unit_ref', e.target.value)} required><option value="">Select unit…</option><option value="Common">Common Area</option>{units.map((u) => <option key={u.id || u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
-                <div className="form-group"><label className="form-label">Category *</label><select className="form-input form-select" value={data.category} onChange={(e) => setData('category', e.target.value)} required><option value="">Select…</option>{Object.keys(CAT_ICONS).map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Category *</label><select className="form-input form-select" value={data.category} onChange={(e) => setData('category', e.target.value)} required><option value="">Select…</option>{CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Priority *</label><select className="form-input form-select" value={data.priority} onChange={(e) => setData('priority', e.target.value)}><option value="low">Low — can wait</option><option value="med">Medium — within a week</option><option value="high">High — within 48 hours</option><option value="critical">Critical — immediate</option></select></div>
@@ -836,7 +858,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
               <div className="form-group"><label className="form-label">Unit / Area</label><select className="form-input form-select" value={scheduleForm.unit_ref} onChange={(e) => setScheduleForm((s) => ({ ...s, unit_ref: e.target.value }))}><option value="">Common / All</option>{units.map((u) => <option key={u.id} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
             </div>
             <div className="form-row">
-              <div className="form-group"><label className="form-label">Category</label><select className="form-input form-select" value={scheduleForm.category} onChange={(e) => setScheduleForm((s) => ({ ...s, category: e.target.value }))}>{Object.keys(CAT_ICONS).map((c) => <option key={c}>{c}</option>)}</select></div>
+              <div className="form-group"><label className="form-label">Category</label><select className="form-input form-select" value={scheduleForm.category} onChange={(e) => setScheduleForm((s) => ({ ...s, category: e.target.value }))}>{CATEGORY_OPTIONS.map((c) => <option key={c}>{c}</option>)}</select></div>
               <div className="form-group"><label className="form-label">Frequency</label><select className="form-input form-select" value={scheduleForm.frequency} onChange={(e) => setScheduleForm((s) => ({ ...s, frequency: e.target.value }))}><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="biannual">Every 6 months</option><option value="annual">Annual</option></select></div>
             </div>
             <div className="form-row">

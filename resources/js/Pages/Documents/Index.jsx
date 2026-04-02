@@ -4,9 +4,24 @@ import { Head, useForm, router } from '@inertiajs/react';
 
 const fmt = (n) => Number(n).toLocaleString();
 const EXT_ICON = { pdf:'📕', word:'📘', img:'🖼️', other:'📁' };
-const TAG_LABELS = { lease:'Lease Agreements', id:'Identity Documents', notice:'Notices & Letters', other:'Building & Compliance' };
+const TAG_LABELS = {
+  lease_agreement: 'Lease Agreement',
+  invoice: 'Invoice',
+  deposit: 'Deposit',
+  national_id: 'National ID',
+  handover: 'Handover',
+};
 
-export default function DocumentsIndex({ documents, units }) {
+const resolveDocType = (doc) => {
+  if (doc?.document_type) return doc.document_type;
+  if (doc?.tag === 'lease') return 'lease_agreement';
+  if (doc?.tag === 'id') return 'national_id';
+  if (doc?.tag === 'notice') return 'handover';
+  if (doc?.tag === 'other') return 'invoice';
+  return 'invoice';
+};
+
+export default function DocumentsIndex({ documents, units, tenants = [] }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [view, setView] = useState('grid');
@@ -17,10 +32,11 @@ export default function DocumentsIndex({ documents, units }) {
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
   const [submitError,   setSubmitError]   = useState('');
 
-  const { data, setData, post, processing, reset } = useForm({ file: null, tag:'lease', unit_ref:'', description:'' });
+  const { data, setData, post, processing, reset } = useForm({ file: null, document_type:'lease_agreement', unit_ref:'', tenant_id:'', description:'' });
 
   const filtered = documents.filter(d => {
-    const matchFilter = filter === 'all' || d.tag === filter;
+    const docType = resolveDocType(d);
+    const matchFilter = filter === 'all' || docType === filter;
     const q = search.toLowerCase();
     const matchSearch = !q || d.name.toLowerCase().includes(q) || (d.unit_ref||'').toLowerCase().includes(q);
     return matchFilter && matchSearch;
@@ -34,7 +50,14 @@ export default function DocumentsIndex({ documents, units }) {
   function changeFilter(f) { setFilter(f); setPage(1); }
   function changeSearch(q) { setSearch(q); setPage(1); }
 
-  const counts = { all: documents.length, lease: documents.filter(d=>d.tag==='lease').length, id: documents.filter(d=>d.tag==='id').length, notice: documents.filter(d=>d.tag==='notice').length, other: documents.filter(d=>d.tag==='other').length };
+  const counts = {
+    all: documents.length,
+    lease_agreement: documents.filter(d=>resolveDocType(d)==='lease_agreement').length,
+    invoice: documents.filter(d=>resolveDocType(d)==='invoice').length,
+    deposit: documents.filter(d=>resolveDocType(d)==='deposit').length,
+    national_id: documents.filter(d=>resolveDocType(d)==='national_id').length,
+    handover: documents.filter(d=>resolveDocType(d)==='handover').length,
+  };
 
   const submit = (e) => {
     e.preventDefault();
@@ -43,6 +66,9 @@ export default function DocumentsIndex({ documents, units }) {
       forceFormData: true,
       onSuccess: () => {
         reset();
+        setData('document_type', 'lease_agreement');
+        setData('tenant_id', '');
+        setData('unit_ref', '');
         setShowUpload(false);
         setSubmitMessage({ type: 'success', text: 'Document uploaded successfully.' });
       },
@@ -73,18 +99,20 @@ export default function DocumentsIndex({ documents, units }) {
       <div className="tn-stats-row">
         <div className="tn-stat"><div className="tn-stat-value">{counts.all}</div><div className="tn-stat-label">Total Files</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{counts.lease}</div><div className="tn-stat-label">Lease Agreements</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{counts.lease_agreement}</div><div className="tn-stat-label">Lease Agreements</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{counts.id}</div><div className="tn-stat-label">ID Documents</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{counts.invoice}</div><div className="tn-stat-label">Invoices</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--amber)'}}>{counts.notice}</div><div className="tn-stat-label">Notices</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--amber)'}}>{counts.deposit}</div><div className="tn-stat-label">Deposits</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--text-secondary)'}}>{counts.other}</div><div className="tn-stat-label">Other Files</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{counts.national_id}</div><div className="tn-stat-label">National IDs</div></div>
+        <div className="tn-stat-divider"></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--text-secondary)'}}>{counts.handover}</div><div className="tn-stat-label">Handovers</div></div>
       </div>
 
       <div className="toolbar">
         <div className="filters">
-          {[['all','All'],['lease','Leases'],['id','ID Documents'],['notice','Notices'],['other','Other']].map(([f,l])=>(
+          {[['all','All'],['lease_agreement','Lease Agreement'],['invoice','Invoice'],['deposit','Deposit'],['national_id','National ID'],['handover','Handover']].map(([f,l])=>(
             <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>changeFilter(f)}>{l} <span className="pill-count">{counts[f]||0}</span></button>
           ))}
         </div>
@@ -116,7 +144,7 @@ export default function DocumentsIndex({ documents, units }) {
                   </div>
                 </div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid var(--border-subtle)'}}>
-                  <span className={`doc-tag ${d.tag}`}>{d.tag.charAt(0).toUpperCase()+d.tag.slice(1)}</span>
+                  <span className={`doc-tag ${resolveDocType(d)}`}>{TAG_LABELS[resolveDocType(d)] || resolveDocType(d)}</span>
                   <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{d.created_at?.slice(0,10)}</span>
                 </div>
               </div>
@@ -130,7 +158,7 @@ export default function DocumentsIndex({ documents, units }) {
                   <tr key={d.id} onClick={()=>setSelected(d)}>
                     <td style={{paddingLeft:20}}><div className={`doc-icon ${d.file_type}`} style={{width:30,height:30,borderRadius:7,fontSize:14}}>{EXT_ICON[d.file_type]||'📁'}</div></td>
                     <td><div style={{fontWeight:600,fontSize:'13.5px'}}>{d.name}</div></td>
-                    <td><span className={`doc-tag ${d.tag}`}>{d.tag}</span></td>
+                    <td><span className={`doc-tag ${resolveDocType(d)}`}>{TAG_LABELS[resolveDocType(d)] || resolveDocType(d)}</span></td>
                     <td style={{color:'var(--text-secondary)',fontWeight:500}}>{d.unit_ref&&d.unit_ref!=='—'?d.unit_ref:'—'}</td>
                     <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{d.file_size}</td>
                     <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{d.created_at?.slice(0,10)}</td>
@@ -211,7 +239,7 @@ export default function DocumentsIndex({ documents, units }) {
                 <div className="kv-grid">
                   <div className="kv"><div className="kv-label">File Type</div><div className="kv-value">{selected.file_type?.toUpperCase()}</div></div>
                   <div className="kv"><div className="kv-label">File Size</div><div className="kv-value">{selected.file_size}</div></div>
-                  <div className="kv"><div className="kv-label">Category</div><div className="kv-value accent">{TAG_LABELS[selected.tag]||selected.tag}</div></div>
+                  <div className="kv"><div className="kv-label">Category</div><div className="kv-value accent">{TAG_LABELS[resolveDocType(selected)]||resolveDocType(selected)}</div></div>
                   <div className="kv"><div className="kv-label">Date Added</div><div className="kv-value">{selected.created_at?.slice(0,10)}</div></div>
                   <div className="kv"><div className="kv-label">Uploaded By</div><div className="kv-value" style={{fontSize:12}}>{selected.uploaded_by}</div></div>
                   {selected.unit_ref && <div className="kv"><div className="kv-label">Linked Unit</div><div className="kv-value accent">{selected.unit_ref}</div></div>}
@@ -257,8 +285,11 @@ export default function DocumentsIndex({ documents, units }) {
               <input id="fileInput" type="file" style={{display:'none'}} accept=".pdf,.docx,.doc,.jpg,.jpeg,.png" onChange={e=>setData('file',e.target.files[0])} />
               {data.file && <div style={{background:'var(--bg-elevated)',borderRadius:8,padding:'9px 12px',marginBottom:10,fontSize:13,display:'flex',alignItems:'center',gap:10}}><span>📄</span><span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{data.file.name}</span></div>}
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Document Type</label><select className="form-input form-select" value={data.tag} onChange={e=>setData('tag',e.target.value)}><option value="lease">Lease Agreement</option><option value="id">ID Document</option><option value="notice">Notice / Letter</option><option value="other">Other</option></select></div>
+                <div className="form-group"><label className="form-label">Document Type</label><select className="form-input form-select" value={data.document_type} onChange={e=>setData('document_type',e.target.value)}><option value="lease_agreement">Lease Agreement</option><option value="invoice">Invoice</option><option value="deposit">Deposit</option><option value="national_id">National ID</option><option value="handover">Handover</option></select></div>
                 <div className="form-group"><label className="form-label">Linked Unit</label><select className="form-input form-select" value={data.unit_ref} onChange={e=>setData('unit_ref',e.target.value)}><option value="">— None —</option>{units.map(u=><option key={u.id} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Tenant</label><select className="form-input form-select" value={data.tenant_id} onChange={e=>setData('tenant_id',e.target.value)}><option value="">— None —</option>{tenants.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
               </div>
             </div>
             <div className="modal-footer">

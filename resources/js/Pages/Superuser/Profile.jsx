@@ -55,7 +55,11 @@ export default function Profile() {
   const user = props?.auth?.user;
   const userName = user?.name || 'Super Admin';
   const userParts = userName.split(' ');
-  const roleLabel = user?.role ? user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Super Admin';
+  const roleLabel = user?.role
+    ? (user.role === 'lease_manager'
+      ? 'Lease Assistant'
+      : user.role.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+    : 'Super Admin';
 
   const [tab, setTab] = useState('personal');
   const [firstName, setFirstName] = useState(userParts[0] || 'Super');

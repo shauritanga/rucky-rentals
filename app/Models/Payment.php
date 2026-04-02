@@ -22,6 +22,21 @@ class Payment extends Model
         'currency',
         'exchange_rate',
         'amount_in_base',
+        'breakdown_rent',
+        'breakdown_service_charge',
+        'breakdown_electricity',
+        'issue_receipt',
+        'wht_confirmed',
+        'wht_reference',
+        'receipt_id',
+    ];
+
+    protected $casts = [
+        'issue_receipt' => 'boolean',
+        'wht_confirmed' => 'boolean',
+        'breakdown_rent' => 'float',
+        'breakdown_service_charge' => 'float',
+        'breakdown_electricity' => 'float',
     ];
 
     public function property()
@@ -39,5 +54,10 @@ class Payment extends Model
     public function unit()
     {
         return $this->belongsTo(Unit::class);
+    }
+
+    public function receipt()
+    {
+        return $this->belongsTo(Receipt::class);
     }
 }

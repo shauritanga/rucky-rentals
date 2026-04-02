@@ -106,7 +106,7 @@ class TeamController extends Controller
             'name' => 'required|string|max:120',
             'email' => 'required|email|max:120|unique:users,email',
             'phone' => 'nullable|string|max:30',
-            'role' => 'required|in:accountant,lease_manager,maintenance_staff,viewer',
+            'role' => 'required|in:lease_manager,maintenance_staff,viewer',
             'password' => 'required|string|min:8',
             'permissions' => 'nullable|array',
         ]);
@@ -322,7 +322,7 @@ class TeamController extends Controller
     {
         return match ($role) {
             'accountant' => 'Accountant',
-            'lease_manager' => 'Lease Manager',
+            'lease_manager' => 'Lease Assistant',
             'maintenance_staff' => 'Maintenance Staff',
             'viewer' => 'Viewer',
             default => ucfirst(str_replace('_', ' ', $role)),

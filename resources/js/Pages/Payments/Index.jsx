@@ -3,6 +3,14 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 
 const invoiceTotal = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+const classifyInvoiceItem = (item = {}) => {
+  const type = String(item.item_type || '').toLowerCase();
+  const desc = String(item.description || '').toLowerCase();
+  if (type === 'rent' || desc.includes('rent')) return 'rent';
+  if (type === 'service_charge' || desc.includes('service charge')) return 'service_charge';
+  if (type === 'electricity' || desc.includes('electricity') || desc.includes('generator') || desc.includes('submeter')) return 'electricity';
+  return 'electricity';
+};
 
 const toInitials = (name = '') =>
   String(name)
@@ -95,6 +103,9 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
     paid_date: '',
     reference: '',
     notes: '',
+    issue_receipt: false,
+    wht_confirmed: false,
+    wht_reference: '',
   });
 
   const paymentRows = useMemo(() => {
@@ -316,6 +327,28 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
   const reconcileVariance = received - selectedBalanceDue;
 
   const canSubmit = Boolean(selectedInvoiceId && received > 0 && data.paid_date);
+  const invoiceBreakdown = useMemo(() => {
+    if (!selectedInvoice) {
+      return { rent: 0, service_charge: 0, electricity: 0, hasLeaseRelated: false, electricityOnly: false };
+    }
+    const totals = (selectedInvoice.items || []).reduce((acc, item) => {
+      const bucket = classifyInvoiceItem(item);
+      acc[bucket] += Number(item.total || 0);
+      return acc;
+    }, { rent: 0, service_charge: 0, electricity: 0 });
+    const hasLeaseRelated = totals.rent > 0 || totals.service_charge > 0;
+    const electricityOnly = !hasLeaseRelated && totals.electricity > 0;
+    return { ...totals, hasLeaseRelated, electricityOnly };
+  }, [selectedInvoice]);
+  const isPartialPayment = selectedInvoice && received > 0 && received + 0.01 < selectedBalanceDue;
+  const receiptValidationError = (() => {
+    if (!data.issue_receipt) return '';
+    if (isPartialPayment) return 'Receipt cannot be issued for partial payments.';
+    if (invoiceBreakdown.hasLeaseRelated && !data.wht_confirmed) {
+      return 'WHT confirmation is required to issue receipt for rent/service charge payments.';
+    }
+    return '';
+  })();
 
   const openRecordPaymentModal = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -327,6 +360,9 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
     setData('method', 'Bank Transfer');
     setData('paid_date', today);
     setData('status', 'paid');
+    setData('issue_receipt', false);
+    setData('wht_confirmed', false);
+    setData('wht_reference', '');
   };
 
   const onSelectInvoice = (invoiceId) => {
@@ -386,6 +422,11 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
       month: data.month || selectedInv?.period || 'Mar 2026',
       reference: data.reference || selectedInv?.invoice_number || '',
     };
+
+    if (data.issue_receipt && receiptValidationError) {
+      setSubmitError(receiptValidationError);
+      return;
+    }
 
     post('/payments', {
       data: payload,
@@ -729,6 +770,34 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                 {errors.notes && <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)' }}>{errors.notes}</div>}
               </div>
 
+              <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginTop: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 600 }}>
+                  <input type="checkbox" checked={!!data.issue_receipt} onChange={(e) => setData('issue_receipt', e.target.checked)} />
+                  Issue Receipt
+                </label>
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                  {invoiceBreakdown.electricityOnly
+                    ? 'Electricity-only payment: receipt can be issued without WHT confirmation.'
+                    : 'Rent/service charge payments require WHT confirmation before receipt issuance.'}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                    <input type="checkbox" checked={!!data.wht_confirmed} onChange={(e) => setData('wht_confirmed', e.target.checked)} />
+                    Tenant confirmed WHT payment
+                  </label>
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <label className="form-label">WHT Reference / Note</label>
+                  <input className="form-input" type="text" value={data.wht_reference} onChange={(e) => setData('wht_reference', e.target.value)} placeholder="Optional WHT reference number" />
+                </div>
+                {(errors.wht_confirmed || errors.issue_receipt) && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: 'var(--red)' }}>{errors.wht_confirmed || errors.issue_receipt}</div>
+                )}
+                {receiptValidationError && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: 'var(--red)' }}>{receiptValidationError}</div>
+                )}
+              </div>
+
               {selectedInvoice && received > 0 && (
                 <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 4 }}>
                   <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Reconciliation Preview</div>
@@ -753,7 +822,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
 
             <div className="modal-footer" style={{ flexShrink: 0 }}>
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)} disabled={processing}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={!canSubmit || processing}>
+              <button type="submit" className="btn-primary" disabled={!canSubmit || processing || (data.issue_receipt && !!receiptValidationError)}>
                 {processing ? <span className="btn-spinner" /> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>}
                 {processing ? 'Processing...' : 'Confirm Payment'}
               </button>

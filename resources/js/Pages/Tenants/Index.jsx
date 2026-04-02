@@ -452,11 +452,11 @@ export default function TenantsIndex({ tenants }) {
                     <input className="form-input" value={data.company_name} onChange={e=>setData('company_name',e.target.value)} required />
                   </div>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">Contact Person</label><input className="form-input" value={data.contact_person} onChange={e=>setData('contact_person',e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">Contact Person *</label><input className="form-input" value={data.contact_person} onChange={e=>setData('contact_person',e.target.value)} required /></div>
                     <div className="form-group"><label className="form-label">Registration Number</label><input className="form-input" value={data.registration_number} onChange={e=>setData('registration_number',e.target.value)} /></div>
                   </div>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">TIN</label><input className="form-input" value={data.tin} onChange={e=>setData('tin',e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">TIN *</label><input className="form-input" value={data.tin} onChange={e=>setData('tin',e.target.value)} required /></div>
                     <div className="form-group"><label className="form-label">VRN</label><input className="form-input" value={data.vrn} onChange={e=>setData('vrn',e.target.value)} /></div>
                   </div>
                 </>
@@ -482,7 +482,7 @@ export default function TenantsIndex({ tenants }) {
               {data.tenant_type === 'individual' && (
                 <div className="form-row">
                   <div className="form-group"><label className="form-label">Next of Kin</label><input className="form-input" value={data.nok_name} onChange={e=>setData('nok_name',e.target.value)} /></div>
-                  <div className="form-group"><label className="form-label">NOK Phone</label><input className="form-input" value={data.nok_phone} onChange={e=>setData('nok_phone',e.target.value)} /></div>
+                  <div className="form-group"><label className="form-label">Next of Kin Phone</label><input className="form-input" value={data.nok_phone} onChange={e=>setData('nok_phone',e.target.value)} /></div>
                 </div>
               )}
 

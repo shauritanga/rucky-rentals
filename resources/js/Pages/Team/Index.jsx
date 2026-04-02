@@ -26,7 +26,7 @@ const ACTION_CFG = {
 
 const ROLE_LABELS = {
   accountant: 'Accountant',
-  lease_manager: 'Lease Manager',
+  lease_manager: 'Lease Assistant',
   maintenance_staff: 'Maintenance Staff',
   viewer: 'Viewer',
 };
@@ -300,7 +300,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
         <div className="units-filters">
           <button className={`filter-pill ${teamFilter==='all'?'active':''}`} onClick={() => setFilter('all')}>All <span className="pill-count">{counts.all}</span></button>
           <button className={`filter-pill ${teamFilter==='accountant'?'active':''}`} onClick={() => setFilter('accountant')}>Accountant <span className="pill-count">{counts.accountant}</span></button>
-          <button className={`filter-pill ${teamFilter==='lease_manager'?'active':''}`} onClick={() => setFilter('lease_manager')}>Lease Manager <span className="pill-count">{counts.lease_manager}</span></button>
+          <button className={`filter-pill ${teamFilter==='lease_manager'?'active':''}`} onClick={() => setFilter('lease_manager')}>Lease Assistant <span className="pill-count">{counts.lease_manager}</span></button>
           <button className={`filter-pill ${teamFilter==='maintenance_staff'?'active':''}`} onClick={() => setFilter('maintenance_staff')}>Maintenance <span className="pill-count">{counts.maintenance_staff}</span></button>
           <button className={`filter-pill ${teamFilter==='viewer'?'active':''}`} onClick={() => setFilter('viewer')}>Viewer <span className="pill-count">{counts.viewer}</span></button>
         </div>
@@ -472,7 +472,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
               <tr style={{borderBottom:'1px solid var(--border-subtle)'}}>
                 <th style={{textAlign:'left',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Resource</th>
                 <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Accountant</th>
-                <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Lease Manager</th>
+                <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Lease Assistant</th>
                 <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Maintenance Staff</th>
                 <th style={{textAlign:'center',padding:'8px 12px',fontSize:11,fontWeight:600,letterSpacing:'.4px',textTransform:'uppercase',color:'var(--text-muted)'}}>Viewer</th>
               </tr>
@@ -528,8 +528,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                 <div className="form-group"><label className="form-label">Role *</label>
                   <select className="form-input form-select" value={data.role} onChange={(e) => onRoleChange(e.target.value)} required>
                     <option value="">Select role…</option>
-                    <option value="accountant">Accountant</option>
-                    <option value="lease_manager">Lease Manager</option>
+                    <option value="lease_manager">Lease Assistant</option>
                     <option value="maintenance_staff">Maintenance Staff</option>
                     <option value="viewer">Viewer (Read-Only)</option>
                   </select>
