@@ -239,7 +239,7 @@ class SuperuserController extends Controller
             'email' => $data['email'],
             'password' => Hash::make($initialPassword),
             'role' => $data['role'],
-            'property_id' => $data['role'] === 'manager' ? ($data['property_id'] ?? null) : null,
+            'property_id' => $data['property_id'] ?? null,
             'must_change_password' => $data['role'] === 'manager',
         ]);
 
@@ -254,6 +254,8 @@ class SuperuserController extends Controller
             }
 
             $property->update(['manager_user_id' => $user->id]);
+        } elseif (!empty($data['property_id'])) {
+            $assignedPropertyName = Property::where('id', $data['property_id'])->value('name');
         }
 
         $this->logAudit(
@@ -262,7 +264,7 @@ class SuperuserController extends Controller
             resource: sprintf('%s (%s)', $user->name, $user->role),
             propertyName: $assignedPropertyName ?? 'All',
             category: 'user',
-            propertyId: ($data['role'] === 'manager' && !empty($data['property_id'])) ? (int) $data['property_id'] : null,
+            propertyId: !empty($data['property_id']) ? (int) $data['property_id'] : null,
         );
 
         if ($data['role'] === 'manager') {
