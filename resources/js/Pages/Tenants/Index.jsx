@@ -439,8 +439,8 @@ export default function TenantsIndex({ tenants }) {
               <div className="form-group" style={{marginBottom:16}}>
                 <label className="form-label">Tenant Type</label>
                 <div className="nl-toggle-bar">
-                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='individual'?'active':''}`} onClick={()=>setData('tenant_type','individual')}>Individual</button>
-                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='company'?'active':''}`} onClick={()=>setData('tenant_type','company')}>Company</button>
+                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='individual'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'individual',company_name:'',registration_number:'',tin:'',vrn:'',contact_person:''}))}>Individual</button>
+                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='company'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'company',name:'',national_id:'',nok_name:'',nok_phone:'',nok_relation:''}))}>Company</button>
                 </div>
               </div>
 

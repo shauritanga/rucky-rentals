@@ -46,7 +46,7 @@ class TenantController extends Controller
             'registration_number' => 'nullable|string|max:100',
             'tin'                 => 'required_if:tenant_type,company|nullable|string|max:50',
             'vrn'                 => 'nullable|string|max:50',
-            'contact_person'      => 'required|string|max:255',
+            'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
             'email'               => 'required|email|unique:tenants',
             'phone'               => 'required|string|max:50',
             'notes'               => 'nullable|string',
@@ -55,8 +55,17 @@ class TenantController extends Controller
         if ($data['tenant_type'] === 'company') {
             $data['name'] = $data['company_name'];
             $words = explode(' ', trim($data['company_name']));
+            $data['national_id']  = null;
+            $data['nok_name']     = null;
+            $data['nok_phone']    = null;
+            $data['nok_relation'] = null;
         } else {
             $words = explode(' ', trim($data['name']));
+            $data['company_name']        = null;
+            $data['registration_number'] = null;
+            $data['tin']                 = null;
+            $data['vrn']                 = null;
+            $data['contact_person']      = null;
         }
         $data['initials']   = strtoupper(substr($words[0], 0, 1) . (isset($words[1]) ? substr($words[1], 0, 1) : ''));
         $data['color']      = 'rgba(59,130,246,.18)';
@@ -106,7 +115,7 @@ class TenantController extends Controller
             'registration_number' => 'nullable|string|max:100',
             'tin'                 => 'required_if:tenant_type,company|nullable|string|max:50',
             'vrn'                 => 'nullable|string|max:50',
-            'contact_person'      => 'required|string|max:255',
+            'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
             'email'               => 'required|email|unique:tenants,email,' . $tenant->id,
             'phone'               => 'required|string|max:50',
             'notes'               => 'nullable|string',
@@ -114,6 +123,16 @@ class TenantController extends Controller
 
         if ($data['tenant_type'] === 'company') {
             $data['name'] = $data['company_name'];
+            $data['national_id']  = null;
+            $data['nok_name']     = null;
+            $data['nok_phone']    = null;
+            $data['nok_relation'] = null;
+        } else {
+            $data['company_name']        = null;
+            $data['registration_number'] = null;
+            $data['tin']                 = null;
+            $data['vrn']                 = null;
+            $data['contact_person']      = null;
         }
 
         $tenant->update($data);
