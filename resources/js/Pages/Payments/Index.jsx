@@ -2,7 +2,22 @@ import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 
-const invoiceTotal = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+// Sum of raw item amounts (net, VAT-exclusive)
+const invoiceItemsNet = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+
+// Gross payable = net + VAT. Items are VAT-exclusive; VAT is added on top.
+// For rent/SC invoices the lease carries the vat_rate. Electricity invoices have no VAT.
+const invoiceTotal = (inv) => {
+  const net = invoiceItemsNet(inv);
+  const vatRate = Number(inv.lease?.vat_rate ?? 0);
+  const hasLeaseItems = (inv.items || []).some((i) => {
+    const t = String(i.item_type || '').toLowerCase();
+    const d = String(i.description || '').toLowerCase();
+    return t === 'rent' || t === 'service_charge' || d.includes('rent') || d.includes('service charge');
+  });
+  const vat = hasLeaseItems && vatRate > 0 ? Math.round(net * vatRate / 100) : 0;
+  return net + vat;
+};
 const classifyInvoiceItem = (item = {}) => {
   const type = String(item.item_type || '').toLowerCase();
   const desc = String(item.description || '').toLowerCase();
@@ -802,7 +817,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                 <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 4 }}>
                   <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Reconciliation Preview</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Invoice net payable</span><span>{formatAmount(selectedInvoiceNet, selectedInvoiceCurrency)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Invoice gross (incl. VAT)</span><span>{formatAmount(selectedInvoiceNet, selectedInvoiceCurrency)}</span></div>
                     {selectedTenantCredit > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--green)' }}>Less: credit on account</span><span style={{ color: 'var(--green)' }}>({formatAmount(selectedTenantCredit, selectedInvoiceCurrency)})</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Balance due</span><span>{formatAmount(selectedBalanceDue, selectedInvoiceCurrency)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Amount received</span><span>{formatAmount(received, selectedInvoiceCurrency)}</span></div>
