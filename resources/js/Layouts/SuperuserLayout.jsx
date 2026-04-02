@@ -265,7 +265,7 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <div className="logo-mark">R</div>
-          <span className="logo-text">Rucky Rentals</span>
+          <span className="logo-text">Ruky Rentals</span>
         </div>
 
         <nav className="nav">

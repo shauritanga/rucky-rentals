@@ -194,7 +194,7 @@ class ElectricityModuleTest extends TestCase
     private function createLeaseContext(string $electricityType): array
     {
         $property = Property::create([
-            'name' => 'Rucky Plaza',
+            'name' => 'Ruky Plaza',
             'code' => 'RPZ-' . strtoupper(substr($electricityType, 0, 3)),
             'status' => 'active',
             'unit_count' => 1,

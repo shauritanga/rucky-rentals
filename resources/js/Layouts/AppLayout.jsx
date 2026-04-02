@@ -52,7 +52,7 @@ export default function AppLayout({ children, title, subtitle }) {
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} id="sidebar">
         <div className="sidebar-header">
           <div className="logo-mark">R</div>
-          <span className="logo-text">Rucky Rentals</span>
+          <span className="logo-text">Ruky Rentals</span>
         </div>
 
         <nav className="nav">

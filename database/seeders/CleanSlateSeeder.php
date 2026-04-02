@@ -43,7 +43,7 @@ class CleanSlateSeeder extends Seeder
         // --- 2. Create superuser ---
         User::create([
             'name'                => 'Super Admin',
-            'email'               => 'admin@ruckyrentals.co.tz',
+            'email'               => 'admin@rukyrentals.co.tz',
             'password'            => Hash::make('admin123'),
             'role'                => 'superuser',
             'property_id'         => null,

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rucky Rentals - Sign In</title>
+    <title>Ruky Rentals - Sign In</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
     <style>
@@ -558,7 +558,7 @@
             <div class="left-brand">
                 <div class="brand-mark">R</div>
                 <div>
-                    <div class="brand-name">Rucky Rentals</div>
+                    <div class="brand-name">Ruky Rentals</div>
                     <div class="brand-tagline">Property Management System</div>
                 </div>
             </div>
@@ -592,7 +592,7 @@
                 </div>
             </div>
 
-            <div class="left-footer">© 2026 Rucky Rentals Ltd - Dar es Salaam, Tanzania</div>
+            <div class="left-footer">© 2026 Ruky Rentals Ltd - Dar es Salaam, Tanzania</div>
         </div>
 
         <div class="right-panel">
@@ -604,7 +604,7 @@
 
             <div class="login-form-wrap">
                 <div class="form-heading">Welcome back</div>
-                <div class="form-subheading">Sign in to your Rucky Rentals account</div>
+                <div class="form-subheading">Sign in to your Ruky Rentals account</div>
 
                 @if ($errors->any())
                 <div class="error-msg show" id="errorMsg">
@@ -630,7 +630,7 @@
                     @csrf
                     <div class="form-group">
                         <label class="form-label" for="email">Email Address</label>
-                        <input class="form-input" type="email" id="email" name="email" placeholder="you@ruckyrentals.co.tz" autocomplete="email" value="{{ old('email') }}" required>
+                        <input class="form-input" type="email" id="email" name="email" placeholder="you@rukyrentals.co.tz" autocomplete="email" value="{{ old('email') }}" required>
                     </div>
 
                     <div class="form-group">
@@ -702,7 +702,7 @@
         }
 
         function showForgot() {
-            showToast('Password reset: contact admin@ruckyrentals.co.tz');
+            showToast('Password reset: contact admin@rukyrentals.co.tz');
         }
 
         function showToast(msg) {
@@ -722,7 +722,7 @@
                 '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>' :
                 '<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>';
             try {
-                localStorage.setItem('rucky_theme', isDark ? 'light' : 'dark');
+                localStorage.setItem('ruky_theme', isDark ? 'light' : 'dark');
             } catch (e) {}
         }
 
@@ -737,9 +737,9 @@
                     try {
                         const email = document.getElementById('email').value.trim().toLowerCase();
                         if (document.getElementById('rememberMe').checked && email) {
-                            localStorage.setItem('rucky_remember', email);
+                            localStorage.setItem('ruky_remember', email);
                         } else {
-                            localStorage.removeItem('rucky_remember');
+                            localStorage.removeItem('ruky_remember');
                         }
                     } catch (e) {}
                     setLoading(true);
@@ -747,12 +747,12 @@
             }
 
             try {
-                const remembered = localStorage.getItem('rucky_remember');
+                const remembered = localStorage.getItem('ruky_remember');
                 if (remembered) {
                     document.getElementById('email').value = remembered;
                     document.getElementById('password').focus();
                 }
-                const theme = localStorage.getItem('rucky_theme');
+                const theme = localStorage.getItem('ruky_theme');
                 if (theme) document.documentElement.setAttribute('data-theme', theme);
             } catch (e) {}
         });

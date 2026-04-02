@@ -64,7 +64,7 @@ export default function Profile() {
   const [tab, setTab] = useState('personal');
   const [firstName, setFirstName] = useState(userParts[0] || 'Super');
   const [lastName, setLastName] = useState(userParts.slice(1).join(' ') || 'Admin');
-  const [email, setEmail] = useState(user?.email || 'admin@ruckyrentals.co.tz');
+  const [email, setEmail] = useState(user?.email || 'admin@rukyrentals.co.tz');
   const [phone, setPhone] = useState('+255 700 000 001');
   const [bio, setBio] = useState('Platform owner responsible for global portfolio controls, manager assignments, and system governance.');
   const [avatarSrc, setAvatarSrc] = useState(user?.avatar_url || '');

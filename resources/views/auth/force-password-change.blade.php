@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Change Password - Rucky Rentals</title>
+    <title>Change Password - Ruky Rentals</title>
     <style>
         :root {
             --bg: #f3f6fb;

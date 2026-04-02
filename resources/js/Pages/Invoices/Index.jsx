@@ -91,7 +91,7 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:32}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <div style={{width:36,height:36,borderRadius:9,background:'var(--accent)',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Instrument Serif',serif",fontStyle:'italic',fontSize:18,color:'#fff',flexShrink:0}}>R</div>
-          <div><div style={{fontSize:17,fontWeight:700}}>Rucky Rentals</div><div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>Nairobi, Kenya · info@rucky.ke</div></div>
+          <div><div style={{fontSize:17,fontWeight:700}}>Ruky Rentals</div><div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>Nairobi, Kenya · info@ruky.ke</div></div>
         </div>
         <div style={{textAlign:'right'}}>
           <div style={{fontSize:22,fontWeight:800,letterSpacing:'-.5px',color:inv.type==='proforma'?'var(--amber)':'var(--accent)',textTransform:'uppercase'}}>{inv.type==='proforma'?'PROFORMA INVOICE':'TAX INVOICE'}</div>
@@ -101,7 +101,7 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
       <div style={{height:1,background:'var(--border-subtle)',margin:'20px 0'}}></div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,marginBottom:28}}>
         <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>Billed To</div><div style={{fontSize:14,fontWeight:600,marginBottom:3}}>{inv.tenant_name}</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.6}}>{inv.tenant_email||'—'}<br/>Unit {inv.unit_ref}</div></div>
-        <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>From</div><div style={{fontSize:14,fontWeight:600,marginBottom:3}}>Rucky Rentals Ltd</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.6}}>P.O. Box 10042-00100<br/>Nairobi, Kenya</div></div>
+        <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>From</div><div style={{fontSize:14,fontWeight:600,marginBottom:3}}>Ruky Rentals Ltd</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.6}}>P.O. Box 10042-00100<br/>Nairobi, Kenya</div></div>
         <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>Invoice Details</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.8}}><strong>Issue Date:</strong> {inv.issued_date}<br/><strong>Due Date:</strong> {inv.due_date||'—'}<br/><strong>Period:</strong> {inv.period||'—'}</div></div>
       </div>
       <div style={{height:1,background:'var(--border-subtle)',margin:'20px 0'}}></div>

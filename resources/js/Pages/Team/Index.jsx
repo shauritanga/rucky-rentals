@@ -521,7 +521,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
               <div style={{fontSize:10.5,fontWeight:700,letterSpacing:'.6px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:12}}>Personal Information</div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="e.g. David Kamau" required /></div>
-                <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={data.email} onChange={(e) => setData('email', e.target.value)} placeholder="e.g. david@ruckyrentals.co.tz" required /></div>
+                <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={data.email} onChange={(e) => setData('email', e.target.value)} placeholder="e.g. david@rukyrentals.co.tz" required /></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={data.phone} onChange={(e) => setData('phone', e.target.value)} placeholder="+255 7xx xxx xxx" /></div>

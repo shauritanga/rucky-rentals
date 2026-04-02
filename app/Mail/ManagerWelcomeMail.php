@@ -30,7 +30,7 @@ class ManagerWelcomeMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Welcome to the Rucky Rentals Management Team',
+            subject: 'Welcome to the Ruky Rentals Management Team',
         );
     }
 

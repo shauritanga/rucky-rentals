@@ -18,12 +18,12 @@ return new class extends Migration
 
         // Seed default values
         $defaults = [
-            'company_name'         => 'Rucky Rentals Ltd',
+            'company_name'         => 'Ruky Rentals Ltd',
             'company_registration' => 'CPR-2021-00482',
             'vat_number'           => 'P051234567M',
             'default_currency'     => 'TZS',
             'default_country'      => 'Tanzania',
-            'support_email'        => 'support@ruckyrentals.co.tz',
+            'support_email'        => 'support@rukyrentals.co.tz',
             'min_lease_months'     => '12',
             'deposit_multiplier'   => '2',
             'late_fee_days'        => '7',

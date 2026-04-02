@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rucky Rentals Team Invite</title>
+    <title>Ruky Rentals Team Invite</title>
 </head>
 
 <body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
@@ -15,14 +15,14 @@
                     <tr>
                         <td style="background:linear-gradient(135deg,#0f766e,#0b5f58);padding:24px 28px;color:#ffffff;">
                             <h1 style="margin:0;font-size:22px;line-height:1.3;font-weight:700;">Your Team Account Is Ready</h1>
-                            <p style="margin:10px 0 0;font-size:14px;opacity:.92;">Rucky Rentals</p>
+                            <p style="margin:10px 0 0;font-size:14px;opacity:.92;">Ruky Rentals</p>
                         </td>
                     </tr>
                     <tr>
                         <td style="padding:28px;">
                             <p style="margin:0 0 14px;font-size:15px;line-height:1.6;">Hello {{ $memberName }},</p>
                             <p style="margin:0 0 14px;font-size:15px;line-height:1.6;">
-                                A team account has been created for you on Rucky Rentals.
+                                A team account has been created for you on Ruky Rentals.
                             </p>
                             <p style="margin:0 0 14px;font-size:15px;line-height:1.6;">
                                 Role: <strong>{{ $roleLabel }}</strong>
@@ -60,7 +60,7 @@
                     </tr>
                     <tr>
                         <td style="padding:16px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;">
-                            This is an automated onboarding message from Rucky Rentals.
+                            This is an automated onboarding message from Ruky Rentals.
                         </td>
                     </tr>
                 </table>

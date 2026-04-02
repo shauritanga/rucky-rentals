@@ -24,7 +24,7 @@ class TeamInviteMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Your Rucky Rentals Team Account Is Ready',
+            subject: 'Your Ruky Rentals Team Account Is Ready',
         );
     }
 
