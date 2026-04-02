@@ -6,6 +6,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
     const [role, setRole] = useState('');
     const [showArchived, setShowArchived] = useState(false);
     const [openMenu, setOpenMenu] = useState(null);
+    const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [confirmName, setConfirmName] = useState('');
     const [confirmError, setConfirmError] = useState('');
@@ -140,32 +141,22 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                     <td>{manager.lastActive || 'Recently'}</td>
                                     <td><span className={`badge ${manager.twoFA ? 'active' : 'inactive'}`}>{manager.twoFA ? 'Enabled' : 'Disabled'}</span></td>
                                     <td><span className={`badge ${manager.status === 'suspended' ? 'rejected' : 'active'}`}>{manager.status || 'active'}</span></td>
-                                    <td style={{ position: 'relative' }}>
+                                    <td>
                                         {manager.role !== 'superuser' ? (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    className="btn-ghost"
-                                                    style={{ padding: '4px 12px', fontSize: 18, lineHeight: 1 }}
-                                                    onClick={(e) => { e.stopPropagation(); setOpenMenu(openMenu === manager.id ? null : manager.id); }}
-                                                >
-                                                    ⋮
-                                                </button>
-                                                {openMenu === manager.id && (
-                                                    <div
-                                                        style={{ position: 'absolute', right: 0, top: '100%', zIndex: 50, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, minWidth: 140, boxShadow: '0 4px 16px rgba(0,0,0,.14)' }}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <button
-                                                            type="button"
-                                                            style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: 13, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}
-                                                            onClick={(e) => { e.stopPropagation(); openDeleteModal(manager); setOpenMenu(null); }}
-                                                        >
-                                                            Remove
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </>
+                                            <button
+                                                type="button"
+                                                className="btn-ghost"
+                                                style={{ padding: '4px 12px', fontSize: 18, lineHeight: 1 }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (openMenu === manager.id) { setOpenMenu(null); return; }
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    setMenuPos({ top: rect.bottom + window.scrollY, right: window.innerWidth - rect.right });
+                                                    setOpenMenu(manager.id);
+                                                }}
+                                            >
+                                                ⋮
+                                            </button>
                                         ) : (
                                             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>—</span>
                                         )}
@@ -219,6 +210,26 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                     </table>
                 </div>
             )}
+
+            {/* Actions dropdown — fixed position so it never gets clipped by table overflow */}
+            {openMenu !== null && (() => {
+                const manager = filtered.find((m) => m.id === openMenu);
+                if (!manager) return null;
+                return (
+                    <div
+                        style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, zIndex: 200, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, minWidth: 140, boxShadow: '0 4px 16px rgba(0,0,0,.14)' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            style={{ display: 'block', width: '100%', padding: '10px 16px', textAlign: 'left', fontSize: 13, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}
+                            onClick={(e) => { e.stopPropagation(); openDeleteModal(manager); setOpenMenu(null); }}
+                        >
+                            Remove
+                        </button>
+                    </div>
+                );
+            })()}
 
             {/* Delete confirmation dialog — uses 'open' class like all other modals in this app */}
             <div className={`modal-overlay ${deleteTarget ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeDeleteModal()}>
