@@ -14,6 +14,7 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .toggle-btn{width:30px;height:30px;border-radius:7px;background:none;border:none;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:color .15s,background .15s;flex-shrink:0;margin-left:auto;padding:0}
 .toggle-btn:hover{color:var(--text-primary);background:var(--bg-hover)}
 .nav{flex:1;padding:12px 8px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+.nav-items-wrap{display:flex;flex-direction:column;gap:2px}
 .nav-section-label{font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);padding:8px 10px 4px;white-space:nowrap;overflow:hidden;transition:opacity .18s}
 .sidebar.collapsed .nav-section-label{opacity:0}
 .nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--text-secondary);font-size:13.5px;font-weight:450;white-space:nowrap;transition:background .15s,color .15s;position:relative;overflow:hidden;text-decoration:none}

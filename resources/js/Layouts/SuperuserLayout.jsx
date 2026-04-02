@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 import echo from '@/echo';
@@ -233,12 +233,134 @@ const NAV = [
   { id: 'settings', label: 'Settings', section: null, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.54V22a2 2 0 01-4 0v-.09a1.7 1.7 0 00-1-1.54 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.54-1H2a2 2 0 010-4h.09a1.7 1.7 0 001.54-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 012.83-2.83l.06.06a1.7 1.7 0 001.87.34h.01a1.7 1.7 0 001-1.54V2a2 2 0 014 0v.09a1.7 1.7 0 001 1.54h.01a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 012.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87v.01a1.7 1.7 0 001.54 1H22a2 2 0 010 4h-.09a1.7 1.7 0 00-1.54 1z"/></svg> },
 ];
 
+/* ─── Overflow "•••" button (superuser sidebar) ──────────────────── */
+function OverflowNavBtnSU({ items, activeView, onNavigate, navCounts, collapsed }) {
+  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState({ left: 0, bottom: 0 });
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+
+  const open = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({
+        left: collapsed ? r.right + 8 : r.left,
+        bottom: window.innerHeight - r.top + 6,
+      });
+    }
+    setShow(true);
+  };
+
+  useEffect(() => {
+    if (!show) return;
+    const handler = (e) => {
+      if (!btnRef.current?.contains(e.target) && !popRef.current?.contains(e.target))
+        setShow(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [show]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={`nav-item${show ? ' active' : ''}`}
+        onClick={() => (show ? setShow(false) : open())}
+        data-tooltip="More"
+        style={{
+          position: 'absolute', bottom: 4, left: 8, right: 8,
+          border: 'none', background: show ? 'var(--bg-hover)' : 'none',
+          cursor: 'pointer', width: 'calc(100% - 16px)',
+        }}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 16, height: 16, flexShrink: 0 }}>
+          <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+        </svg>
+        <span className="nav-label">More</span>
+      </button>
+
+      {show && (
+        <div
+          ref={popRef}
+          style={{
+            position: 'fixed',
+            left: pos.left,
+            bottom: pos.bottom,
+            minWidth: 200,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            padding: 6,
+            boxShadow: '0 8px 30px rgba(0,0,0,.25)',
+            zIndex: 400,
+          }}
+        >
+          {items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`nav-item${activeView === item.id ? ' active' : ''}`}
+              onClick={() => { onNavigate(item.id); setShow(false); }}
+              style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', display: 'flex' }}
+            >
+              {item.icon}
+              <span style={{ opacity: 1, marginLeft: 10, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
+              {!!item.badgeKey && navCounts[item.badgeKey] > 0 && (
+                <span className="nav-badge" style={{ marginLeft: 'auto', opacity: 1 }}>{navCounts[item.badgeKey]}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function SuperuserLayout({ activeView, onNavigate, title, subtitle, actionLabel, onAction, navCounts = {}, children }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
   const [theme, setTheme] = useState('dark');
   const { props } = usePage();
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
+
+  /* ── Nav overflow ──────────────────────────────────────────────── */
+  const navRef = useRef(null);
+  const [overflowFrom, setOverflowFrom] = useState(NAV.length);
+  const OVERFLOW_BTN_H = 40;
+
+  const measureNav = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const wrap = nav.querySelector('.nav-items-wrap');
+    if (!wrap) return;
+    const navH = nav.clientHeight;
+    const children = Array.from(wrap.children);
+
+    // Pass 1: does ANYTHING actually overflow the nav?
+    let hasOverflow = false;
+    for (const child of children) {
+      if (child.offsetTop + child.offsetHeight > navH) { hasOverflow = true; break; }
+    }
+    if (!hasOverflow) { setOverflowFrom(children.length); return; }
+
+    // Pass 2: find first item hidden behind the "•••" button
+    const safeH = navH - OVERFLOW_BTN_H;
+    let first = children.length;
+    for (let i = 0; i < children.length; i++) {
+      if (children[i].offsetTop + children[i].offsetHeight > safeH) { first = i; break; }
+    }
+    setOverflowFrom(first);
+  }, []);
+
+  useEffect(() => {
+    measureNav();
+    const ro = new ResizeObserver(measureNav);
+    if (navRef.current) ro.observe(navRef.current);
+    return () => ro.disconnect();
+  }, [measureNav]);
+
   const user = props?.auth?.user;
   const displayName = user?.name || 'Super Admin';
   const roleLabel = user?.role
@@ -268,27 +390,42 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
           <span className="logo-text">Ruky Rentals</span>
         </div>
 
-        <nav className="nav">
-          {NAV.map((item) => {
-            const showSection = item.section && item.section !== lastSection;
-            if (item.section) lastSection = item.section;
-            return (
-              <div key={item.id}>
-                {showSection && <span className="nav-section-label">{item.section}</span>}
-                <button
-                  type="button"
-                  className={`nav-item ${activeView === item.id ? 'active' : ''}`}
-                  onClick={() => onNavigate(item.id)}
-                  style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
-                  data-tooltip={item.label}
-                >
-                  {item.icon}
-                  <span className="nav-label">{item.label}</span>
-                  {!!item.badgeKey && <span className="nav-badge">{navCounts[item.badgeKey] || 0}</span>}
-                </button>
-              </div>
-            );
-          })}
+        <nav className="nav" ref={navRef} style={{ position: 'relative' }}>
+          <div className="nav-items-wrap">
+            {NAV.map((item, index) => {
+              const showSection = item.section && item.section !== lastSection;
+              if (item.section) lastSection = item.section;
+              const hidden = index >= overflowFrom;
+              return (
+                <div key={item.id} aria-hidden={hidden || undefined}
+                  style={hidden ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}>
+                  {showSection && <span className="nav-section-label">{item.section}</span>}
+                  <button
+                    type="button"
+                    className={`nav-item ${activeView === item.id ? 'active' : ''}`}
+                    onClick={() => onNavigate(item.id)}
+                    style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none' }}
+                    data-tooltip={item.label}
+                    tabIndex={hidden ? -1 : undefined}
+                  >
+                    {item.icon}
+                    <span className="nav-label">{item.label}</span>
+                    {!!item.badgeKey && <span className="nav-badge">{navCounts[item.badgeKey] || 0}</span>}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {overflowFrom < NAV.length && (
+            <OverflowNavBtnSU
+              items={NAV.slice(overflowFrom)}
+              activeView={activeView}
+              onNavigate={onNavigate}
+              navCounts={navCounts}
+              collapsed={collapsed}
+            />
+          )}
         </nav>
 
         <div className="sidebar-footer">

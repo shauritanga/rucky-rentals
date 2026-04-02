@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 
@@ -18,12 +18,131 @@ const NAV = [
   { label: 'Audit Trail',  href: '/audit',        icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>, section: null, badge: '!', badgeStyle: { background: 'var(--red)', display: 'none' } },
 ];
 
+/* ─── Overflow "•••" button ──────────────────────────────────────── */
+function OverflowNavBtn({ items, isActive, collapsed }) {
+  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState({ left: 0, bottom: 0 });
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+
+  const open = () => {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({
+        left: collapsed ? r.right + 8 : r.left,
+        bottom: window.innerHeight - r.top + 6,
+      });
+    }
+    setShow(true);
+  };
+
+  useEffect(() => {
+    if (!show) return;
+    const handler = (e) => {
+      if (!btnRef.current?.contains(e.target) && !popRef.current?.contains(e.target))
+        setShow(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [show]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        className={`nav-item${show ? ' active' : ''}`}
+        onClick={() => (show ? setShow(false) : open())}
+        data-tooltip="More"
+        style={{
+          position: 'absolute', bottom: 4, left: 8, right: 8,
+          border: 'none', background: show ? 'var(--bg-hover)' : 'none',
+          cursor: 'pointer',
+        }}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 16, height: 16, flexShrink: 0 }}>
+          <circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>
+        </svg>
+        <span className="nav-label">More</span>
+      </button>
+
+      {show && (
+        <div
+          ref={popRef}
+          style={{
+            position: 'fixed',
+            left: pos.left,
+            bottom: pos.bottom,
+            minWidth: 200,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            padding: 6,
+            boxShadow: '0 8px 30px rgba(0,0,0,.25)',
+            zIndex: 400,
+          }}
+        >
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`nav-item${isActive(item.href) ? ' active' : ''}`}
+              onClick={() => setShow(false)}
+              style={{ display: 'flex' }}
+            >
+              {item.icon}
+              <span style={{ opacity: 1, marginLeft: 10, fontSize: 13.5, whiteSpace: 'nowrap' }}>{item.label}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function AppLayout({ children, title, subtitle }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
   const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
   const { url, props } = usePage();
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
+
+  /* ── Nav overflow ──────────────────────────────────────────────── */
+  const navRef = useRef(null);
+  const [overflowFrom, setOverflowFrom] = useState(NAV.length);
+  const OVERFLOW_BTN_H = 40;
+
+  const measureNav = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const wrap = nav.querySelector('.nav-items-wrap');
+    if (!wrap) return;
+    const navBottom = nav.getBoundingClientRect().bottom;
+    const children = Array.from(wrap.children);
+
+    // Pass 1: does ANYTHING actually overflow the nav boundary?
+    let hasOverflow = false;
+    for (const child of children) {
+      if (child.getBoundingClientRect().bottom > navBottom + 1) { hasOverflow = true; break; }
+    }
+    if (!hasOverflow) { setOverflowFrom(children.length); return; }
+
+    // Pass 2: find first item hidden behind the "•••" button
+    const safeBottom = navBottom - OVERFLOW_BTN_H;
+    let first = children.length;
+    for (let i = 0; i < children.length; i++) {
+      if (children[i].getBoundingClientRect().bottom > safeBottom) { first = i; break; }
+    }
+    setOverflowFrom(first);
+  }, []);
+
+  useEffect(() => {
+    measureNav();
+    const ro = new ResizeObserver(measureNav);
+    if (navRef.current) ro.observe(navRef.current);
+    return () => ro.disconnect();
+  }, [measureNav]);
+
   const user = props?.auth?.user;
   const viewingProperty = props?.viewing_property ?? null;
   const displayName = user?.name || 'User';
@@ -55,21 +174,40 @@ export default function AppLayout({ children, title, subtitle }) {
           <span className="logo-text">Ruky Rentals</span>
         </div>
 
-        <nav className="nav">
-          {NAV.map((item, index) => {
-            const previousSection = index > 0 ? NAV[index - 1].section : null;
-            const showSection = Boolean(item.section) && item.section !== previousSection;
-            return (
-              <div key={item.href ?? item.label}>
-                {showSection && <span className="nav-section-label">{item.section}</span>}
-                <Link href={item.href} className={`nav-item ${isActive(item.href) ? 'active' : ''}`} data-tooltip={item.label}>
-                  {item.icon}
-                  <span className="nav-label">{item.label}</span>
-                  {item.badge && <span className="nav-badge" style={item.badgeStyle}>{item.badge}</span>}
-                </Link>
-              </div>
-            );
-          })}
+        <nav className="nav" ref={navRef} style={{ position: 'relative' }}>
+          {/* Items wrapper — all items are rendered; those past overflowFrom are naturally
+              clipped by the nav's overflow:hidden. They appear in the overflow popover. */}
+          <div className="nav-items-wrap">
+            {NAV.map((item, index) => {
+              const previousSection = index > 0 ? NAV[index - 1].section : null;
+              const showSection = Boolean(item.section) && item.section !== previousSection;
+              // Items past overflowFrom are still in DOM for measurement but invisible + inert
+              const hidden = index >= overflowFrom;
+              return (
+                <div key={item.href ?? item.label} aria-hidden={hidden || undefined}
+                  style={hidden ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}>
+                  {showSection && <span className="nav-section-label">{item.section}</span>}
+                  <Link href={item.href}
+                    className={`nav-item ${isActive(item.href) ? 'active' : ''}`}
+                    data-tooltip={item.label}
+                    tabIndex={hidden ? -1 : undefined}>
+                    {item.icon}
+                    <span className="nav-label">{item.label}</span>
+                    {item.badge && <span className="nav-badge" style={item.badgeStyle}>{item.badge}</span>}
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Overflow button — absolutely positioned at nav bottom; only when items overflow */}
+          {overflowFrom < NAV.length && (
+            <OverflowNavBtn
+              items={NAV.slice(overflowFrom)}
+              isActive={isActive}
+              collapsed={collapsed}
+            />
+          )}
         </nav>
 
         <div className="sidebar-footer">
