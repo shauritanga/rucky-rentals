@@ -48,6 +48,7 @@ function NotificationBell({ onNavigate }) {
         fetchNotifications();
 
         // Listen for pushed notifications on the user's private channel
+        if (!echo) return;
         const channel = echo.private(`App.Models.User.${userId}`);
         channel.notification(() => {
             fetchNotifications();
