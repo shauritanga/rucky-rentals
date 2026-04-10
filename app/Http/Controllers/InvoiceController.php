@@ -37,7 +37,7 @@ class InvoiceController extends Controller
         }
 
         $invoicesQuery = Invoice::with('items')->orderByDesc('created_at');
-        $leasesQuery = Lease::with(['tenant', 'unit'])
+        $leasesQuery = Lease::with(['tenant', 'unit', 'installments'])
             ->where('status', 'active');
         $tenantsQuery = Tenant::query()->orderBy('name');
 

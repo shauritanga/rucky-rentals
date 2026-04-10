@@ -222,6 +222,59 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const getLeaseTenantName = (lease) => lease?.tenant?.name || lease?.tenant_name || '';
   const getLeaseTenantEmail = (lease) => lease?.tenant?.email || lease?.tenant_email || '';
 
+  // Compute the billing period for the next invoice for a given lease.
+  // Prefers DB installment records (same source as the Payment Schedule) and
+  // falls back to arithmetic derivation for leases without installments yet.
+  const getNextBillingPeriod = (lease) => {
+    const installments = Array.isArray(lease.installments) ? lease.installments : [];
+
+    if (installments.length > 0) {
+      // The installment.invoice_id is null until an invoice is raised for it.
+      // Pick the first unlinked installment in chronological order.
+      const next = installments
+        .slice()
+        .sort((a, b) => (a.period_start > b.period_start ? 1 : -1))
+        .find(inst => !inst.invoice_id);
+
+      if (next) {
+        return { start: next.period_start, end: next.period_end, text: `${next.period_start} - ${next.period_end}` };
+      }
+    }
+
+    // Fallback: derive from rent_start_date + count of rent invoices already issued
+    const rentStart = lease.rent_start_date || lease.start_date;
+    if (!rentStart) return { start: '', end: '', text: '' };
+
+    const cycleMonths = Number(lease.payment_cycle) || 3;
+    const leaseEnd = lease.end_date;
+
+    const invoicedCount = invoices.filter(inv =>
+      String(inv.lease_id) === String(lease.id) &&
+      (inv.items || []).some(item =>
+        String(item.description || '').toLowerCase().includes('rental payment')
+      )
+    ).length;
+
+    const startDate = new Date(`${rentStart}T00:00:00`);
+    startDate.setMonth(startDate.getMonth() + invoicedCount * cycleMonths);
+
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + cycleMonths);
+    endDate.setDate(endDate.getDate() - 1);
+
+    // Clamp to lease end date (mirrors what the PHP controller and payment schedule do)
+    if (leaseEnd) {
+      const leaseEndDate = new Date(`${leaseEnd}T00:00:00`);
+      if (endDate > leaseEndDate) {
+        endDate.setTime(leaseEndDate.getTime());
+      }
+    }
+
+    const start = startDate.toISOString().slice(0, 10);
+    const end = endDate.toISOString().slice(0, 10);
+    return { start, end, text: `${start} - ${end}` };
+  };
+
   const buildLeaseInvoiceItems = (lease) => {
     const unitRef = getLeaseUnitRef(lease);
     const monthlyRent = Number(lease.monthly_rent ?? lease.rent ?? 0) || 0;
@@ -230,7 +283,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const vatRate = Number(lease.vat_rate ?? VAT_RATE * 100) || 0;
     const possessionDate = lease.possession_date || lease.start_date || '';
     const rentStartDate = lease.rent_start_date || lease.start_date || '';
-    const period = lease.start_date && lease.end_date ? `${lease.start_date} - ${lease.end_date}` : '';
+    const billingPeriod = getNextBillingPeriod(lease);
+    const period = billingPeriod.text;
     const rentBase = monthlyRent * paymentCycle;
     const serviceCharge = Math.round(unitServiceCharge * paymentCycle * 100) / 100;
     const fitoutDays = lease.fitout_enabled ? (Number(lease.fitout_days) || 0) : 0;
@@ -298,12 +352,12 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const tenantName = getLeaseTenantName(l);
     const tenantEmail = getLeaseTenantEmail(l);
     const unitRef = getLeaseUnitRef(l);
-    const period = l.start_date && l.end_date ? `${l.start_date} - ${l.end_date}` : '';
+    const billingPeriod = getNextBillingPeriod(l);
 
     setData('tenant_name', tenantName);
     setData('tenant_email', tenantEmail);
     setData('unit_ref', unitRef);
-    if (period) setData('period', period);
+    if (billingPeriod.text) setData('period', billingPeriod.text);
 
     if (l.status === 'pending_accountant' || l.status === 'pending_pm') {
       setInvType('proforma');
@@ -317,9 +371,14 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const selectedLease = leases.find((x) => String(x.id) === String(data.lease_id));
     if (!selectedLease) return;
 
-    setData('tenant_name', getLeaseTenantName(selectedLease));
-    setData('tenant_email', getLeaseTenantEmail(selectedLease));
-    setData('unit_ref', getLeaseUnitRef(selectedLease));
+    const billingPeriod = getNextBillingPeriod(selectedLease);
+    setData(d => ({
+      ...d,
+      tenant_name: getLeaseTenantName(selectedLease),
+      tenant_email: getLeaseTenantEmail(selectedLease),
+      unit_ref: getLeaseUnitRef(selectedLease),
+      period: billingPeriod.text || d.period,
+    }));
     setItems(buildLeaseInvoiceItems(selectedLease));
   }, [data.lease_id, leases]);
 
