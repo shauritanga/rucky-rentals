@@ -404,11 +404,19 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
           (new Date(`${fitoutEditToDate}T00:00:00`) - new Date(`${selected.possession_date}T00:00:00`)) / 86400000
         ) + 1)
       : 0;
+    const rentStart = fitoutEditEnabled && fitoutEditToDate
+      ? (() => {
+          const d = new Date(`${fitoutEditToDate}T00:00:00`);
+          d.setDate(d.getDate() + 1);
+          return d.toISOString().slice(0, 10);
+        })()
+      : (selected?.possession_date || '');
     router.patch(`/leases/${selected.id}`, {
       action: 'update_fitout',
       fitout_enabled: fitoutEditEnabled,
       fitout_to_date: fitoutEditEnabled ? fitoutEditToDate : null,
       fitout_days: days,
+      rent_start_date: rentStart,
     }, { onSuccess: () => setEditingFitout(false) });
   };
   const submit = (e) => {
@@ -442,21 +450,18 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       }, { onSuccess: closeModal });
       return;
     }
-    post('/leases', {
-      data: {
-        ...data,
-        possession_date: possessionDate || data.start_date,
-        rent_start_date: rentStartDate || data.start_date,
-        fitout_enabled: fitoutEnabled,
-        fitout_to_date: fitoutEnabled ? fitoutToDate : null,
-        fitout_days: summary.fitoutDays || 0,
-        tenant_mode: 'existing',
-        wht_rate: Number(whtRate || 0),
-        service_charge_rate: 0,
-        vat_rate: Number(vatRate || 0),
-      },
-      onSuccess: closeModal,
-    });
+    router.post('/leases', {
+      ...data,
+      possession_date: possessionDate || data.start_date,
+      rent_start_date: rentStartDate || data.start_date,
+      fitout_enabled: fitoutEnabled,
+      fitout_to_date: fitoutEnabled ? fitoutToDate : null,
+      fitout_days: summary.fitoutDays || 0,
+      tenant_mode: 'existing',
+      wht_rate: Number(whtRate || 0),
+      service_charge_rate: 0,
+      vat_rate: Number(vatRate || 0),
+    }, { onSuccess: closeModal });
   };
 
   useEffect(() => { setEditingFitout(false); }, [selected?.id]);

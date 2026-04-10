@@ -336,14 +336,20 @@ class LeaseController extends Controller
         } elseif ($action === 'update_fitout') {
             abort_if($user->role !== 'superuser' && !$this->isSuperuserActing($request), 403, 'Only superuser can edit fit-out settings.');
             $fitoutData = $request->validate([
-                'fitout_enabled' => 'required|boolean',
-                'fitout_to_date' => 'nullable|date',
-                'fitout_days'    => 'nullable|integer|min:0',
+                'fitout_enabled'  => 'required|boolean',
+                'fitout_to_date'  => 'nullable|date',
+                'fitout_days'     => 'nullable|integer|min:0',
+                'rent_start_date' => 'nullable|date',
             ]);
+            $fitoutToDate = $fitoutData['fitout_enabled'] ? ($fitoutData['fitout_to_date'] ?? null) : null;
+            $rentStartDate = $fitoutData['fitout_enabled'] && $fitoutToDate
+                ? \Carbon\Carbon::parse($fitoutToDate)->addDay()->toDateString()
+                : ($lease->possession_date ?? $lease->start_date);
             $lease->update([
-                'fitout_enabled' => $fitoutData['fitout_enabled'],
-                'fitout_to_date' => $fitoutData['fitout_enabled'] ? ($fitoutData['fitout_to_date'] ?? null) : null,
-                'fitout_days'    => $fitoutData['fitout_enabled'] ? (int) ($fitoutData['fitout_days'] ?? 0) : 0,
+                'fitout_enabled'  => $fitoutData['fitout_enabled'],
+                'fitout_to_date'  => $fitoutToDate,
+                'fitout_days'     => $fitoutData['fitout_enabled'] ? (int) ($fitoutData['fitout_days'] ?? 0) : 0,
+                'rent_start_date' => $rentStartDate,
             ]);
         }
 
