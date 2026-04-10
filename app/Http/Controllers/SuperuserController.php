@@ -71,11 +71,19 @@ class SuperuserController extends Controller
                 return $property;
             });
 
+        $onlineThreshold = now()->subMinutes(5);
         $managers = User::query()
             ->with('property:id,name')
             ->whereIn('role', ['manager', 'accountant', 'viewer', 'superuser'])
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'property_id']);
+            ->get(['id', 'name', 'email', 'role', 'property_id', 'last_seen_at'])
+            ->map(function ($m) use ($onlineThreshold) {
+                $m->online = $m->last_seen_at !== null && $m->last_seen_at >= $onlineThreshold;
+                $m->lastActive = $m->last_seen_at
+                    ? $m->last_seen_at->diffForHumans()
+                    : null;
+                return $m;
+            });
 
         $archivedManagers = User::onlyTrashed()
             ->whereIn('role', ['manager', 'accountant', 'viewer'])
@@ -267,7 +275,8 @@ class SuperuserController extends Controller
             propertyId: !empty($data['property_id']) ? (int) $data['property_id'] : null,
         );
 
-        if ($data['role'] === 'manager') {
+        $emailWarning = null;
+        try {
             Mail::to($user->email)->send(new ManagerWelcomeMail(
                 managerName: $user->name,
                 email: $user->email,
@@ -275,9 +284,13 @@ class SuperuserController extends Controller
                 loginUrl: url('/login'),
                 propertyName: $assignedPropertyName,
             ));
+        } catch (\Throwable $e) {
+            $emailWarning = 'User created, but welcome email failed to send. Check your mail configuration.';
+            \Illuminate\Support\Facades\Log::error('ManagerWelcomeMail failed', ['error' => $e->getMessage(), 'user_id' => $user->id]);
         }
 
-        return back()->with('success', 'User created successfully.');
+        $message = $emailWarning ?? 'User created successfully. A welcome email has been sent.';
+        return back()->with($emailWarning ? 'warning' : 'success', $message);
     }
 
     public function changePassword(Request $request)

@@ -44,6 +44,8 @@ class HandleInertiaRequests extends Middleware
                     'id'                   => $request->user()->id,
                     'name'                 => $request->user()->name,
                     'email'                => $request->user()->email,
+                    'phone'                => $request->user()->phone,
+                    'bio'                  => $request->user()->bio,
                     'role'                 => $request->user()->role,
                     'must_change_password' => (bool) $request->user()->must_change_password,
                     'avatar_url'           => $request->user()->avatar
@@ -53,7 +55,8 @@ class HandleInertiaRequests extends Middleware
             ],
             'flash' => [
                 'success' => fn() => $request->session()->get('success'),
-                'error' => fn() => $request->session()->get('error'),
+                'error'   => fn() => $request->session()->get('error'),
+                'warning' => fn() => $request->session()->get('warning'),
                 'created_invoice_id' => fn() => $request->session()->get('created_invoice_id'),
             ],
             'notifications_unread' => fn() =>

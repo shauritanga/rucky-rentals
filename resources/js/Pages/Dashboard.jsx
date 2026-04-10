@@ -9,7 +9,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
   const { formatCompactTzs, formatMoney } = useExchangeRate();
 
   return (
-    <AppLayout title="Dashboard" subtitle="March 2026">
+    <AppLayout title="Dashboard" subtitle={new Date().toLocaleDateString('en', { month: 'long', year: 'numeric' })}>
       <Head title="Dashboard" />
 
       {/* Stats */}
@@ -17,7 +17,11 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
         <div className="stat-card">
           <div className="stat-top">
             <div className="stat-icon blue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div>
-            <span className="stat-delta up">↑ 2</span>
+            {!!stats.totalUnitsDelta && (
+              <span className={`stat-delta ${stats.totalUnitsDelta > 0 ? 'up' : 'down'}`}>
+                {stats.totalUnitsDelta > 0 ? '↑' : '↓'} {Math.abs(stats.totalUnitsDelta)}
+              </span>
+            )}
           </div>
           <div className="stat-value">{stats.totalUnits}</div>
           <div className="stat-label">Total Units</div>
@@ -25,7 +29,11 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
         <div className="stat-card">
           <div className="stat-top">
             <div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div>
-            <span className="stat-delta up">↑ 3%</span>
+            {!!stats.occupancyDelta && (
+              <span className={`stat-delta ${stats.occupancyDelta > 0 ? 'up' : 'down'}`}>
+                {stats.occupancyDelta > 0 ? '↑' : '↓'} {Math.abs(stats.occupancyDelta)}%
+              </span>
+            )}
           </div>
           <div className="stat-value">{stats.occupiedUnits}</div>
           <div className="stat-label">Occupied Units</div>
@@ -33,7 +41,11 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
         <div className="stat-card">
           <div className="stat-top">
             <div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
-            <span className="stat-delta down">↓ TZS 2,120,000</span>
+            {!!stats.revenueDelta && (
+              <span className={`stat-delta ${stats.revenueDelta > 0 ? 'up' : 'down'}`}>
+                {stats.revenueDelta > 0 ? '↑' : '↓'} {formatCompactTzs(Math.abs(stats.revenueDelta))}
+              </span>
+            )}
           </div>
           <div className="stat-value">{formatCompactTzs(stats.monthlyRevenue)}</div>
           <div className="stat-label">Revenue / Month</div>

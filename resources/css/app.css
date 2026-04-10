@@ -26,11 +26,19 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .nav-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:10px;font-weight:600;padding:1px 6px;border-radius:20px;transition:opacity .18s}
 .sidebar.collapsed .nav-badge{opacity:0}
 .sidebar-footer{border-top:1px solid var(--border-subtle);padding:12px 8px;flex-shrink:0}
-.user-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:background .15s;overflow:hidden}
+.pwa-install-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-muted);cursor:pointer;flex-shrink:0;transition:color .15s,background .15s}
+.pwa-install-btn:hover{background:var(--bg-hover);color:var(--text)}
+.user-menu-dropdown{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.3);z-index:400}
+.user-menu-email{padding:12px 14px 10px;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-menu-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:8px;font-size:13px;color:var(--text);background:none;border:none;cursor:pointer;text-align:left;transition:background .12s}
+.user-menu-item:hover{background:var(--bg-hover)}
+.user-menu-item--danger{color:var(--red)}
+.user-menu-divider{height:1px;background:var(--border-subtle);margin:0 6px}
+.user-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:background .15s;overflow:hidden;color:inherit}
 .user-card:hover{background:var(--bg-hover)}
 .avatar{width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1.5px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--accent);flex-shrink:0}
 .user-info{overflow:hidden}
-.user-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:1;transition:opacity .18s}
+.user-name{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:1;transition:opacity .18s}
 .user-role{font-size:11px;color:var(--text-muted);white-space:nowrap;opacity:1;transition:opacity .18s}
 .sidebar.collapsed .user-name,.sidebar.collapsed .user-role{opacity:0}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden}

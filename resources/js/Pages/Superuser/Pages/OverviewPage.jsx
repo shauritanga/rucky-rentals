@@ -144,16 +144,16 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
         </div>
 
         <div className="card">
-          <div className="card-header"><div><div className="card-title">Manager Activity</div><div className="card-sub">Last 24 hours</div></div></div>
+          <div className="card-header"><div><div className="card-title">Administrator Activity</div><div className="card-sub">Last 24 hours</div></div></div>
           <table className="data-table">
-            <thead><tr><th>Manager</th><th>Property</th><th>Last Active</th><th>Status</th></tr></thead>
+            <thead><tr><th>User</th><th>Property</th><th>Last Active</th><th>Status</th></tr></thead>
             <tbody>
               {scopedManagers.map((m) => (
                 <tr key={m.id}>
                   <td><div style={{ fontWeight: 600 }}>{m.name}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{m.email}</div></td>
-                  <td>{m.property?.name || m.property_name || 'Unassigned'}</td>
-                  <td>{m.lastActive || (m.updated_at ? new Date(m.updated_at).toLocaleString() : 'Recently')}</td>
-                  <td><span className={`badge ${m.online === false ? 'inactive' : 'active'}`}>{m.online === false ? 'Offline' : 'Online'}</span></td>
+                  <td>{m.role === 'superuser' ? <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>All Properties</span> : (m.property?.name || m.property_name || 'Unassigned')}</td>
+                  <td>{m.lastActive || 'Never'}</td>
+                  <td><span className={`badge ${m.online ? 'active' : 'inactive'}`}>{m.online ? 'Online' : 'Offline'}</span></td>
                 </tr>
               ))}
             </tbody>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class ProfileController extends Controller
@@ -23,6 +24,20 @@ class ProfileController extends Controller
         abort_unless($request->user()?->isSuperuser(), 403);
 
         return Inertia::render('Superuser/Profile');
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $request->validate([
+            'name'  => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($request->user()->id)],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'bio'   => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $request->user()->update($request->only('name', 'email', 'phone', 'bio'));
+
+        return back()->with('success', 'Personal data saved successfully.');
     }
 
     public function changePassword(Request $request)

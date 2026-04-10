@@ -88,6 +88,7 @@ Route::middleware('auth')->group(function () {
         Route::get('superuser/notifications', [SuperuserController::class, 'getNotifications'])->name('superuser.notifications.index');
         Route::post('superuser/notifications/read', [SuperuserController::class, 'markNotificationsRead'])->name('superuser.notifications.read');
         Route::delete('superuser/notifications', [SuperuserController::class, 'clearNotifications'])->name('superuser.notifications.clear');
+        Route::patch('profile', [ProfileController::class, 'updateProfile'])->name('profile.update');
         Route::patch('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password.change');
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update');
         Route::post('accounting/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');

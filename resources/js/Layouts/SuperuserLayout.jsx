@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, usePage } from '@inertiajs/react';
+import { Link, usePage, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 import echo from '@/echo';
 
@@ -227,7 +227,7 @@ function NotificationBell({ onNavigate }) {
 const NAV = [
   { id: 'overview', label: 'Overview', section: 'Main', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg> },
   { id: 'properties', label: 'Properties', section: null, badgeKey: 'properties', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-  { id: 'managers', label: 'Managers', section: 'Users', badgeKey: 'managers', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> },
+  { id: 'managers', label: 'Administrators', section: 'Users', badgeKey: 'managers', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg> },
   { id: 'roles', label: 'Roles & Permissions', section: null, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> },
   { id: 'approvals', label: 'Approvals', section: 'System', badgeKey: 'approvals', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
   { id: 'audit', label: 'Audit Trail', section: null, icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> },
@@ -324,6 +324,48 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
   useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
   const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
   const { props } = usePage();
+
+  // ── User menu ───────────────────────────────────────────────────────────
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState({ bottom: 0, left: 0 });
+  const userMenuRef = useRef(null);
+  const triggerRef = useRef(null);
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handler = (e) => { if (!userMenuRef.current?.contains(e.target)) setUserMenuOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [userMenuOpen]);
+  const toggleUserMenu = () => {
+    if (!userMenuOpen && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      setMenuPos({ bottom: window.innerHeight - r.top + 6, left: r.left + 8 });
+    }
+    setUserMenuOpen(o => !o);
+  };
+
+  // ── PWA install prompt ──────────────────────────────────────────────────
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const [isInstalled, setIsInstalled] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches
+  );
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setInstallPrompt(e); };
+    const onInstalled = () => { setIsInstalled(true); setInstallPrompt(null); };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+  const handleInstall = async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true); }
+    }
+  };
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
 
   /* ── Nav overflow ──────────────────────────────────────────────── */
@@ -434,19 +476,82 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
           )}
         </nav>
 
-        <div className="sidebar-footer">
-          <Link href="/superuser/profile" className="user-card" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div className="avatar" style={{ overflow: 'hidden', padding: 0 }}>
-              {user?.avatar_url
-                ? <img src={user.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
-                : initials}
+        <div className="sidebar-footer" ref={userMenuRef} style={{ position: 'relative' }}>
+          {/* User menu dropdown — fixed position to escape sidebar overflow:hidden */}
+          {userMenuOpen && (
+            <div className="user-menu-dropdown" style={{ position: 'fixed', bottom: menuPos.bottom, left: menuPos.left, width: 220 }}>
+              <div className="user-menu-email">{user?.email}</div>
+              <div style={{ padding: '4px 6px' }}>
+                <Link href="/superuser/profile" onClick={() => setUserMenuOpen(false)} className="user-menu-item" style={{ textDecoration: 'none' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Profile
+                </Link>
+                <button onClick={() => { setUserMenuOpen(false); onNavigate('settings'); }} className="user-menu-item">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.54V22a2 2 0 01-4 0v-.09a1.7 1.7 0 00-1-1.54 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.54-1H2a2 2 0 010-4h.09a1.7 1.7 0 001.54-1 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 012.83-2.83l.06.06a1.7 1.7 0 001.87.34h.01a1.7 1.7 0 001-1.54V2a2 2 0 014 0v.09a1.7 1.7 0 001 1.54h.01a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 012.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87v.01a1.7 1.7 0 001.54 1H22a2 2 0 010 4h-.09a1.7 1.7 0 00-1.54 1z"/></svg>
+                  Settings
+                </button>
+              </div>
+              <div className="user-menu-divider" />
+              <div style={{ padding: '4px 6px' }}>
+                <button onClick={() => router.post('/logout')} className="user-menu-item user-menu-item--danger">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                  Log out
+                </button>
+              </div>
             </div>
-            <div className="user-info">
-              <div className="user-name">{displayName}</div>
-              <div className="user-role">{roleLabel}</div>
+          )}
+
+          {collapsed ? (
+            /* ── Collapsed: plain download icon stacked above avatar ── */
+            <div ref={triggerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              {!isInstalled && (
+                <button onClick={handleInstall} title="Install app" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                </button>
+              )}
+              <button onClick={() => toggleUserMenu()} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                <div className="avatar" style={{ overflow: 'hidden', padding: 0 }}>
+                  {user?.avatar_url
+                    ? <img src={user.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
+                    : initials}
+                </div>
+              </button>
             </div>
-            <svg style={{ flexShrink: 0, marginLeft: 'auto', opacity: .4 }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
-          </Link>
+          ) : (
+            /* ── Expanded: [user card opens menu] [install btn] [chevron btn] ── */
+            <div ref={triggerRef} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <button onClick={() => toggleUserMenu()} className="user-card" style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                <div className="avatar" style={{ overflow: 'hidden', padding: 0 }}>
+                  {user?.avatar_url
+                    ? <img src={user.avatar_url} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
+                    : initials}
+                </div>
+                <div className="user-info">
+                  <div className="user-name">{displayName}</div>
+                  <div className="user-role">{roleLabel}</div>
+                </div>
+              </button>
+              {!isInstalled && (
+                <button onClick={handleInstall} title="Install app" className="pwa-install-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                </button>
+              )}
+              <button onClick={() => toggleUserMenu()} title="User menu" className="pwa-install-btn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <polyline points="18 8 12 2 6 8"/>
+                  <polyline points="6 16 12 22 18 16"/>
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 

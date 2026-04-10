@@ -2,22 +2,14 @@
 
 namespace App\Mail;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class ManagerWelcomeMail extends Mailable implements ShouldQueue
+class ManagerWelcomeMail extends Mailable
 {
-    use Queueable, SerializesModels;
-
-    /** Retry up to 3 times before moving to failed_jobs */
-    public int $tries = 3;
-
-    /** Give up if the SMTP handshake takes longer than 30 seconds */
-    public int $timeout = 30;
+    use SerializesModels;
 
     public function __construct(
         public string $managerName,

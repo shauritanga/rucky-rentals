@@ -62,7 +62,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
             {/* Header */}
             <div className="page-header">
                 <div>
-                    <div className="page-title">Managers & Users</div>
+                    <div className="page-title">Administrators</div>
                     <div className="page-sub">All system users across properties</div>
                 </div>
                 <div className="ph-actions">
@@ -90,7 +90,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                     <div style={{ fontSize: 28, fontWeight: 800 }}>{resolvedManagers.length}</div>
                 </div>
                 <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 13, padding: '16px 18px' }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 5 }}>Assigned Managers</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 5 }}>Assigned to Property</div>
                     <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--green)' }}>{resolvedManagers.filter((m) => m.assignedProperties.length > 0).length}</div>
                 </div>
                 <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 13, padding: '16px 18px' }}>
@@ -137,10 +137,18 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                         <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{manager.email}</div>
                                     </td>
                                     <td><span className={`role-tag ${String(manager.role || '').toLowerCase()}`}>{manager.role || 'manager'}</span></td>
-                                    <td>{manager.assignedProperties.map((p) => p.name).join(', ') || 'Unassigned'}</td>
-                                    <td>{manager.lastActive || 'Recently'}</td>
+                                    <td>
+                                        {manager.role === 'superuser'
+                                            ? <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>All Properties</span>
+                                            : manager.assignedProperties.length > 0
+                                                ? manager.assignedProperties.map((p) => p.name).join(', ')
+                                                : manager.property_id
+                                                    ? (properties.find((p) => Number(p.id) === Number(manager.property_id))?.name ?? 'Unassigned')
+                                                    : 'Unassigned'}
+                                    </td>
+                                    <td>{manager.lastActive || 'Never'}</td>
                                     <td><span className={`badge ${manager.twoFA ? 'active' : 'inactive'}`}>{manager.twoFA ? 'Enabled' : 'Disabled'}</span></td>
-                                    <td><span className={`badge ${manager.status === 'suspended' ? 'rejected' : 'active'}`}>{manager.status || 'active'}</span></td>
+                                    <td><span className={`badge ${manager.online ? 'active' : 'inactive'}`}>{manager.online ? 'Online' : 'Offline'}</span></td>
                                     <td>
                                         {manager.role !== 'superuser' ? (
                                             <button

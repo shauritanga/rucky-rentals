@@ -65,8 +65,8 @@ export default function Profile() {
   const [firstName, setFirstName] = useState(userParts[0] || 'User');
   const [lastName, setLastName] = useState(userParts.slice(1).join(' '));
   const [email, setEmail] = useState(user?.email || '');
-  const [phone, setPhone] = useState('+255 754 111 222');
-  const [bio, setBio] = useState('Managing all operations for the assigned property since 2022. Responsible for leases, maintenance coordination and tenant relations.');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [bio, setBio] = useState(user?.bio || '');
   const [avatarSrc, setAvatarSrc] = useState(user?.avatar_url || '');
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [twofaEnabled, setTwofaEnabled] = useState(false);
@@ -114,16 +114,27 @@ export default function Profile() {
     });
   };
 
-  const onSaveProfile = () => showToast('Profile saved successfully');
+  const onSaveProfile = () => {
+    router.patch('/profile', { name: `${firstName} ${lastName}`.trim(), email, phone, bio }, {
+      preserveScroll: true,
+      onSuccess: () => showToast('Personal data saved successfully'),
+      onError: (errors) => showToast(Object.values(errors)[0] || 'Save failed'),
+    });
+  };
 
   const onChangePassword = () => {
     if (!curPw) return showToast('Enter your current password');
     if (!newPw || newPw.length < 8) return showToast('New password must be at least 8 characters');
     if (newPw !== confirmPw) return showToast('Passwords do not match');
-    setCurPw('');
-    setNewPw('');
-    setConfirmPw('');
-    showToast('Password updated successfully');
+    router.patch('/profile/password', {
+      current_password: curPw,
+      password: newPw,
+      password_confirmation: confirmPw,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => { setCurPw(''); setNewPw(''); setConfirmPw(''); showToast('Password updated successfully'); },
+      onError: (errors) => showToast(Object.values(errors)[0] || 'Password update failed'),
+    });
   };
 
   const onToggle2FA = () => {

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { generateFloors } from '@/utils/floorConfig';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 import SuperuserLayout from '@/Layouts/SuperuserLayout';
 import OverviewPage from '@/Pages/Superuser/Pages/OverviewPage';
 import PropertiesPage from '@/Pages/Superuser/Pages/PropertiesPage';
@@ -14,7 +14,7 @@ import ApprovalsPage from '@/Pages/Superuser/Pages/ApprovalsPage';
 const VIEW_META = {
   overview: { title: 'Overview', subtitle: 'Superuser Console', actionLabel: 'Add Property' },
   properties: { title: 'Properties', subtitle: 'All buildings', actionLabel: 'Add Property' },
-  managers: { title: 'Managers & Users', subtitle: 'All system users', actionLabel: 'Add User' },
+  managers: { title: 'Administrators', subtitle: 'All system users', actionLabel: 'Add User' },
   roles: { title: 'Roles & Permissions', subtitle: 'Access control', actionLabel: 'Save Changes' },
   approvals: { title: 'Approvals', subtitle: 'Pending requests', actionLabel: null },
   audit: { title: 'Audit Trail', subtitle: 'System log', actionLabel: 'Export CSV' },
@@ -29,6 +29,17 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
   const [upperFloorsRaw, setUpperFloorsRaw] = useState('7');
   const [showManagerModal, setShowManagerModal] = useState(false);
   const [creatingManager, setCreatingManager] = useState(false);
+  const [managerErrors, setManagerErrors] = useState({});
+  const [toast, setToast] = useState({ msg: '', type: '' });
+
+  const { props } = usePage();
+  const flash = props.flash ?? {};
+
+  useEffect(() => {
+    if (flash.success) { setToast({ msg: flash.success, type: 'success' }); window.setTimeout(() => setToast({ msg: '', type: '' }), 3500); }
+    if (flash.warning) { setToast({ msg: flash.warning, type: 'warning' }); window.setTimeout(() => setToast({ msg: '', type: '' }), 5000); }
+    if (flash.error)   { setToast({ msg: flash.error,   type: 'error'   }); window.setTimeout(() => setToast({ msg: '', type: '' }), 4000); }
+  }, [flash.success, flash.warning, flash.error]);
 
   const [managerForm, setManagerForm] = useState({
     name: '',
@@ -110,18 +121,16 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     if (creatingManager) return;
 
     setCreatingManager(true);
+    setManagerErrors({});
     router.post('/superuser/managers', managerForm, {
       preserveScroll: true,
       onSuccess: () => {
         setShowManagerModal(false);
-        setManagerForm({
-          name: '',
-          email: '',
-          phone: '',
-          role: '',
-          property_id: '',
-          twoFA: 'yes',
-        });
+        setManagerErrors({});
+        setManagerForm({ name: '', email: '', phone: '', role: '', property_id: '', twoFA: 'yes' });
+      },
+      onError: (errors) => {
+        setManagerErrors(errors);
       },
       onFinish: () => {
         setCreatingManager(false);
@@ -224,13 +233,13 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         </div>
       </div>
 
-      <div className={`modal-overlay ${showManagerModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowManagerModal(false)}>
+      <div className={`modal-overlay ${showManagerModal ? 'open' : ''}`} onClick={(e) => { if (e.target === e.currentTarget) { setShowManagerModal(false); setManagerErrors({}); } }}>
         <div className="modal" style={{ width: 540 }}>
-          <div className="modal-header"><div className="modal-title">Add User</div><button className="modal-close" onClick={() => setShowManagerModal(false)}>✕</button></div>
+          <div className="modal-header"><div className="modal-title">Add User</div><button className="modal-close" onClick={() => { setShowManagerModal(false); setManagerErrors({}); }}>✕</button></div>
           <form onSubmit={submitManager}>
             <div className="modal-body">
-              <div className="form-row"><div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={managerForm.name} onChange={(e) => setManagerForm((f) => ({ ...f, name: e.target.value }))} required /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={managerForm.email} onChange={(e) => setManagerForm((f) => ({ ...f, email: e.target.value }))} required /></div><div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={managerForm.phone} onChange={(e) => setManagerForm((f) => ({ ...f, phone: e.target.value }))} /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={managerForm.name} onChange={(e) => setManagerForm((f) => ({ ...f, name: e.target.value }))} required />{managerErrors.name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.name}</div>}</div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={managerForm.email} onChange={(e) => setManagerForm((f) => ({ ...f, email: e.target.value }))} required />{managerErrors.email && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.email}</div>}</div><div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={managerForm.phone} onChange={(e) => setManagerForm((f) => ({ ...f, phone: e.target.value }))} /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Role *</label>
                 <select className="form-input form-select" value={managerForm.role} onChange={(e) => setManagerForm((f) => ({ ...f, role: e.target.value }))} required>
                   <option value="">Select role...</option>
@@ -238,6 +247,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
                   <option value="accountant">Accountant</option>
                   <option value="viewer">Viewer (Read-Only)</option>
                 </select>
+                {managerErrors.role && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.role}</div>}
               </div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Assign Property</label>
                 <select className="form-input form-select" value={managerForm.property_id} onChange={(e) => setManagerForm((f) => ({ ...f, property_id: e.target.value }))}>
@@ -270,6 +280,13 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           </form>
         </div>
       </div>
+
+      {toast.msg && (
+        <div className={`toast show`} style={{
+          background: toast.type === 'warning' ? 'var(--amber)' : toast.type === 'error' ? 'var(--red)' : undefined,
+          color: (toast.type === 'warning' || toast.type === 'error') ? '#fff' : undefined,
+        }}>{toast.msg}</div>
+      )}
     </SuperuserLayout>
   );
 }

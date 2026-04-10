@@ -49,6 +49,30 @@ class DashboardController extends Controller
         $vacantUnits   = (clone $unitsBaseQuery)->where('status', 'vacant')->count();
         $overdueUnits  = (clone $unitsBaseQuery)->where('status', 'overdue')->count();
 
+        // ── Last-month deltas ─────────────────────────────────────────────────
+        $thisMonthStart = Carbon::now()->startOfMonth();
+        $lastMonthStart = Carbon::now()->subMonthNoOverflow()->startOfMonth();
+        $lastMonthEnd   = Carbon::now()->subMonthNoOverflow()->endOfMonth();
+
+        // Units added this calendar month
+        $totalUnitsDelta = (clone $unitsBaseQuery)
+            ->where('created_at', '>=', $thisMonthStart)
+            ->count();
+
+        // Leases running during last month (date-range based, status-agnostic)
+        $lastMonthOccupied = Lease::whereIn('unit_id', $unitIdsQuery)
+            ->where('start_date', '<=', $lastMonthEnd)
+            ->where(fn ($q) => $q->where('end_date', '>=', $lastMonthStart)->orWhereNull('end_date'))
+            ->count();
+
+        $lastMonthTotalUnits = (clone $unitsBaseQuery)
+            ->where('created_at', '<=', $lastMonthEnd)
+            ->count();
+
+        $currentOccupancyPct   = $totalUnits > 0 ? (int) round($occupiedUnits / $totalUnits * 100) : 0;
+        $lastMonthOccupancyPct = $lastMonthTotalUnits > 0 ? (int) round($lastMonthOccupied / $lastMonthTotalUnits * 100) : 0;
+        $occupancyDelta        = $currentOccupancyPct - $lastMonthOccupancyPct;
+
         // Sum monthly rent in TZS, respecting each lease's own currency.
         // Never mix TZS and USD raw amounts — convert everything to TZS first.
         $monthlyRevenueTzs = Lease::whereIn('status', ['active', 'expiring', 'overdue'])
@@ -64,6 +88,20 @@ class DashboardController extends Controller
                 // never from the stale DB table — keeps both dashboard views in sync.
                 return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
             });
+
+        // Revenue for leases running during last month (for delta badge)
+        $lastMonthRevenueTzs = Lease::whereIn('unit_id', $unitIdsQuery)
+            ->where('start_date', '<=', $lastMonthEnd)
+            ->where(fn ($q) => $q->where('end_date', '>=', $lastMonthStart)->orWhereNull('end_date'))
+            ->get(['monthly_rent', 'currency'])
+            ->sum(function ($lease) {
+                $amount   = (float) $lease->monthly_rent;
+                $currency = $lease->currency ?? 'TZS';
+                if ($currency === 'TZS') return $amount;
+                return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
+            });
+
+        $revenueDelta = $monthlyRevenueTzs - $lastMonthRevenueTzs;
 
         // Sum overdue payments in TZS, using the stored base amount where available,
         // otherwise converting on the fly. Never mix currencies raw.
@@ -186,12 +224,15 @@ class DashboardController extends Controller
 
         return Inertia::render('Dashboard', [
             'stats' => [
-                'totalUnits'     => $totalUnits,
-                'occupiedUnits'  => $occupiedUnits,
-                'vacantUnits'    => $vacantUnits,
-                'overdueUnits'   => $overdueUnits,
-                'monthlyRevenue' => $monthlyRevenueTzs,  // already in TZS — no client-side FX conversion needed
-                'overdueBalance' => $overdueBalanceTzs,  // already in TZS
+                'totalUnits'      => $totalUnits,
+                'totalUnitsDelta' => $totalUnitsDelta,    // units added this month
+                'occupiedUnits'   => $occupiedUnits,
+                'occupancyDelta'  => $occupancyDelta,     // percentage-point change vs last month
+                'vacantUnits'     => $vacantUnits,
+                'overdueUnits'    => $overdueUnits,
+                'monthlyRevenue'  => $monthlyRevenueTzs,  // already in TZS
+                'revenueDelta'    => $revenueDelta,        // TZS change vs last month
+                'overdueBalance'  => $overdueBalanceTzs,  // already in TZS
             ],
             'recentPayments'   => $recentPayments,
             'maintenanceItems' => $maintenanceItems,
