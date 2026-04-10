@@ -27,6 +27,12 @@
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js');
       }
+      // Capture beforeinstallprompt before React mounts to avoid race condition
+      window.__pwaInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.__pwaInstallPrompt = e;
+      });
     </script>
 </body>
 

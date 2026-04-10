@@ -22,7 +22,10 @@ const VIEW_META = {
 };
 
 export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [], archivedManagers = [] }) {
-  const [activeView, setActiveView] = useState('overview');
+  const [activeView, setActiveView] = useState(() => {
+    const v = new URLSearchParams(window.location.search).get('view') || 'overview';
+    return Object.keys(VIEW_META).includes(v) ? v : 'overview';
+  });
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);

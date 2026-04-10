@@ -123,13 +123,17 @@ export default function AppLayout({ children, title, subtitle }) {
   const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
 
   // ── PWA install prompt ──────────────────────────────────────────────────
-  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(
+    () => (typeof window !== 'undefined' ? window.__pwaInstallPrompt || null : null)
+  );
   const [isInstalled, setIsInstalled] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches
   );
   useEffect(() => {
-    const onPrompt = (e) => { e.preventDefault(); setInstallPrompt(e); };
-    const onInstalled = () => { setIsInstalled(true); setInstallPrompt(null); };
+    // Pick up any prompt that was captured before React mounted
+    if (window.__pwaInstallPrompt && !installPrompt) setInstallPrompt(window.__pwaInstallPrompt);
+    const onPrompt = (e) => { e.preventDefault(); window.__pwaInstallPrompt = e; setInstallPrompt(e); };
+    const onInstalled = () => { setIsInstalled(true); setInstallPrompt(null); window.__pwaInstallPrompt = null; };
     window.addEventListener('beforeinstallprompt', onPrompt);
     window.addEventListener('appinstalled', onInstalled);
     return () => {
@@ -281,7 +285,7 @@ export default function AppLayout({ children, title, subtitle }) {
           {collapsed ? (
             /* ── Collapsed: plain download icon stacked above avatar ── */
             <div ref={triggerRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              {!isInstalled && (
+              {installPrompt && (
                 <button onClick={handleInstall} title="Install app" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4, display: 'flex' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -312,7 +316,7 @@ export default function AppLayout({ children, title, subtitle }) {
                   <div className="user-role">{roleLabel}</div>
                 </div>
               </button>
-              {!isInstalled && (
+              {installPrompt && (
                 <button onClick={handleInstall} title="Install app" className="pwa-install-btn">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>

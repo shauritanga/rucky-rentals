@@ -158,8 +158,8 @@ export default function Profile() {
 
   return (
     <SuperuserLayout
-      activeView="overview"
-      onNavigate={() => router.get('/superuser')}
+      activeView="profile"
+      onNavigate={(id) => router.get(`/superuser?view=${id}`)}
       title="My Profile"
       subtitle="Superuser Console"
       navCounts={{}}

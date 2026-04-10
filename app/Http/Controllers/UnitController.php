@@ -23,10 +23,10 @@ class UnitController extends Controller
         'Retail Shop',
         'Showroom',
         'Warehouse',
-        'Restaurant Space',
-        'Clinic Space',
-        'Salon Space',
-        'Kiosk',
+        'Restaurant',
+        'Clinic',
+        'Salon',
+        'Store',
     ];
 
     public function index(Request $request)
