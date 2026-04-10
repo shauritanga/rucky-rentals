@@ -322,7 +322,7 @@ function OverflowNavBtnSU({ items, activeView, onNavigate, navCounts, collapsed 
 export default function SuperuserLayout({ activeView, onNavigate, title, subtitle, actionLabel, onAction, navCounts = {}, children }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
   useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
-  const [theme, setTheme] = useState('dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
   const { props } = usePage();
   const { rate, sourceLabel, refreshRate } = useExchangeRate();
 
@@ -359,8 +359,12 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
     measureNav();
     const ro = new ResizeObserver(measureNav);
     if (navRef.current) ro.observe(navRef.current);
-    return () => ro.disconnect();
-  }, [measureNav]);
+    window.addEventListener('resize', measureNav);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measureNav);
+    };
+  }, [measureNav, collapsed]);
 
   const user = props?.auth?.user;
   const displayName = user?.name || 'Super Admin';
@@ -379,6 +383,7 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app-theme', theme);
   }, [theme]);
 
   let lastSection = null;
