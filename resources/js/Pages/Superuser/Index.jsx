@@ -26,6 +26,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [upperFloorsRaw, setUpperFloorsRaw] = useState('7');
   const [showManagerModal, setShowManagerModal] = useState(false);
   const [creatingManager, setCreatingManager] = useState(false);
 
@@ -78,6 +79,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         setData('has_ground_floor', false);
         setData('has_mezzanine', false);
         setData('upper_floors', 7);
+        setUpperFloorsRaw('7');
         setShowModal(false);
       },
     });
@@ -175,7 +177,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
               <div className="form-row"><div className="form-group"><label className="form-label">Address *</label><input className="form-input" value={data.address} onChange={(e) => setData('address', e.target.value)} placeholder="Full street address" required /></div><div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={(e) => setData('city', e.target.value)} placeholder="Dar es Salaam" /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Total Units</label><input className="form-input" type="number" value={data.unit_count} onChange={(e) => setData('unit_count', e.target.value)} placeholder="0" min="0" /></div></div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Upper Floors *</label><input className="form-input" type="number" value={data.upper_floors} onChange={(e) => setData('upper_floors', parseInt(e.target.value, 10) || 1)} placeholder="7" min="1" max="100" required /></div>
+                <div className="form-group"><label className="form-label">Upper Floors *</label><input className="form-input" type="text" inputMode="numeric" pattern="[0-9]*" value={upperFloorsRaw} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setUpperFloorsRaw(v); const n = parseInt(v, 10); if (!isNaN(n) && n >= 1) setData('upper_floors', n); }} onBlur={() => { const n = parseInt(upperFloorsRaw, 10); const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, 100); setData('upper_floors', clamped); setUpperFloorsRaw(String(clamped)); }} placeholder="e.g. 7" required /></div>
                 <div className="form-group"><label className="form-label">Basement Levels</label><input className="form-input" type="number" value={data.basements} onChange={(e) => setData('basements', Math.max(0, parseInt(e.target.value, 10) || 0))} placeholder="0" min="0" max="10" /></div>
               </div>
               <div className="form-row" style={{ gap: 24 }}>
