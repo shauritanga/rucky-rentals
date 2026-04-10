@@ -12,10 +12,10 @@ const COMMERCIAL_UNIT_TYPES = [
   'Retail Shop',
   'Showroom',
   'Warehouse',
-  'Restaurant Space',
-  'Clinic Space',
-  'Salon Space',
-  'Kiosk',
+  'Restaurant',
+  'Clinic',
+  'Salon',
+  'Store',
 ];
 
 const unitCurrency = (unit) => (unit?.currency === 'USD' ? 'USD' : 'TZS');
@@ -83,7 +83,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
   );
 
   // ── Create form ──────────────────────────────────────────────────────────
-  const { data, setData, post, processing, reset } = useForm({
+  const { data, setData, post, processing, reset, errors } = useForm({
     unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', notes:''
   });
 
@@ -344,7 +344,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
             <div className="modal-title">Edit Unit — {selected?.unit_number}</div>
             <button className="modal-close" onClick={() => setShowEditModal(false)}>✕</button>
           </div>
-          <form onSubmit={submitEdit}>
+          <form onSubmit={submitEdit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
             <div className="modal-body">
               <div className="form-row">
                 <div className="form-group">
@@ -380,13 +380,13 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                   </select>
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Rate per m² ({editData.currency})</label>
+                  <label className="form-label">Rent Rate per m² ({editData.currency})</label>
                   <input className="form-input" type="number" step="0.01" min="0" value={editData.rate_per_sqm} onChange={e => setEditData('rate_per_sqm', e.target.value)} required />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Service Charge per m² ({editData.currency})</label>
+                  <label className="form-label">Service Charge Rate per m² ({editData.currency})</label>
                   <input className="form-input" type="number" step="0.01" min="0" value={editData.service_charge_per_sqm} onChange={e => setEditData('service_charge_per_sqm', e.target.value)} />
                 </div>
                 <div className="form-group">
@@ -475,28 +475,66 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
             <div className="modal-title">Add New Commercial Unit</div>
             <button className="modal-close" onClick={()=>setShowModal(false)}>✕</button>
           </div>
-          <form onSubmit={submit}>
+          <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
             <div className="modal-body">
               {(!canCreateUnit || availableFloors.length === 0) && (
                 <div style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid var(--amber)', borderRadius: 8, background: 'var(--amber-dim)', color: 'var(--amber)', fontSize: 12.5 }}>
                   You cannot create units because no assigned property floors are available.
                 </div>
               )}
+              {Object.keys(errors).length > 0 && (
+                <div style={{ marginBottom: 12, padding: '10px 12px', border: '1px solid var(--red)', borderRadius: 8, background: 'rgba(239,68,68,.08)', color: 'var(--red)', fontSize: 12.5 }}>
+                  <strong style={{ display: 'block', marginBottom: 4 }}>Please fix the following errors:</strong>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {Object.values(errors).map((msg, i) => <li key={i}>{msg}</li>)}
+                  </ul>
+                </div>
+              )}
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Unit Number</label><input className="form-input" value={data.unit_number} onChange={e=>setData('unit_number',e.target.value)} placeholder="e.g. A-103" required /></div>
-                <div className="form-group"><label className="form-label">Floor</label><select className="form-input form-select" value={data.floor} onChange={e=>setData('floor',e.target.value)} required disabled={availableFloors.length===0}>{availableFloors.map(f=><option key={f.id} value={f.id}>{f.label}</option>)}</select></div>
+                <div className="form-group">
+                  <label className="form-label">Unit Number</label>
+                  <input className={`form-input${errors.unit_number ? ' input-error' : ''}`} value={data.unit_number} onChange={e=>setData('unit_number',e.target.value)} placeholder="e.g. A-103" required />
+                  {errors.unit_number && <div className="form-error">{errors.unit_number}</div>}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Floor</label>
+                  <select className={`form-input form-select${errors.floor ? ' input-error' : ''}`} value={data.floor} onChange={e=>setData('floor',e.target.value)} required disabled={availableFloors.length===0}>{availableFloors.map(f=><option key={f.id} value={f.id}>{f.label}</option>)}</select>
+                  {errors.floor && <div className="form-error">{errors.floor}</div>}
+                </div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Commercial Unit Type</label><select className="form-input form-select" value={data.type} onChange={e=>setData('type',e.target.value)}>{COMMERCIAL_UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
-                <div className="form-group"><label className="form-label">Size (m²)</label><input className="form-input" type="number" step="0.01" min="0" value={data.size_sqm} onChange={e=>setData('size_sqm',e.target.value)} placeholder="60" required /></div>
+                <div className="form-group">
+                  <label className="form-label">Commercial Unit Type</label>
+                  <select className={`form-input form-select${errors.type ? ' input-error' : ''}`} value={data.type} onChange={e=>setData('type',e.target.value)}>{COMMERCIAL_UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select>
+                  {errors.type && <div className="form-error">{errors.type}</div>}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Size (m²)</label>
+                  <input className={`form-input${errors.size_sqm ? ' input-error' : ''}`} type="number" step="0.01" min="0" value={data.size_sqm} onChange={e=>setData('size_sqm',e.target.value)} placeholder="60" required />
+                  {errors.size_sqm && <div className="form-error">{errors.size_sqm}</div>}
+                </div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Currency</label><select className="form-input form-select" value={data.currency} onChange={e=>setData('currency',e.target.value)}><option value="TZS">TZS</option><option value="USD">USD</option></select></div>
-                <div className="form-group"><label className="form-label">Rate per m² ({data.currency})</label><input className="form-input" type="number" step="0.01" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required /></div>
+                <div className="form-group">
+                  <label className="form-label">Currency</label>
+                  <select className="form-input form-select" value={data.currency} onChange={e=>setData('currency',e.target.value)}><option value="TZS">TZS</option><option value="USD">USD</option></select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Rent Rate per m² ({data.currency})</label>
+                  <input className={`form-input${errors.rate_per_sqm ? ' input-error' : ''}`} type="number" step="0.01" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required />
+                  {errors.rate_per_sqm && <div className="form-error">{errors.rate_per_sqm}</div>}
+                </div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Service Charge Rate per m² ({data.currency})</label><input className="form-input" type="number" step="0.01" min="0" value={data.service_charge_per_sqm} onChange={e=>setData('service_charge_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '2000' : '2'} /></div>
-                <div className="form-group"><label className="form-label">Electricity Type</label><select className="form-input form-select" value={data.electricity_type} onChange={e=>setData('electricity_type',e.target.value)}><option value="direct">Direct (Own Meter)</option><option value="submeter">Submeter</option></select></div>
+                <div className="form-group">
+                  <label className="form-label">Service Charge Rate per m² ({data.currency})</label>
+                  <input className={`form-input${errors.service_charge_per_sqm ? ' input-error' : ''}`} type="number" step="0.01" min="0" value={data.service_charge_per_sqm} onChange={e=>setData('service_charge_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '2000' : '2'} />
+                  {errors.service_charge_per_sqm && <div className="form-error">{errors.service_charge_per_sqm}</div>}
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Electricity Type</label>
+                  <select className="form-input form-select" value={data.electricity_type} onChange={e=>setData('electricity_type',e.target.value)}><option value="direct">Direct (Own Meter)</option><option value="submeter">Submeter</option></select>
+                </div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Computed Monthly Rent</label><input className="form-input" type="text" value={computedMonthlyRent > 0 ? money(computedMonthlyRent.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>
