@@ -52,31 +52,40 @@ class AccountingService
             return;
         }
 
-        // Load items and split by type
+        // Load items — carve out electricity items first so they don't bleed into rent/SC buckets
         $items = $invoice->items()->get();
-        $scItems   = $items->filter(fn($i) => ($i->item_type ?? null) === 'service_charge'
+
+        $elecChargeItems = $items->filter(fn($i) => ($i->item_type ?? null) === 'electricity_charge');
+        $elecVatItems    = $items->filter(fn($i) => ($i->item_type ?? null) === 'electricity_vat');
+        $remainingItems  = $items->reject(fn($i) =>
+            in_array($i->item_type ?? null, ['electricity_charge', 'electricity_vat'], true)
+        );
+
+        $scItems   = $remainingItems->filter(fn($i) => ($i->item_type ?? null) === 'service_charge'
             || (($i->item_type ?? 'other') === 'other' && stripos($i->description ?? '', 'service charge') !== false));
-        $rentItems = $items->reject(fn($i)  => ($i->item_type ?? null) === 'service_charge'
+        $rentItems = $remainingItems->reject(fn($i)  => ($i->item_type ?? null) === 'service_charge'
             || (($i->item_type ?? 'other') === 'other' && stripos($i->description ?? '', 'service charge') !== false));
 
-        $scGross   = (float) $scItems->sum('total');
-        $rentGross = (float) $rentItems->sum('total');
-        $invoiceTotal = $scGross + $rentGross;
+        $elecChargeGross = (float) $elecChargeItems->sum('total');
+        $elecVatGross    = (float) $elecVatItems->sum('total');
+        $scGross         = (float) $scItems->sum('total');
+        $rentGross       = (float) $rentItems->sum('total');
+        $invoiceTotal    = $elecChargeGross + $elecVatGross + $scGross + $rentGross;
 
         if ($invoiceTotal <= 0) {
             return;
         }
 
-        // VAT rate from the linked lease (exclusive — added on top of net amounts).
-        // Items are VAT-exclusive: user enters net amounts, VAT = net × rate%.
-        $vatRate = (float) ($invoice->lease->vat_rate ?? 0);
+        // Lease VAT applies only to rent + SC (electricity VAT is pre-split into explicit items)
+        $vatRate   = (float) ($invoice->lease->vat_rate ?? 0);
         $vatOnSc   = $vatRate > 0 && $scGross   > 0 ? round($scGross   * ($vatRate / 100), 2) : 0.0;
         $vatOnRent = $vatRate > 0 && $rentGross > 0 ? round($rentGross * ($vatRate / 100), 2) : 0.0;
-        $totalVat  = round($vatOnSc + $vatOnRent, 2);
-        $netRent   = $rentGross;   // items ARE the net (VAT-exclusive) amounts
+        $leaseVat  = round($vatOnSc + $vatOnRent, 2);
+        $totalVat  = round($leaseVat + $elecVatGross, 2);
+        $netRent   = $rentGross;
         $netSc     = $scGross;
 
-        DB::transaction(function () use ($invoice, $invoiceTotal, $netRent, $netSc, $totalVat, $vatRate) {
+        DB::transaction(function () use ($invoice, $invoiceTotal, $netRent, $netSc, $elecChargeGross, $elecVatGross, $leaseVat, $totalVat, $vatRate) {
             $reference = 'INV-' . $invoice->id;
 
             try {
@@ -107,18 +116,21 @@ class AccountingService
 
                     $invoice->update([
                         'exchange_rate' => $exchangeRate,
-                        'total_in_base' => round(($invoiceTotal + $totalVat) * $fx, 2),
+                        'total_in_base' => round(($invoiceTotal + $leaseVat) * $fx, 2),
                     ]);
                 }
 
-                // Convert all GL amounts to base currency.
-                // AR = gross (net + VAT); revenue accounts = net only.
-                $arTotal  = round(($invoiceTotal + $totalVat) * $fx, 2);
-                $crRent   = round($netRent  * $fx, 2);
-                $crSc     = round($netSc    * $fx, 2);
-                $crVat    = round($totalVat * $fx, 2);
+                // AR = net items + lease VAT (lease VAT is additive on top of net rent/SC).
+                // Electricity VAT is already embedded inside $invoiceTotal (inclusive pricing),
+                // so only $leaseVat needs adding — not $totalVat — to avoid double-counting.
+                $arTotal  = round(($invoiceTotal + $leaseVat) * $fx, 2);
+                $crRent   = round($netRent        * $fx, 2);
+                $crSc     = round($netSc          * $fx, 2);
+                $crElec   = round($elecChargeGross * $fx, 2);
+                $crVat    = round($totalVat        * $fx, 2);
 
-                // Build balanced GL lines (Dr:1100 = Cr:4000 + Cr:4100 + Cr:2200)
+                // Build balanced GL lines:
+                // Dr 1100 = Cr 4000 + Cr 4100 + Cr 4200 + Cr 2200
                 $lines = [
                     ['account_code' => '1100', 'debit' => $arTotal, 'credit' => 0],
                 ];
@@ -128,6 +140,9 @@ class AccountingService
                 }
                 if ($crSc > 0) {
                     $lines[] = ['account_code' => '4100', 'debit' => 0, 'credit' => $crSc];
+                }
+                if ($crElec > 0) {
+                    $lines[] = ['account_code' => '4200', 'debit' => 0, 'credit' => $crElec];
                 }
                 if ($crVat > 0) {
                     $lines[] = ['account_code' => '2200', 'debit' => 0, 'credit' => $crVat];
@@ -171,6 +186,8 @@ class AccountingService
                         'vat_amount'      => $totalVat,
                         'net_rent'        => $netRent,
                         'net_sc'          => $netSc,
+                        'net_electricity' => $elecChargeGross,
+                        'elec_vat'        => $elecVatGross,
                         'status'          => $invoice->status,
                     ],
                     postedEntries: [$journalEntry->id],
@@ -318,15 +335,17 @@ class AccountingService
                 }
 
                 // Build GL lines, splitting for WHT if applicable
-                if ($whtRate > 0 && $creditAccountCode === '1100') {
-                    $whtAmount = $linkedInvoice
-                        ? $this->calculateWhtAmountFromInvoice(
-                            amountToPost: $amountToPost,
-                            paymentAmount: (float) $payment->amount,
-                            whtRate: $whtRate,
-                            invoice: $linkedInvoice
-                        )
-                        : 0.0;
+                $whtAmount = 0.0;
+                if ($whtRate > 0 && $creditAccountCode === '1100' && $linkedInvoice) {
+                    $whtAmount = $this->calculateWhtAmountFromInvoice(
+                        amountToPost: $amountToPost,
+                        paymentAmount: (float) $payment->amount,
+                        whtRate: $whtRate,
+                        invoice: $linkedInvoice
+                    );
+                }
+
+                if ($whtAmount > 0) {
                     $cashAmount = round($amountToPost - $whtAmount, 2);
                     $lines = [
                         ['account_code' => '1000', 'debit' => $cashAmount,    'credit' => 0],
@@ -364,6 +383,7 @@ class AccountingService
                         'invoice_id'     => $payment->invoice_id,
                         'credit_account' => $creditAccountCode,
                         'wht_rate'       => $whtRate,
+                        'wht_amount'     => $whtAmount,
                         'cash_basis'     => $payment->invoice_id ? false : true,
                     ],
                     postedEntries: [$journalEntry->id],

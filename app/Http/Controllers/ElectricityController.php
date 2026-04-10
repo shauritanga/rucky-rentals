@@ -27,6 +27,7 @@ class ElectricityController extends Controller
     private const DIRECT_GENERATOR_RATE = 1400.00;
     private const DIRECT_GENERATOR_VAT_PERCENT = 18.00;
     private const SUBMETER_UNIT_PRICE = 500.00;
+    private const SUBMETER_VAT_PERCENT = 18.00;
 
     private function scopeForUser(Builder $query, Request $request): void
     {
@@ -74,7 +75,8 @@ class ElectricityController extends Controller
         $prefix = $this->settingPrefix($request);
 
         return [
-            'unit_price' => (float) SystemSetting::get($prefix . 'elec.submeter.unit_price', self::SUBMETER_UNIT_PRICE),
+            'unit_price'  => (float) SystemSetting::get($prefix . 'elec.submeter.unit_price', self::SUBMETER_UNIT_PRICE),
+            'vat_percent' => (float) SystemSetting::get($prefix . 'elec.submeter.vat_percent', self::SUBMETER_VAT_PERCENT),
         ];
     }
 
@@ -313,7 +315,7 @@ class ElectricityController extends Controller
         $amount = $amountPaid ?? round($manualUnits * $unitPrice, 2);
         $unitsSold = round($amount / $unitPrice, 2);
 
-        DB::transaction(function () use ($data, $unit, $user, $activeLease, $unitPrice, $unitsSold, $amount) {
+        DB::transaction(function () use ($data, $unit, $user, $activeLease, $unitPrice, $unitsSold, $amount, $settings) {
             $sale = ElectricitySale::create([
                 'property_id' => $unit->property_id,
                 'unit_id' => $unit->id,
@@ -325,7 +327,7 @@ class ElectricityController extends Controller
                 'recorded_by' => $user?->name,
             ]);
 
-            $invoice = $this->createSubmeterInvoice($sale, $unit, $activeLease);
+            $invoice = $this->createSubmeterInvoice($sale, $unit, $activeLease, $settings);
             $sale->update(['invoice_id' => $invoice->id]);
         });
 
@@ -410,9 +412,21 @@ class ElectricityController extends Controller
     public function issueInvoices(Request $request)
     {
         $data = $request->validate([
-            'kind' => 'nullable|in:direct,submeter,all',
+            'kind'       => 'nullable|in:direct,submeter,all',
+            'invoice_id' => 'nullable|integer|exists:invoices,id',
         ]);
 
+        // Single-invoice issue (per-row button)
+        if (!empty($data['invoice_id'])) {
+            $invoice = Invoice::findOrFail($data['invoice_id']);
+            if ($invoice->status !== 'draft') {
+                return back()->with('warning', 'Invoice is already issued.');
+            }
+            $invoice->update(['status' => 'unpaid']);
+            return back()->with('success', 'Invoice ' . $invoice->invoice_number . ' issued successfully.');
+        }
+
+        // Batch issue by kind
         $kind = $data['kind'] ?? 'all';
         $invoiceIds = collect();
 
@@ -445,7 +459,11 @@ class ElectricityController extends Controller
         $invoiceIds = $invoiceIds->filter()->unique()->values();
 
         if ($invoiceIds->isNotEmpty()) {
-            Invoice::whereIn('id', $invoiceIds)->update(['status' => 'unpaid']);
+            // Load each invoice individually so Eloquent model events fire
+            // (mass query-builder update bypasses observers, breaking GL posting).
+            Invoice::whereIn('id', $invoiceIds)->get()->each(function (Invoice $inv) {
+                $inv->update(['status' => 'unpaid']);
+            });
         }
 
         return back()->with('success', $invoiceIds->isNotEmpty()
@@ -460,11 +478,13 @@ class ElectricityController extends Controller
         }
 
         $data = $request->validate([
-            'unit_price' => 'required|numeric|min:0',
+            'unit_price'  => 'required|numeric|min:0',
+            'vat_percent' => 'required|numeric|min:0|max:100',
         ]);
 
         $prefix = $this->settingPrefix($request);
         SystemSetting::set($prefix . 'elec.submeter.unit_price', $data['unit_price']);
+        SystemSetting::set($prefix . 'elec.submeter.vat_percent', $data['vat_percent']);
 
         return back()->with('success', 'Submeter pricing saved.');
     }
@@ -618,6 +638,24 @@ class ElectricityController extends Controller
         ];
     }
 
+    /**
+     * Back-calculate net and VAT from a VAT-inclusive gross amount.
+     * Submeter price (e.g. 500 TZS/unit) already contains VAT.
+     * net = gross / (1 + rate/100),  vat = gross − net
+     */
+    private function submeterAmounts(float $grossAmount, array $settings): array
+    {
+        $vatRate   = (float) $settings['vat_percent'];
+        $netAmount = round($grossAmount / (1 + $vatRate / 100), 2);
+        $vatAmount = round($grossAmount - $netAmount, 2);
+
+        return [
+            'net_amount'   => $netAmount,
+            'vat_amount'   => $vatAmount,
+            'gross_amount' => $grossAmount,
+        ];
+    }
+
     private function syncDirectInvoice(MeterReading $reading, Unit $unit, Lease $lease, array $generatorSettings): void
     {
         $invoice = $reading->invoice;
@@ -673,55 +711,74 @@ class ElectricityController extends Controller
         }
 
         InvoiceItem::create([
-            'invoice_id' => $invoice->id,
-            'description' => 'Electricity — Generator Charge',
+            'invoice_id'      => $invoice->id,
+            'description'     => 'Electricity — Generator Charge',
+            'item_type'       => 'electricity_charge',
             'sub_description' => number_format($genKwh, 2, '.', '') . ' kWh × TZS ' . number_format((float) $generatorSettings['generator_rate_per_kwh'], 2, '.', ''),
-            'quantity' => 1,
-            'unit_price' => $amounts['base_amount'],
-            'total' => $amounts['base_amount'],
+            'quantity'        => 1,
+            'unit_price'      => $amounts['base_amount'],
+            'total'           => $amounts['base_amount'],
         ]);
 
         InvoiceItem::create([
-            'invoice_id' => $invoice->id,
-            'description' => 'Electricity — Generator VAT',
+            'invoice_id'      => $invoice->id,
+            'description'     => 'Electricity — Generator VAT',
+            'item_type'       => 'electricity_vat',
             'sub_description' => number_format((float) $generatorSettings['generator_vat_percent'], 2, '.', '') . '% VAT on generator charge',
-            'quantity' => 1,
-            'unit_price' => $amounts['vat_amount'],
-            'total' => $amounts['vat_amount'],
+            'quantity'        => 1,
+            'unit_price'      => $amounts['vat_amount'],
+            'total'           => $amounts['vat_amount'],
         ]);
 
         $reading->update(['invoice_id' => $invoice->id]);
     }
 
-    private function createSubmeterInvoice(ElectricitySale $sale, Unit $unit, Lease $lease): Invoice
+    private function createSubmeterInvoice(ElectricitySale $sale, Unit $unit, Lease $lease, array $submeterSettings): Invoice
     {
-        $tenant = $lease->tenant;
+        $tenant  = $lease->tenant;
+        $gross   = (float) $sale->amount;
+        $amounts = $this->submeterAmounts($gross, $submeterSettings);
+        $vatPct  = number_format((float) $submeterSettings['vat_percent'], 2, '.', '');
 
         $invoice = Invoice::create([
             'invoice_number' => $this->nextInvoiceNumber(),
-            'type' => 'invoice',
-            'property_id' => $sale->property_id,
-            'lease_id' => $lease->id,
-            'tenant_name' => $tenant?->name ?? 'Unknown Tenant',
-            'tenant_email' => $tenant?->email,
-            'unit_ref' => $unit->unit_number,
-            'issued_date' => Carbon::parse($sale->sale_date)->toDateString(),
-            'due_date' => Carbon::parse($sale->sale_date)->addDays(14)->toDateString(),
-            'period' => Carbon::parse($sale->sale_date)->format('Y-m'),
-            'status' => 'draft',
-            'currency' => 'TZS',
-            'exchange_rate' => 1,
-            'total_in_base' => $sale->amount,
-            'notes' => 'Electricity module: submeter sale on ' . Carbon::parse($sale->sale_date)->toDateString(),
+            'type'           => 'invoice',
+            'property_id'    => $sale->property_id,
+            'lease_id'       => $lease->id,
+            'tenant_name'    => $tenant?->name ?? 'Unknown Tenant',
+            'tenant_email'   => $tenant?->email,
+            'unit_ref'       => $unit->unit_number,
+            'issued_date'    => Carbon::parse($sale->sale_date)->toDateString(),
+            'due_date'       => Carbon::parse($sale->sale_date)->addDays(14)->toDateString(),
+            'period'         => Carbon::parse($sale->sale_date)->format('Y-m'),
+            'status'         => 'draft',
+            'currency'       => 'TZS',
+            'exchange_rate'  => 1,
+            'total_in_base'  => $gross,
+            'notes'          => 'Electricity module: submeter sale on ' . Carbon::parse($sale->sale_date)->toDateString(),
         ]);
 
+        // Net electricity charge (VAT stripped out via back-calculation)
         InvoiceItem::create([
-            'invoice_id' => $invoice->id,
-            'description' => 'Electricity — Submeter Sale',
-            'sub_description' => number_format((float) $sale->units_sold, 2, '.', '') . ' units × TZS ' . number_format((float) $sale->unit_price, 2, '.', ''),
-            'quantity' => 1,
-            'unit_price' => $sale->amount,
-            'total' => $sale->amount,
+            'invoice_id'      => $invoice->id,
+            'description'     => 'Electricity — Submeter Charge',
+            'item_type'       => 'electricity_charge',
+            'sub_description' => number_format((float) $sale->units_sold, 2, '.', '') . ' units × TZS '
+                               . number_format($amounts['net_amount'] / max(1, (float) $sale->units_sold), 2, '.', '') . '/unit',
+            'quantity'        => 1,
+            'unit_price'      => $amounts['net_amount'],
+            'total'           => $amounts['net_amount'],
+        ]);
+
+        // VAT portion (inclusive back-calculation)
+        InvoiceItem::create([
+            'invoice_id'      => $invoice->id,
+            'description'     => 'Electricity — Submeter VAT',
+            'item_type'       => 'electricity_vat',
+            'sub_description' => $vatPct . '% VAT on TZS ' . number_format($gross, 2, '.', '') . ' electricity charge',
+            'quantity'        => 1,
+            'unit_price'      => $amounts['vat_amount'],
+            'total'           => $amounts['vat_amount'],
         ]);
 
         return $invoice;

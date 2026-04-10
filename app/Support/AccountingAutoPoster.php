@@ -25,6 +25,8 @@ class AccountingAutoPoster
         '2500' => ['name' => 'Management Fee Payable', 'type' => 'liability', 'category' => 'Current Liabilities'],
         '4000' => ['name' => 'Rental Income',          'type' => 'revenue',   'category' => 'Operating Revenue'],
         '4100' => ['name' => 'Service Charge Income',  'type' => 'revenue',   'category' => 'Operating Revenue'],
+        '4200' => ['name' => 'Electricity Income',     'type' => 'revenue',   'category' => 'Operating Revenue'],
+        '4900' => ['name' => 'Other Income',           'type' => 'revenue',   'category' => 'Other Revenue'],
         '5000' => ['name' => 'Maintenance Expense',    'type' => 'expense',   'category' => 'Operating Expenses'],
         '5100' => ['name' => 'Utilities Expense',      'type' => 'expense',   'category' => 'Operating Expenses'],
         '5500' => ['name' => 'Management Fee',         'type' => 'expense',   'category' => 'Operating Expenses'],
@@ -163,6 +165,28 @@ class AccountingAutoPoster
         });
     }
 
+    /**
+     * Seed the full chart of accounts for a newly created property.
+     * Each account is linked to the given property_id, so different properties
+     * have their own independent account balances and history.
+     */
+    public function seedChartOfAccounts(int $propertyId): void
+    {
+        foreach (self::ACCOUNT_TEMPLATES as $code => $meta) {
+            Account::firstOrCreate(
+                ['property_id' => $propertyId, 'code' => $code],
+                [
+                    'name'         => $meta['name'],
+                    'type'         => $meta['type'],
+                    'category'     => $meta['category'],
+                    'balance'      => 0,
+                    'ytd_activity' => 0,
+                    'description'  => 'Auto-created by accounting automation.',
+                ]
+            );
+        }
+    }
+
     private function resolveAccount(?int $propertyId, string $code, string $name, string $type, string $category): Account
     {
         $template = self::ACCOUNT_TEMPLATES[$code] ?? null;
@@ -170,7 +194,7 @@ class AccountingAutoPoster
         // Template takes precedence over caller-supplied defaults so that accounts
         // are always created with the correct type/category regardless of what
         // the individual post() call passes in the line array.
-        return Account::query()->firstOrCreate(
+        $account = Account::query()->firstOrCreate(
             ['property_id' => $propertyId, 'code' => $code],
             [
                 'name'         => $template['name']     ?? ($name !== '' ? $name : 'Auto Account ' . $code),
@@ -181,6 +205,22 @@ class AccountingAutoPoster
                 'description'  => 'Auto-created by accounting automation.',
             ]
         );
+
+        // If a template exists and the stored name/type/category don't match,
+        // correct them now — handles accounts created before a template was added.
+        if ($template && (
+            $account->name     !== $template['name']     ||
+            $account->type     !== $template['type']     ||
+            $account->category !== $template['category']
+        )) {
+            $account->update([
+                'name'     => $template['name'],
+                'type'     => $template['type'],
+                'category' => $template['category'],
+            ]);
+        }
+
+        return $account;
     }
 
     private function nextEntryNumber(): string

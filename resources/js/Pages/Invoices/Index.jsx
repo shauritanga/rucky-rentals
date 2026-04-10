@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 
 const fmt = (n) => Number(n).toLocaleString();
 const VAT_RATE = 0.18;
@@ -108,7 +108,7 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
       <table style={{width:'100%',borderCollapse:'collapse',marginBottom:20}}>
         <thead><tr>{['Description','Qty','Unit Price','Amount'].map(h=><th key={h} style={{textAlign:h==='Amount'||h==='Unit Price'||h==='Qty'?'right':'left',fontSize:'10.5px',fontWeight:700,letterSpacing:'.5px',textTransform:'uppercase',color:'var(--text-muted)',padding:'8px 10px',borderBottom:'2px solid var(--border)'}}>{h}</th>)}</tr></thead>
         <tbody>
-          {(inv.items||[]).map((item,i) => {
+          {(inv.items||[]).filter(item => item.item_type !== 'electricity_vat').map((item,i) => {
             const badge = fitoutBadge(item.description);
             return (
               <tr key={i}>
@@ -144,8 +144,18 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
           </>
         ) : (
           <>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(total, currency)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(total, currency)}</span></div>
+            {explicitVat > 0 ? (
+              <>
+                <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Net Charge</span><span>{formatMoney(total - explicitVat, currency)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>VAT (18% inclusive)</span><span>{formatMoney(explicitVat, currency)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(total, currency)}</span></div>
+              </>
+            ) : (
+              <>
+                <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(total, currency)}</span></div>
+                <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(total, currency)}</span></div>
+              </>
+            )}
           </>
         )}
       </div>
@@ -160,6 +170,9 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
 }
 
 export default function InvoicesIndex({ invoices, leases, tenants, flash = {} }) {
+  const { props } = usePage();
+  const flashData = props.flash ?? {};
+  const [toast, setToast] = useState({ msg: '', type: '' });
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('date-desc');
@@ -334,6 +347,16 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     }
   }, [flash?.created_invoice_id, invoices]);
 
+  useEffect(() => {
+    const show = (msg, type, ms) => {
+      setToast({ msg, type });
+      window.setTimeout(() => setToast({ msg: '', type: '' }), ms);
+    };
+    if (flashData.success) show(flashData.success, 'success', 3500);
+    if (flashData.warning) show(flashData.warning, 'warning', 5000);
+    if (flashData.error)   show(flashData.error,   'error',   4000);
+  }, [flashData.success, flashData.warning, flashData.error]);
+
   const openInvoiceModal = () => {
     setInvType('invoice');
     reset();
@@ -384,13 +407,18 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
   const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
+  const showError = (msg) => {
+    setToast({ msg, type: 'error' });
+    window.setTimeout(() => setToast({ msg: '', type: '' }), 5000);
+  };
+
   const submit = (e, action = 'send') => {
     e.preventDefault();
-    if (!data.tenant_name?.trim()) return;
-    if (!data.issued_date) return;
-    if (!data.due_date && action !== 'draft') return;
+    if (!data.tenant_name?.trim()) { showError('Tenant name is required.'); return; }
+    if (!data.issued_date) { showError('Issue date is required.'); return; }
+    if (!data.due_date && action !== 'draft') { showError('Due date is required.'); return; }
     const hasAmount = items.some((i) => Number(i.quantity) > 0 && Number(i.unit_price) > 0);
-    if (!hasAmount) return;
+    if (!hasAmount) { showError('Add at least one line item with a quantity and price.'); return; }
 
     transform((form) => {
       const matchedTenant = tenants.find(
@@ -415,6 +443,11 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
         setItems([{description:'',sub_description:'',quantity:1,unit_price:0}]);
         setShowModal(false);
       },
+      onError: (errs) => {
+        const first = Object.values(errs)[0];
+        setToast({ msg: first || 'Failed to create invoice. Please check the form.', type: 'error' });
+        window.setTimeout(() => setToast({ msg: '', type: '' }), 5000);
+      },
     });
   };
 
@@ -424,6 +457,18 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   return (
     <AppLayout title="Invoices" subtitle="All invoices">
       <Head title="Invoices" />
+
+      {toast.msg && (
+        <div style={{
+          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+          background: toast.type === 'success' ? 'var(--green)' : toast.type === 'warning' ? '#f59e0b' : '#e53935',
+          color: '#fff', borderRadius: 10, padding: '12px 20px',
+          fontSize: 13.5, fontWeight: 500, boxShadow: '0 4px 20px rgba(0,0,0,.25)',
+          maxWidth: 360,
+        }}>
+          {toast.msg}
+        </div>
+      )}
 
       <div className="tn-stats-row">
         <div className="tn-stat"><div className="tn-stat-value">{counts.all}</div><div className="tn-stat-label">Total Invoices</div></div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { router, usePage, useRemember } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -40,13 +40,25 @@ export default function Electricity({
     const flash = props.flash ?? {};
     const errors = props.errors ?? {};
     const floorOptions = props.floorOptions ?? [];
+    const [toast, setToast] = useState({ msg: '', type: '' });
     const [tab, setTab] = useRemember(resolveActiveTab(url), 'electricity.active-tab');
     const [savingReading, setSavingReading] = useState(false);
+
+    useEffect(() => {
+        const show = (msg, type, ms) => {
+            setToast({ msg, type });
+            window.setTimeout(() => setToast({ msg: '', type: '' }), ms);
+        };
+        if (flash.success) show(flash.success, 'success', 3500);
+        if (flash.warning) show(flash.warning, 'warning', 5000);
+        if (flash.error)   show(flash.error,   'error',   4000);
+    }, [flash.success, flash.warning, flash.error]);
     const [generatorDataTab, setGeneratorDataTab] = useState('fuel-logs');
     const today = new Date().toISOString().slice(0, 10);
     const generatorRate = Number(generatorSettings.generator_rate_per_kwh ?? 1400);
     const generatorVat = Number(generatorSettings.generator_vat_percent ?? 18);
     const submeterRate = Number(submeterSettings.unit_price ?? 500);
+    const submeterVat  = Number(submeterSettings.vat_percent ?? 18);
 
     const [readingForm, setReadingForm] = useState({
         unit_id: directUnits[0]?.id ? String(directUnits[0].id) : '',
@@ -70,7 +82,7 @@ export default function Electricity({
         maint_levy: generatorSettings.maint_levy ?? 50,
         tank_size: generatorSettings.tank_size ?? 200,
     });
-    const [submeterPricingForm, setSubmeterPricingForm] = useState({ unit_price: submeterRate });
+    const [submeterPricingForm, setSubmeterPricingForm] = useState({ unit_price: submeterRate, vat_percent: submeterVat });
     const [fuelForm, setFuelForm] = useState({
         log_date: today,
         litres: '',
@@ -98,6 +110,8 @@ export default function Electricity({
     const saleAmount = Number(saleForm.amount_paid || 0);
     const saleUnitPrice = Number(saleForm.unit_price || 0);
     const computedUnits = saleUnitPrice > 0 ? saleAmount / saleUnitPrice : 0;
+    const saleNetAmount = saleAmount > 0 ? Math.round(saleAmount / (1 + submeterVat / 100)) : 0;
+    const saleVatAmount = saleAmount > 0 ? saleAmount - saleNetAmount : 0;
 
     const directDraftCount = directReadings.filter((reading) => reading.invoice_status === 'draft').length;
     const submeterDraftCount = submeterSales.filter((sale) => sale.invoice_status === 'draft').length;
@@ -130,11 +144,31 @@ export default function Electricity({
     };
 
     const post = (url, payload, onSuccess) => {
-        router.post(url, payload, { preserveState: true, preserveScroll: true, onSuccess });
+        router.post(url, payload, {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess,
+            onError: (errs) => {
+                const first = Object.values(errs)[0];
+                setToast({ msg: first || 'Something went wrong. Please try again.', type: 'error' });
+                window.setTimeout(() => setToast({ msg: '', type: '' }), 5000);
+            },
+        });
     };
 
     return (
         <AppLayout title="Electricity">
+            {toast.msg && (
+                <div style={{
+                    position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+                    background: toast.type === 'success' ? 'var(--green)' : toast.type === 'warning' ? '#f59e0b' : '#e53935',
+                    color: '#fff', borderRadius: 10, padding: '12px 20px',
+                    fontSize: 13.5, fontWeight: 500, boxShadow: '0 4px 20px rgba(0,0,0,.25)',
+                    maxWidth: 360,
+                }}>
+                    {toast.msg}
+                </div>
+            )}
             <div className="acc-layout">
                 <aside className="acc-sidebar">
                     {[
@@ -195,7 +229,7 @@ export default function Electricity({
                                 </div>
                                 <div className="actions">
                                     <button className="btn-primary" onClick={() => post('/electricity/invoices/issue', { kind: 'direct' })}>
-                                        Issue Direct Drafts
+                                        Issue Generator Proforma
                                     </button>
                                 </div>
                             </div>
@@ -352,7 +386,7 @@ export default function Electricity({
                                 </div>
                                 <div className="actions">
                                     <button className="btn-primary" onClick={() => post('/electricity/invoices/issue', { kind: 'submeter' })}>
-                                        Issue Submeter Drafts
+                                        Issue Submeter Invoices
                                     </button>
                                 </div>
                             </div>
@@ -408,11 +442,15 @@ export default function Electricity({
                                             <textarea className="form-input" rows={2} value={saleForm.notes} onChange={(e) => setSaleForm((form) => ({ ...form, notes: e.target.value }))} style={{ resize: 'vertical' }} />
                                         </div>
                                         <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: '12px 14px', marginBottom: 12 }}>
-                                            <div className="bill-summary-row"><span>Amount received</span><span style={{ color: 'var(--green)' }}>{fmtTZS(saleAmount)}</span></div>
-                                            <div className="bill-summary-row"><span>Computed units</span><span>{saleAmount > 0 && saleUnitPrice > 0 ? computedUnits.toFixed(2) : '0.00'} units</span></div>
+                                            <div className="bill-summary-row"><span>Amount received (gross)</span><span style={{ color: 'var(--green)' }}>{fmtTZS(saleAmount)}</span></div>
+                                            <div className="bill-summary-row"><span>Net electricity charge</span><span>{fmtTZS(saleNetAmount)}</span></div>
+                                            <div className="bill-summary-row"><span>VAT ({submeterVat}% inclusive)</span><span style={{ color: 'var(--text-muted)' }}>{fmtTZS(saleVatAmount)}</span></div>
+                                            <div className="bill-summary-row" style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}><span>Computed units</span><span>{saleAmount > 0 && saleUnitPrice > 0 ? computedUnits.toFixed(2) : '0.00'} units</span></div>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                            <button className="btn-primary" disabled={!submeterModuleReady || saleAmount <= 0 || saleUnitPrice <= 0} onClick={() => post('/electricity/sales', saleForm)}>
+                                            <button className="btn-primary" disabled={!submeterModuleReady || saleAmount <= 0 || saleUnitPrice <= 0} onClick={() => post('/electricity/sales', saleForm, () => {
+                                                setSaleForm((f) => ({ ...f, amount_paid: '', notes: '' }));
+                                            })}>
                                                 Record Sale
                                             </button>
                                         </div>
@@ -423,11 +461,19 @@ export default function Electricity({
                                     <div className="card-header"><div className="card-title">Submeter Pricing</div></div>
                                     <div style={{ padding: '16px 18px' }}>
                                         <div className="form-group" style={{ marginBottom: 12 }}>
-                                            <label className="form-label">Default Unit Price</label>
-                                            <input className="form-input" type="number" min="0" step="0.01" value={submeterPricingForm.unit_price} onChange={(e) => setSubmeterPricingForm({ unit_price: e.target.value })} />
+                                            <label className="form-label">Default Unit Price (VAT-inclusive)</label>
+                                            <input className="form-input" type="number" min="0" step="0.01" value={submeterPricingForm.unit_price} onChange={(e) => setSubmeterPricingForm((f) => ({ ...f, unit_price: e.target.value }))} />
+                                        </div>
+                                        <div className="form-group" style={{ marginBottom: 12 }}>
+                                            <label className="form-label">VAT Rate (%)</label>
+                                            <input className="form-input" type="number" min="0" max="100" step="0.01" value={submeterPricingForm.vat_percent} onChange={(e) => setSubmeterPricingForm((f) => ({ ...f, vat_percent: e.target.value }))} />
                                         </div>
                                         <div className="info-box" style={{ marginBottom: 12 }}>
-                                            <div className="info-box-text">Current default sale rate: <strong>{fmtTZS(submeterPricingForm.unit_price)}</strong> per unit.</div>
+                                            <div className="info-box-text">
+                                                Unit price <strong>{fmtTZS(submeterPricingForm.unit_price)}</strong> includes {submeterPricingForm.vat_percent}% VAT.
+                                                Net per unit: <strong>{fmtTZS(Math.round(Number(submeterPricingForm.unit_price) / (1 + Number(submeterPricingForm.vat_percent) / 100)))}</strong>,
+                                                VAT: <strong>{fmtTZS(Math.round(Number(submeterPricingForm.unit_price) - Number(submeterPricingForm.unit_price) / (1 + Number(submeterPricingForm.vat_percent) / 100)))}</strong>.
+                                            </div>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                                             <button className="btn-primary" disabled={!submeterModuleReady} onClick={() => post('/electricity/settings/submeter', submeterPricingForm)}>

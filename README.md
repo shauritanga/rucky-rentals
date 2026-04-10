@@ -1,58 +1,135 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Rucky Rentals
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A commercial property management system built with **Laravel 13**, **React 19**, and **Inertia.js**.  
+Handles units, tenants, leases, invoices, payments, maintenance, electricity billing, and accounting — all in one place.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Requirements
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+| Dependency | Version |
+|---|---|
+| PHP | ≥ 8.3 |
+| PostgreSQL | ≥ 14 |
+| Node.js | ≥ 18 |
+| Composer | ≥ 2 |
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+---
 
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Quick Install
 
 ```bash
-composer require laravel/boost --dev
+# 1. Clone the repository
+git clone https://github.com/shauritanga/rucky-rentals.git
+cd rucky-rentals
 
-php artisan boost:install
+# 2. Copy and configure environment
+cp .env.example .env
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Open `.env` and set your database credentials:
+```env
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=rucky_db
+DB_USERNAME=postgres
+DB_PASSWORD=your_password
+```
 
-## Contributing
+```bash
+# 3. Run the one-command setup (installs deps, migrates, seeds, builds assets)
+composer setup
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+That's it. Start the development server:
 
-## Code of Conduct
+```bash
+composer dev
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Then open **http://localhost:8000** in your browser.
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Default Login
 
-## License
+| Field | Value |
+|---|---|
+| Email | `admin@rukyrentals.co.tz` |
+| Password | `admin123` |
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+> **Change the password immediately** after first login.
+
+---
+
+## What `composer setup` does
+
+| Step | Command |
+|---|---|
+| Install PHP dependencies | `composer install` |
+| Copy `.env.example` → `.env` (if missing) | — |
+| Generate app encryption key | `php artisan key:generate` |
+| Run database migrations | `php artisan migrate --force` |
+| Seed initial superuser account | `php artisan db:seed --force` |
+| Create storage symlink | `php artisan storage:link` |
+| Install JS dependencies | `npm install` |
+| Build frontend assets | `npm run build` |
+
+---
+
+## Manual Installation (step by step)
+
+```bash
+composer install
+cp .env.example .env          # then edit DB credentials
+php artisan key:generate
+php artisan migrate
+php artisan db:seed
+php artisan storage:link
+npm install
+npm run build
+php artisan serve
+```
+
+---
+
+## Development Workflow
+
+```bash
+# Starts the web server, queue worker, log viewer, and Vite HMR together
+composer dev
+```
+
+---
+
+## Resetting to a Clean Slate (dev only)
+
+Wipes all data and recreates the superuser:
+
+```bash
+php artisan db:seed --class=CleanSlateSeeder
+```
+
+---
+
+## Production Deployment
+
+The project ships with a GitHub Actions workflow (`.github/workflows/deploy.yml`) that automatically deploys to a DigitalOcean droplet on every push to `main`.
+
+Required GitHub secrets:
+
+| Secret | Description |
+|---|---|
+| `SERVER_HOST` | Droplet IP address |
+| `SERVER_USER` | SSH username (e.g. `root`) |
+| `SERVER_SSH_KEY` | Private SSH key for the deploy key pair |
+
+---
+
+## Tech Stack
+
+- **Backend**: Laravel 13, PostgreSQL, Laravel Reverb (WebSockets)
+- **Frontend**: React 19, Inertia.js v2, Vite
+- **Auth**: Session-based, role-scoped (`superuser`, `manager`, `staff`)
+- **Accounting**: Double-entry GL posted automatically on invoices and payments
+- **Currency**: Multi-currency (TZS / USD) with exchange rate support

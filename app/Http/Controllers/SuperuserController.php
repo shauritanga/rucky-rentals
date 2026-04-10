@@ -8,6 +8,7 @@ use App\Services\AccountingService;
 use App\Models\ExchangeRate;
 use App\Models\FuelLog;
 use App\Models\Payment;
+use App\Support\AccountingAutoPoster;
 use App\Support\FloorConfig;
 use App\Models\Lease;
 use App\Models\MaintenanceRecord;
@@ -179,6 +180,8 @@ class SuperuserController extends Controller
         $data['occupied_units'] = 0;
 
         $property = Property::create($data);
+
+        app(AccountingAutoPoster::class)->seedChartOfAccounts((int) $property->id);
 
         if (!empty($data['manager_user_id'])) {
             User::where('id', $data['manager_user_id'])->update([
