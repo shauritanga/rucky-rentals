@@ -10,8 +10,8 @@ const NAV = [
   { label: 'Electricity',  href: '/electricity',  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>, section: null },
   { label: 'Maintenance',  href: '/maintenance',  icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>, section: null },
   { label: 'Documents',    href: '/documents',    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 6a2 2 0 012-2h5l2 2h7a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V6z"/></svg>, section: null },
-  { label: 'Payments',     href: '/payments',     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>, section: 'Finance' },
-  { label: 'Invoices',     href: '/invoices',     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>, section: null },
+  { label: 'Invoices',     href: '/invoices',     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>, section: 'Finance' },
+  { label: 'Payments',     href: '/payments',     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>, section: null },
   { label: 'Accounting',   href: '/accounting',   icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>, section: null },
   { label: 'Reports',      href: '/reports',      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>, section: null },
   { label: 'Team',         href: '/team',         icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>, section: 'Administration', badge: '0' },
@@ -117,21 +117,21 @@ export default function AppLayout({ children, title, subtitle }) {
     if (!nav) return;
     const wrap = nav.querySelector('.nav-items-wrap');
     if (!wrap) return;
-    const navBottom = nav.getBoundingClientRect().bottom;
+    const navH = nav.clientHeight;
     const children = Array.from(wrap.children);
 
-    // Pass 1: does ANYTHING actually overflow the nav boundary?
+    // Pass 1: does ANYTHING actually overflow the nav?
     let hasOverflow = false;
     for (const child of children) {
-      if (child.getBoundingClientRect().bottom > navBottom + 1) { hasOverflow = true; break; }
+      if (child.offsetTop + child.offsetHeight > navH) { hasOverflow = true; break; }
     }
     if (!hasOverflow) { setOverflowFrom(children.length); return; }
 
     // Pass 2: find first item hidden behind the "•••" button
-    const safeBottom = navBottom - OVERFLOW_BTN_H;
+    const safeH = navH - OVERFLOW_BTN_H;
     let first = children.length;
     for (let i = 0; i < children.length; i++) {
-      if (children[i].getBoundingClientRect().bottom > safeBottom) { first = i; break; }
+      if (children[i].offsetTop + children[i].offsetHeight > safeH) { first = i; break; }
     }
     setOverflowFrom(first);
   }, []);
@@ -140,8 +140,12 @@ export default function AppLayout({ children, title, subtitle }) {
     measureNav();
     const ro = new ResizeObserver(measureNav);
     if (navRef.current) ro.observe(navRef.current);
-    return () => ro.disconnect();
-  }, [measureNav]);
+    window.addEventListener('resize', measureNav);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measureNav);
+    };
+  }, [measureNav, collapsed]);
 
   const user = props?.auth?.user;
   const viewingProperty = props?.viewing_property ?? null;
