@@ -49,6 +49,9 @@ class TenantController extends Controller
             'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
             'email'               => 'required|email|unique:tenants',
             'phone'               => 'required|string|max:50',
+            'address'             => 'nullable|string|max:255',
+            'city'                => 'nullable|string|max:120',
+            'country'             => 'nullable|string|max:120',
             'notes'               => 'nullable|string',
         ]);
 
@@ -118,6 +121,9 @@ class TenantController extends Controller
             'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
             'email'               => 'required|email|unique:tenants,email,' . $tenant->id,
             'phone'               => 'required|string|max:50',
+            'address'             => 'nullable|string|max:255',
+            'city'                => 'nullable|string|max:120',
+            'country'             => 'nullable|string|max:120',
             'notes'               => 'nullable|string',
         ]);
 

@@ -28,6 +28,7 @@ export default function TenantsIndex({ tenants }) {
   const { data, setData, post, processing, reset } = useForm({
     tenant_type: 'individual',
     name: '', email: '', phone: '',
+    address: '', city: '', country: '',
     national_id: '',
     nok_name: '', nok_phone: '', nok_relation: '',
     company_name: '', registration_number: '', tin: '', vrn: '', contact_person: '',
@@ -318,6 +319,15 @@ export default function TenantsIndex({ tenants }) {
                         <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.84 1.16 2 2 0 012.82.84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 8.1a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg></div>
                         <div><div className="tdr-contact-label">Phone</div><div className="tdr-contact-value">{selected.phone}</div></div>
                       </div>
+                      {(selected.address || selected.city || selected.country) && (
+                        <div className="tdr-contact-item">
+                          <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+                          <div>
+                            <div className="tdr-contact-label">Address</div>
+                            <div className="tdr-contact-value">{[selected.address, selected.city, selected.country].filter(Boolean).join(', ')}</div>
+                          </div>
+                        </div>
+                      )}
                       {isCompany ? (
                         <div className="tdr-contact-item">
                           <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
@@ -428,7 +438,7 @@ export default function TenantsIndex({ tenants }) {
             <div className="modal-title">Add Tenant</div>
             <button className="modal-close" onClick={()=>{ setShowModal(false); setSubmitError(''); }}>✕</button>
           </div>
-          <form onSubmit={submit}>
+          <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
             <div className="modal-body">
               {submitError && (
                 <div style={{ marginBottom: 14, background: 'var(--red-dim)', border: '1px solid var(--red)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--red)' }}>
@@ -476,6 +486,18 @@ export default function TenantsIndex({ tenants }) {
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={data.email} onChange={e=>setData('email',e.target.value)} required /></div>
                 <div className="form-group"><label className="form-label">Phone *</label><input className="form-input" value={data.phone} onChange={e=>setData('phone',e.target.value)} required /></div>
+              </div>
+
+              {/* Address — shared for both types */}
+              <div className="form-row">
+                <div className="form-group" style={{gridColumn:'1 / -1'}}>
+                  <label className="form-label">Address</label>
+                  <input className="form-input" value={data.address} onChange={e=>setData('address',e.target.value)} placeholder="Street / building name" />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={e=>setData('city',e.target.value)} placeholder="e.g. Dar es Salaam" /></div>
+                <div className="form-group"><label className="form-label">Country</label><input className="form-input" value={data.country} onChange={e=>setData('country',e.target.value)} placeholder="e.g. Tanzania" /></div>
               </div>
 
               {/* NOK — individuals only */}

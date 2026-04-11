@@ -25,6 +25,9 @@ class Tenant extends Model
         'tin',
         'vrn',
         'contact_person',
+        'address',
+        'city',
+        'country',
     ];
 
     public function leases()

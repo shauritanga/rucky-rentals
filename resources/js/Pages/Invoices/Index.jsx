@@ -178,7 +178,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const [sort, setSort] = useState('date-desc');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
-  const [invType, setInvType] = useState('invoice');
+  const [invType, setInvType] = useState('proforma');
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
 
   const { data, setData, post, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
@@ -223,9 +223,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const modalSubtotal = items.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0);
   const modalVat = modalSubtotal * VAT_RATE;
   const modalTotal = modalSubtotal + modalVat;
-  const typeHint = invType === 'proforma'
-    ? 'A Proforma Invoice is a preliminary estimate — not legally binding, sent before the lease is signed or activated.'
-    : 'A Tax Invoice is a legally binding request for payment, issued when rent is due.';
+
 
   const getLeaseUnitRef = (lease) => {
     if (!lease) return '';
@@ -298,8 +296,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const rentStartDate = lease.rent_start_date || lease.start_date || '';
     const billingPeriod = getNextBillingPeriod(lease);
     const period = billingPeriod.text;
-    const rentBase = monthlyRent * paymentCycle;
-    const serviceCharge = Math.round(unitServiceCharge * paymentCycle * 100) / 100;
     const fitoutDays = lease.fitout_enabled ? (Number(lease.fitout_days) || 0) : 0;
     const dailyServiceCharge = unitServiceCharge / 30;
     const fitoutExtraSC = fitoutDays > 0 ? Math.round(dailyServiceCharge * fitoutDays * 100) / 100 : 0;
@@ -312,16 +308,16 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const nextItems = [{
       description: `Rental Payment - Unit ${unitRef || '-'}`,
       sub_description: period,
-      quantity: 1,
-      unit_price: rentBase,
+      quantity: paymentCycle,
+      unit_price: monthlyRent,
     }];
 
-    if (serviceCharge > 0) {
+    if (unitServiceCharge > 0) {
       nextItems.push({
         description: `Service Charge`,
         sub_description: period || 'Building/common services',
-        quantity: 1,
-        unit_price: serviceCharge,
+        quantity: paymentCycle,
+        unit_price: unitServiceCharge,
       });
     }
 
@@ -358,7 +354,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   }, [flashData.success, flashData.warning, flashData.error]);
 
   const openInvoiceModal = () => {
-    setInvType('invoice');
+    setInvType('proforma');
     reset();
     setData('issued_date', '2026-03-19');
     setItems([{ description: '', sub_description: '', quantity: 1, unit_price: 0 }]);
@@ -382,9 +378,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     setData('unit_ref', unitRef);
     if (billingPeriod.text) setData('period', billingPeriod.text);
 
-    if (l.status === 'pending_accountant' || l.status === 'pending_pm') {
-      setInvType('proforma');
-    }
+    // All lease invoices are proforma by default (server enforces this too)
+    setInvType('proforma');
 
     setItems(buildLeaseInvoiceItems(l));
   };
@@ -431,7 +426,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       unit_ref: form.unit_ref?.trim() || '—',
       tenant_email: form.tenant_email || matchedTenant?.email || null,
       items,
-      notes: form.notes?.trim() || `Bank: Equity Bank Kenya  |  A/C: 0123456789  |  Ref: ${form.unit_ref || ''}`,
+      notes: form.notes?.trim() || null,
       ...(action === 'draft' ? { status: 'draft' } : {}),
       };
     });
@@ -547,7 +542,10 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               {(selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
               {selected.status==='proforma' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(s=>s?{...s,status:'unpaid'}:null)})}>Convert to Invoice</button>}
               {selected.status==='paid' && <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>window.print()}>Print / Save PDF</button>}
-              <button className="btn-secondary" onClick={()=>setSelected(null)}>Email</button>
+              {selected.type === 'proforma' && selected.tenant_email
+                ? <button className="btn-secondary" onClick={()=>router.post(`/invoices/${selected.id}/send`,{},{preserveScroll:true,onSuccess:()=>setSelected(null)})}>Email Proforma</button>
+                : <button className="btn-secondary" disabled title={selected.type==='invoice'?'Tax invoice — proforma was emailed at issue time':'No tenant email on file'} style={{opacity:.5,cursor:'not-allowed'}}>Email</button>
+              }
             </div>
           </>}
         </div>
@@ -556,18 +554,9 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       {/* New Invoice Modal */}
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
         <div className="modal" style={{width:520,maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
-          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">New Invoice</div><button className="modal-close" onClick={()=>setShowModal(false)}>✕</button></div>
+          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">New Proforma Invoice</div><button className="modal-close" onClick={()=>setShowModal(false)}>✕</button></div>
           <form onSubmit={(e)=>submit(e, 'send')} style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
             <div className="modal-body" style={{overflowY:'auto',flex:1}}>
-              <div style={{marginBottom:18}}>
-                <label className="form-label" style={{marginBottom:8,display:'block'}}>Invoice Type *</label>
-                <div className="nl-toggle-bar">
-                  {[['invoice','Tax Invoice'],['proforma','Proforma Invoice']].map(([t,l])=>(
-                    <button key={t} type="button" className={`nl-toggle-btn ${invType===t?'active':''}`} onClick={()=>setInvType(t)}>{l}</button>
-                  ))}
-                </div>
-                <div style={{marginTop:8,fontSize:12,color:'var(--text-muted)'}}>{typeHint}</div>
-              </div>
 
               <div className="form-row">
                 <div className="form-group">

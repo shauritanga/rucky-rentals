@@ -453,7 +453,7 @@ class MockRentalData
                 'due_date' => '2026-03-05',
                 'period' => 'Mar 2026',
                 'status' => $status,
-                'notes' => 'Please reference invoice number when making payment.\nBank: Equity Bank Kenya | A/C: 0123456789',
+                'notes' => 'Please reference invoice number when making payment.',
                 'items' => [
                     [
                         'id' => 1,

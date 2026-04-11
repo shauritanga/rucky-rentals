@@ -22,6 +22,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\AuditTrailController;
 use App\Http\Controllers\ScheduledMaintenanceController;
+use App\Http\Controllers\PropertySettingsController;
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -46,6 +47,7 @@ Route::middleware('auth')->group(function () {
         Route::resource('scheduled-maintenance', ScheduledMaintenanceController::class)->only(['store', 'update', 'destroy']);
         Route::resource('documents', DocumentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('invoices', InvoiceController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send'])->name('invoices.send');
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
         Route::post('team', [TeamController::class, 'store'])->name('team.store');
         Route::patch('team/{user}/permissions', [TeamController::class, 'updatePermissions'])->name('team.permissions.update');
@@ -53,6 +55,8 @@ Route::middleware('auth')->group(function () {
         Route::patch('team/{userId}/restore', [TeamController::class, 'restore'])->name('team.restore');
         Route::delete('team/{user}', [TeamController::class, 'destroy'])->name('team.destroy');
         Route::get('audit', [AuditTrailController::class, 'index'])->name('audit.index');
+        Route::get('settings', [PropertySettingsController::class, 'show'])->name('settings.show');
+        Route::patch('settings', [PropertySettingsController::class, 'update'])->name('settings.update');
 
         Route::get('electricity', [ElectricityController::class, 'index'])->name('electricity');
         Route::post('electricity/readings', [ElectricityController::class, 'storeReading'])->name('electricity.readings.store');

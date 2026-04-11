@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\ProformaInvoiceMail;
 use App\Models\ElectricitySale;
 use App\Models\FuelLog;
 use App\Models\Invoice;
@@ -12,12 +13,14 @@ use App\Models\Outage;
 use App\Models\Property;
 use App\Models\SystemSetting;
 use App\Models\Unit;
+use App\Services\InvoiceNumberService;
 use App\Support\AccountingAutoPoster;
 use App\Support\FloorConfig;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -28,6 +31,8 @@ class ElectricityController extends Controller
     private const DIRECT_GENERATOR_VAT_PERCENT = 18.00;
     private const SUBMETER_UNIT_PRICE = 500.00;
     private const SUBMETER_VAT_PERCENT = 18.00;
+
+    public function __construct(private InvoiceNumberService $invoiceNumberService) {}
 
     private function scopeForUser(Builder $query, Request $request): void
     {
@@ -418,57 +423,78 @@ class ElectricityController extends Controller
 
         // Single-invoice issue (per-row button)
         if (!empty($data['invoice_id'])) {
-            $invoice = Invoice::findOrFail($data['invoice_id']);
+            $invoice = Invoice::with('items')->findOrFail($data['invoice_id']);
+
+            // Generator proformas: already ready to send — just email and confirm
+            if ($invoice->type === 'proforma' || $invoice->status === 'proforma') {
+                $this->sendProformaEmail($invoice);
+                return back()->with('success', 'Proforma invoice ' . $invoice->invoice_number . ' sent to tenant.');
+            }
+
             if ($invoice->status !== 'draft') {
                 return back()->with('warning', 'Invoice is already issued.');
             }
+
             $invoice->update(['status' => 'unpaid']);
             return back()->with('success', 'Invoice ' . $invoice->invoice_number . ' issued successfully.');
         }
 
         // Batch issue by kind
         $kind = $data['kind'] ?? 'all';
-        $invoiceIds = collect();
+        $directEmailCount  = 0;
+        $submeterIssueIds  = collect();
 
+        // Generator (direct): proformas are already issued — send email to tenants
         if (in_array($kind, ['direct', 'all'], true)) {
-            $directQ = MeterReading::with('invoice')
+            $directQ = MeterReading::with(['invoice.items'])
                 ->whereNotNull('invoice_id')
                 ->whereHas('unit', fn ($query) => $query->where('electricity_type', 'direct'));
             $this->scopeForUser($directQ, $request);
 
-            $invoiceIds = $invoiceIds->merge(
-                $directQ->get()
-                    ->filter(fn (MeterReading $reading) => $reading->invoice?->status === 'draft')
-                    ->pluck('invoice_id')
-            );
+            $directQ->get()
+                ->filter(fn (MeterReading $r) => $r->invoice?->status === 'proforma')
+                ->each(function (MeterReading $r) use (&$directEmailCount) {
+                    $this->sendProformaEmail($r->invoice);
+                    $directEmailCount++;
+                });
         }
 
+        // Submeter: draft → unpaid (tax invoice, triggers GL via observer)
         if (in_array($kind, ['submeter', 'all'], true) && $this->hasElectricitySalesTable()) {
             $salesQ = ElectricitySale::with('invoice')
                 ->whereNotNull('invoice_id')
                 ->whereHas('unit', fn ($query) => $query->where('electricity_type', 'submeter'));
             $this->scopeForUser($salesQ, $request);
 
-            $invoiceIds = $invoiceIds->merge(
-                $salesQ->get()
-                    ->filter(fn (ElectricitySale $sale) => $sale->invoice?->status === 'draft')
-                    ->pluck('invoice_id')
-            );
+            $submeterIssueIds = $salesQ->get()
+                ->filter(fn (ElectricitySale $sale) => $sale->invoice?->status === 'draft')
+                ->pluck('invoice_id')
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($submeterIssueIds->isNotEmpty()) {
+                Invoice::whereIn('id', $submeterIssueIds)->get()->each(function (Invoice $inv) {
+                    $inv->update(['status' => 'unpaid']);
+                });
+            }
         }
 
-        $invoiceIds = $invoiceIds->filter()->unique()->values();
+        $total = $directEmailCount + $submeterIssueIds->count();
 
-        if ($invoiceIds->isNotEmpty()) {
-            // Load each invoice individually so Eloquent model events fire
-            // (mass query-builder update bypasses observers, breaking GL posting).
-            Invoice::whereIn('id', $invoiceIds)->get()->each(function (Invoice $inv) {
-                $inv->update(['status' => 'unpaid']);
-            });
+        if ($total === 0) {
+            return back()->with('success', 'No electricity invoices were available to process.');
         }
 
-        return back()->with('success', $invoiceIds->isNotEmpty()
-            ? 'Draft electricity invoices issued successfully.'
-            : 'No draft electricity invoices were available to issue.');
+        $parts = [];
+        if ($directEmailCount > 0) {
+            $parts[] = "{$directEmailCount} generator proforma(s) emailed to tenants";
+        }
+        if ($submeterIssueIds->isNotEmpty()) {
+            $parts[] = $submeterIssueIds->count() . ' submeter invoice(s) issued';
+        }
+
+        return back()->with('success', implode(', ', $parts) . '.');
     }
 
     public function updateSubmeterSettings(Request $request)
@@ -663,7 +689,7 @@ class ElectricityController extends Controller
 
         if ($genKwh <= 0) {
             if ($invoice) {
-                if ($invoice->status !== 'draft') {
+                if (!in_array($invoice->status, ['draft', 'proforma'])) {
                     throw ValidationException::withMessages([
                         'direct_reading' => 'Issued generator invoices cannot be removed from a reading.',
                     ]);
@@ -680,28 +706,28 @@ class ElectricityController extends Controller
         $amounts = $this->generatorAmounts($genKwh, $generatorSettings);
         $tenant = $lease->tenant;
         $invoiceData = [
-            'type' => 'invoice',
-            'property_id' => $reading->property_id,
-            'lease_id' => $lease->id,
-            'tenant_name' => $tenant?->name ?? 'Unknown Tenant',
+            'type'         => 'proforma',
+            'property_id'  => $reading->property_id,
+            'lease_id'     => $lease->id,
+            'tenant_name'  => $tenant?->name ?? 'Unknown Tenant',
             'tenant_email' => $tenant?->email,
-            'unit_ref' => $unit->unit_number,
-            'issued_date' => Carbon::parse($reading->reading_date)->toDateString(),
-            'due_date' => Carbon::parse($reading->reading_date)->addDays(14)->toDateString(),
-            'period' => Carbon::parse($reading->reading_date)->toDateString(),
-            'status' => 'draft',
-            'currency' => 'TZS',
+            'unit_ref'     => $unit->unit_number,
+            'issued_date'  => Carbon::parse($reading->reading_date)->toDateString(),
+            'due_date'     => Carbon::parse($reading->reading_date)->addDays(14)->toDateString(),
+            'period'       => Carbon::parse($reading->reading_date)->toDateString(),
+            'status'       => 'proforma',
+            'currency'     => 'TZS',
             'exchange_rate' => 1,
             'total_in_base' => $amounts['total_amount'],
-            'notes' => 'Electricity module: generator bill for ' . Carbon::parse($reading->reading_date)->toDateString(),
+            'notes'        => 'Electricity module: generator bill for ' . Carbon::parse($reading->reading_date)->toDateString(),
         ];
 
         if (! $invoice) {
             $invoice = Invoice::create(array_merge($invoiceData, [
-                'invoice_number' => $this->nextInvoiceNumber(),
+                'invoice_number' => $this->invoiceNumberService->generateNumber('PF'),
             ]));
         } else {
-            if ($invoice->status !== 'draft') {
+            if (!in_array($invoice->status, ['draft', 'proforma'])) {
                 throw ValidationException::withMessages([
                     'direct_reading' => 'This reading already has an issued invoice and cannot be edited.',
                 ]);
@@ -741,7 +767,7 @@ class ElectricityController extends Controller
         $vatPct  = number_format((float) $submeterSettings['vat_percent'], 2, '.', '');
 
         $invoice = Invoice::create([
-            'invoice_number' => $this->nextInvoiceNumber(),
+            'invoice_number' => $this->invoiceNumberService->generateNumber('ELEC'),
             'type'           => 'invoice',
             'property_id'    => $sale->property_id,
             'lease_id'       => $lease->id,
@@ -784,32 +810,18 @@ class ElectricityController extends Controller
         return $invoice;
     }
 
-    private function nextInvoiceNumber(): string
+    private function sendProformaEmail(Invoice $invoice): void
     {
-        $nextNumber = $this->nextInvoiceSequenceValue();
-
-        return 'ELEC-' . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT);
-    }
-
-    private function nextInvoiceSequenceValue(): int
-    {
-        $this->lockInvoiceNumberSequence();
-
-        $maxNumber = 0;
-
-        foreach (Invoice::query()->select('invoice_number')->lockForUpdate()->pluck('invoice_number') as $invoiceNumber) {
-            if (preg_match('/(\d+)$/', (string) $invoiceNumber, $matches) === 1) {
-                $maxNumber = max($maxNumber, (int) $matches[1]);
-            }
+        if (empty($invoice->tenant_email)) {
+            return;
         }
-
-        return $maxNumber + 1;
-    }
-
-    private function lockInvoiceNumberSequence(): void
-    {
-        if (DB::getDriverName() === 'pgsql') {
-            DB::select('SELECT pg_advisory_xact_lock(?)', [856331]);
+        try {
+            if ($invoice->items->isEmpty()) {
+                $invoice->load('items');
+            }
+            Mail::to($invoice->tenant_email)->send(new ProformaInvoiceMail($invoice, $invoice->items));
+        } catch (\Exception $e) {
+            \Log::warning('Generator proforma email failed for invoice #' . $invoice->id . ': ' . $e->getMessage());
         }
     }
 }

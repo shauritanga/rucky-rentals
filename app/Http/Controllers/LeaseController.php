@@ -322,7 +322,7 @@ class LeaseController extends Controller
                 $lease->update($editData);
 
                 if ((int) $oldUnitId !== (int) $newUnitId) {
-                    Unit::where('id', $oldUnitId)->update(['status' => 'available']);
+                    Unit::where('id', $oldUnitId)->update(['status' => 'vacant']);
                     Unit::where('id', $newUnitId)->update(['status' => 'occupied']);
                 }
 
@@ -382,6 +382,12 @@ class LeaseController extends Controller
         DB::transaction(function () use ($lease) {
             $this->voidDepositEntry($lease);
             app(\App\Services\AccountingService::class)->postDepositRefund($lease);
+
+            // Free up the unit so it shows as vacant immediately
+            if ($lease->unit_id) {
+                \App\Models\Unit::where('id', $lease->unit_id)->update(['status' => 'vacant']);
+            }
+
             $lease->delete();
         });
 

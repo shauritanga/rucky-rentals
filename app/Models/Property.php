@@ -20,6 +20,11 @@ class Property extends Model
         'total_floors',  // deprecated — kept for backward compat; use floor_config
         'floor_config',
         'manager_user_id',
+        'phone',
+        'bank_name',
+        'bank_account',
+        'bank_account_name',
+        'swift_code',
     ];
 
     protected $casts = [

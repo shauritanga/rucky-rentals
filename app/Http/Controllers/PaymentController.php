@@ -10,6 +10,7 @@ use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\ExchangeRate;
 use App\Services\AccountingService;
+use App\Services\InvoiceNumberService;
 use App\Services\PaymentReceiptService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
@@ -22,6 +23,8 @@ use Inertia\Inertia;
 class PaymentController extends Controller
 {
     use LogsAudit;
+
+    public function __construct(private InvoiceNumberService $invoiceNumberService) {}
     public function index(Request $request)
     {
         $user = $request->user();
@@ -250,7 +253,24 @@ class PaymentController extends Controller
         if (empty($invoiceId)) return;
 
         $invoice = Invoice::with('items')->find($invoiceId);
-        if (!$invoice || $invoice->type === 'proforma') return;
+        if (!$invoice) return;
+
+        // Convert proforma to tax invoice on first payment.
+        // Step A: updateQuietly() changes type + number without firing the observer
+        //         (avoids a premature postInvoice() while status is still 'proforma').
+        // Step B: $invoice->save() fires InvoiceObserver::updated() which sees the
+        //         status transition from 'proforma' → paid/unpaid and calls postInvoice().
+        if ($invoice->type === 'proforma' || $invoice->status === 'proforma') {
+            DB::transaction(function () use ($invoice) {
+                $invoice->updateQuietly([
+                    'invoice_number' => $this->invoiceNumberService->generateNumber('INV'),
+                    'type'           => 'invoice',
+                ]);
+                // Link to the next unlinked installment now that it's a tax invoice
+                $this->attachInvoiceToInstallment($invoice->fresh());
+            });
+            $invoice->refresh();
+        }
 
         // Use base-currency amounts so USD invoices reconcile correctly.
         // total_in_base is set by AccountingService when posting; fall back to
@@ -302,6 +322,22 @@ class PaymentController extends Controller
             'status' => $status,
             'paid_amount' => max(0, round($paidTotal, 2)),
         ]);
+    }
+
+    private function attachInvoiceToInstallment(Invoice $invoice): void
+    {
+        if (empty($invoice->lease_id) || $invoice->type === 'proforma') {
+            return;
+        }
+
+        $base = LeaseInstallment::where('lease_id', $invoice->lease_id)->whereNull('invoice_id');
+
+        $installment = !empty($invoice->due_date)
+            ? (clone $base)->whereDate('due_date', $invoice->due_date)->orderBy('sequence')->first()
+            : null;
+
+        $installment ??= (clone $base)->orderBy('sequence')->first();
+        $installment?->update(['invoice_id' => $invoice->id]);
     }
 
     private function scopeByUserProperty($query, Request $request, string $column): void

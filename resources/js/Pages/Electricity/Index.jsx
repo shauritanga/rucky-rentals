@@ -15,7 +15,7 @@ const resolveActiveTab = (url) => {
 
 function InvoiceBadge({ status }) {
     if (!status) return <span className="badge muted">No Bill</span>;
-    const badgeClass = status === 'paid' ? 'paid' : status === 'draft' ? 'muted' : status === 'overdue' ? 'overdue' : 'unpaid';
+    const badgeClass = status === 'paid' ? 'paid' : status === 'proforma' ? 'proforma' : status === 'draft' ? 'muted' : status === 'overdue' ? 'overdue' : 'unpaid';
     const label = status === 'partially_paid'
         ? 'Part Paid'
         : status.charAt(0).toUpperCase() + status.slice(1);
@@ -113,7 +113,7 @@ export default function Electricity({
     const saleNetAmount = saleAmount > 0 ? Math.round(saleAmount / (1 + submeterVat / 100)) : 0;
     const saleVatAmount = saleAmount > 0 ? saleAmount - saleNetAmount : 0;
 
-    const directDraftCount = directReadings.filter((reading) => reading.invoice_status === 'draft').length;
+    const directDraftCount = directReadings.filter((reading) => reading.invoice_status === 'proforma').length;
     const submeterDraftCount = submeterSales.filter((sale) => sale.invoice_status === 'draft').length;
     const directTotal = directReadings.reduce((sum, reading) => sum + Number(reading.generator_total_amount ?? 0), 0);
     const submeterTotal = submeterSales.reduce((sum, sale) => sum + Number(sale.amount ?? 0), 0);

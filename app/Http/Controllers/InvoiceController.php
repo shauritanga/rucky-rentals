@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\ProformaInvoiceMail;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lease;
@@ -9,9 +10,11 @@ use App\Models\LeaseInstallment;
 use App\Models\Property;
 use App\Models\Tenant;
 use App\Models\ExchangeRate;
+use App\Services\InvoiceNumberService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -19,6 +22,8 @@ use Inertia\Inertia;
 class InvoiceController extends Controller
 {
     use LogsAudit;
+
+    public function __construct(private InvoiceNumberService $invoiceNumberService) {}
     public function index(Request $request)
     {
         $user = $request->user();
@@ -89,6 +94,12 @@ class InvoiceController extends Controller
             'items.*.unit_price'  => 'required|numeric',
         ]);
 
+        // Business rule: lease invoices are always proforma.
+        // GL posts on payment when they convert to Tax Invoices, not at creation.
+        if (!empty($data['lease_id'])) {
+            $data['type'] = 'proforma';
+        }
+
         $status = ($data['status'] ?? null) === 'draft'
             ? 'draft'
             : ($data['type'] === 'proforma' ? 'proforma' : 'unpaid');
@@ -110,12 +121,11 @@ class InvoiceController extends Controller
 
         DB::transaction(function () use ($data, $propertyId, $status, &$createdInvoiceId) {
             $prefix = $data['type'] === 'proforma' ? 'PF' : 'INV';
-            $nextNumber = $this->nextInvoiceSequenceValue();
 
             $invoice = Invoice::create([
                 ...$data,
-                'property_id' => $propertyId,
-                'invoice_number' => $prefix . '-' . str_pad((string) $nextNumber, 4, '0', STR_PAD_LEFT),
+                'property_id'    => $propertyId,
+                'invoice_number' => $this->invoiceNumberService->generateNumber($prefix),
                 'status'         => $status,
             ]);
             $createdInvoiceId = $invoice->id;
@@ -175,8 +185,19 @@ class InvoiceController extends Controller
             app(\App\Services\AccountingService::class)->postInvoice($invoice);
         });
 
-        $createdInvoice = Invoice::find($createdInvoiceId);
-        $propertyName   = Property::where('id', $propertyId)->value('name');
+        $createdInvoice = Invoice::with('items')->find($createdInvoiceId);
+
+        // Send proforma email automatically on creation
+        if ($createdInvoice?->type === 'proforma' && !empty($createdInvoice->tenant_email)) {
+            try {
+                Mail::to($createdInvoice->tenant_email)
+                    ->send(new ProformaInvoiceMail($createdInvoice, $createdInvoice->items));
+            } catch (\Exception $e) {
+                \Log::warning('Proforma invoice email failed for invoice #' . $createdInvoiceId . ': ' . $e->getMessage());
+            }
+        }
+
+        $propertyName = Property::where('id', $propertyId)->value('name');
         $this->logAudit(
             request: $request,
             action: 'Invoice created',
@@ -281,25 +302,26 @@ class InvoiceController extends Controller
         }
     }
 
-    private function nextInvoiceSequenceValue(): int
+    /**
+     * Re-send a proforma invoice email on demand (from the Email button in the drawer).
+     */
+    public function send(Invoice $invoice): \Illuminate\Http\RedirectResponse
     {
-        $this->lockInvoiceNumberSequence();
-
-        $maxNumber = 0;
-
-        foreach (Invoice::query()->select('invoice_number')->lockForUpdate()->pluck('invoice_number') as $invoiceNumber) {
-            if (preg_match('/(\d+)$/', (string) $invoiceNumber, $matches) === 1) {
-                $maxNumber = max($maxNumber, (int) $matches[1]);
-            }
+        if ($invoice->type !== 'proforma') {
+            return back()->with('error', 'Only proforma invoices can be re-sent this way.');
         }
 
-        return $maxNumber + 1;
-    }
+        if (empty($invoice->tenant_email)) {
+            return back()->with('error', 'This invoice has no tenant email address.');
+        }
 
-    private function lockInvoiceNumberSequence(): void
-    {
-        if (DB::getDriverName() === 'pgsql') {
-            DB::select('SELECT pg_advisory_xact_lock(?)', [856331]);
+        try {
+            $invoice->load('items');
+            Mail::to($invoice->tenant_email)->send(new ProformaInvoiceMail($invoice, $invoice->items));
+            return back()->with('success', 'Proforma invoice emailed to ' . $invoice->tenant_email . '.');
+        } catch (\Exception $e) {
+            \Log::warning('Proforma re-send failed for invoice #' . $invoice->id . ': ' . $e->getMessage());
+            return back()->with('error', 'Email could not be sent. Please try again.');
         }
     }
 }

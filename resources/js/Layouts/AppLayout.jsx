@@ -16,6 +16,7 @@ const NAV = [
   { label: 'Reports',      href: '/reports',      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>, section: null },
   { label: 'Team',         href: '/team',         icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>, section: 'Administration', badge: '0' },
   { label: 'Audit Trail',  href: '/audit',        icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>, section: null, badge: '!', badgeStyle: { background: 'var(--red)', display: 'none' } },
+  { label: 'Settings',     href: '/settings',     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>, section: null, managerOnly: true },
 ];
 
 /* ─── Overflow "•••" button ──────────────────────────────────────── */
@@ -156,7 +157,7 @@ export default function AppLayout({ children, title, subtitle }) {
 
   /* ── Nav overflow ──────────────────────────────────────────────── */
   const navRef = useRef(null);
-  const [overflowFrom, setOverflowFrom] = useState(NAV.length);
+  const [overflowFrom, setOverflowFrom] = useState(999);
   const OVERFLOW_BTN_H = 40;
 
   const measureNav = useCallback(() => {
@@ -196,6 +197,8 @@ export default function AppLayout({ children, title, subtitle }) {
 
   const user = props?.auth?.user;
   const viewingProperty = props?.viewing_property ?? null;
+  const isManagerContext = user?.role === 'manager' || viewingProperty !== null;
+  const visibleNav = NAV.filter(item => !item.managerOnly || isManagerContext);
   const displayName = user?.name || 'User';
   const roleLabel = user?.role
     ? (user.role === 'lease_manager'
@@ -229,8 +232,8 @@ export default function AppLayout({ children, title, subtitle }) {
           {/* Items wrapper — all items are rendered; those past overflowFrom are naturally
               clipped by the nav's overflow:hidden. They appear in the overflow popover. */}
           <div className="nav-items-wrap">
-            {NAV.map((item, index) => {
-              const previousSection = index > 0 ? NAV[index - 1].section : null;
+            {visibleNav.map((item, index) => {
+              const previousSection = index > 0 ? visibleNav[index - 1].section : null;
               const showSection = Boolean(item.section) && item.section !== previousSection;
               // Items past overflowFrom are still in DOM for measurement but invisible + inert
               const hidden = index >= overflowFrom;
@@ -252,9 +255,9 @@ export default function AppLayout({ children, title, subtitle }) {
           </div>
 
           {/* Overflow button — absolutely positioned at nav bottom; only when items overflow */}
-          {overflowFrom < NAV.length && (
+          {overflowFrom < visibleNav.length && (
             <OverflowNavBtn
-              items={NAV.slice(overflowFrom)}
+              items={visibleNav.slice(overflowFrom)}
               isActive={isActive}
               collapsed={collapsed}
             />
