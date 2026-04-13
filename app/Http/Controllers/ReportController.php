@@ -92,12 +92,14 @@ class ReportController extends Controller
 
         $collectionRate = $invoicedAmount > 0 ? min(100, ($paidAgainstInvoices / $invoicedAmount) * 100) : 0;
 
-        // --- WHT Total (period-scoped, wht_confirmed payments only) ---
+        // --- WHT Total (period-scoped, all paid lease-linked payments) ---
+        // WHT is calculated from the lease rate on rent/service-charge breakdowns for
+        // every paid payment in the period — regardless of wht_confirmed flag, which
+        // is a receipt-workflow flag, not a reporting gate.
         $whtPayments = Payment::query()
             ->with(['invoice.lease:id,wht_rate'])
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
             ->where('status', 'paid')
-            ->where('wht_confirmed', true)
             ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
             ->whereNotNull('invoice_id')
             ->get();
@@ -106,6 +108,7 @@ class ReportController extends Controller
             $rate = (float) ($p->invoice?->lease?->wht_rate ?? 0);
             if ($rate <= 0) return 0.0;
             $base = (float) $p->breakdown_rent + (float) $p->breakdown_service_charge;
+            if ($base <= 0) return 0.0;
             $fx   = ($p->amount > 0 && !empty($p->amount_in_base))
                 ? (float) $p->amount_in_base / (float) $p->amount
                 : (float) ($p->exchange_rate ?? 1);
@@ -605,7 +608,7 @@ class ReportController extends Controller
                     $exportWhtPayments = Payment::query()
                         ->with(['invoice.lease:id,wht_rate'])
                         ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-                        ->where('status', 'paid')->where('wht_confirmed', true)
+                        ->where('status', 'paid')
                         ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
                         ->whereNotNull('invoice_id')->get();
 
@@ -613,6 +616,7 @@ class ReportController extends Controller
                         $rate = (float) ($p->invoice?->lease?->wht_rate ?? 0);
                         if ($rate <= 0) return 0.0;
                         $base = (float) $p->breakdown_rent + (float) $p->breakdown_service_charge;
+                        if ($base <= 0) return 0.0;
                         $fx   = ($p->amount > 0 && !empty($p->amount_in_base)) ? (float) $p->amount_in_base / (float) $p->amount : (float) ($p->exchange_rate ?? 1);
                         return round($base * $fx * ($rate / 100), 2);
                     });
