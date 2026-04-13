@@ -352,6 +352,29 @@ class AccountingService
                         ['account_code' => '1120', 'debit' => $whtAmount,     'credit' => 0],
                         ['account_code' => '1100', 'debit' => 0,              'credit' => $amountToPost],
                     ];
+                } elseif ($creditAccountCode === '4000') {
+                    // Cash-basis: back-calculate VAT from gross amount and split into revenue + VAT payable
+                    $cashVatRate = 0.0;
+                    if ($linkedInvoice?->lease) {
+                        $cashVatRate = (float) ($linkedInvoice->lease->vat_rate ?? 0);
+                    } elseif ($payment->unit_id) {
+                        $cashVatRate = (float) (\App\Models\Lease::where('unit_id', $payment->unit_id)
+                            ->whereIn('status', ['active', 'expiring', 'overdue'])
+                            ->value('vat_rate') ?? 18);
+                    } else {
+                        $cashVatRate = 18.0; // default
+                    }
+
+                    $vatAmount  = $cashVatRate > 0 ? round($amountToPost * $cashVatRate / (100 + $cashVatRate), 2) : 0.0;
+                    $netRevenue = round($amountToPost - $vatAmount, 2);
+
+                    $lines = [
+                        ['account_code' => '1000', 'debit' => $amountToPost, 'credit' => 0],
+                        ['account_code' => '4000', 'debit' => 0,             'credit' => $netRevenue],
+                    ];
+                    if ($vatAmount > 0) {
+                        $lines[] = ['account_code' => '2200', 'debit' => 0, 'credit' => $vatAmount];
+                    }
                 } else {
                     $lines = [
                         ['account_code' => '1000',               'debit' => $amountToPost, 'credit' => 0],
