@@ -112,24 +112,29 @@ class ReportController extends Controller
             return round($base * $fx * ($rate / 100), 2);
         });
 
-        // --- VAT Total (period-scoped, two parts — no double-counting) ---
+        // --- VAT Total (period-scoped by PAYMENT date — VAT is collected when cash received) ---
         // Part A: electricity & generator VAT stored as item_type = 'electricity_vat'
+        // Scoped by payments.paid_date so VAT appears in the period the money was received.
         $vatFromElectricity = DB::table('invoice_items')
             ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+            ->join('payments', 'payments.invoice_id', '=', 'invoices.id')
             ->when($propertyId !== null, fn($q) => $q->where('invoices.property_id', $propertyId))
             ->where('invoice_items.item_type', 'electricity_vat')
             ->where('invoices.type', 'invoice')
-            ->whereIn('invoices.status', ['paid', 'partially_paid'])
-            ->whereBetween('invoices.issued_date', [$start->toDateString(), $end->toDateString()])
+            ->where('payments.status', 'paid')
+            ->whereBetween('payments.paid_date', [$start->toDateString(), $end->toDateString()])
             ->sum(DB::raw('invoice_items.total * COALESCE(invoices.exchange_rate, 1)'));
 
-        // Part B: lease VAT on rent/service-charge items using each lease's vat_rate
+        // Part B: lease VAT on rent/service-charge items — scoped by payments.paid_date
         $leasePaidInvoices = Invoice::query()
             ->with(['items', 'lease:id,vat_rate'])
+            ->whereHas('payments', function ($q) use ($start, $end) {
+                $q->where('status', 'paid')
+                  ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()]);
+            })
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
             ->where('type', 'invoice')
             ->whereIn('status', ['paid', 'partially_paid'])
-            ->whereBetween('issued_date', [$start->toDateString(), $end->toDateString()])
             ->get();
 
         $vatFromLeases = $leasePaidInvoices->sum(function ($inv) {
