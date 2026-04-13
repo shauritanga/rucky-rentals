@@ -39,7 +39,7 @@ function NotificationBell({ onNavigate }) {
         } catch {}
     };
 
-    // Subscribe to real-time notifications via Reverb WebSocket
+    // Subscribe to real-time notifications via Reverb WebSocket + 30s polling fallback
     useEffect(() => {
         const userId = props.auth?.user?.id;
         if (!userId) return;
@@ -47,15 +47,20 @@ function NotificationBell({ onNavigate }) {
         // Initial fetch on mount
         fetchNotifications();
 
+        // 30-second polling fallback (works even without Reverb running)
+        const interval = setInterval(fetchNotifications, 30_000);
+
         // Listen for pushed notifications on the user's private channel
-        if (!echo) return;
-        const channel = echo.private(`App.Models.User.${userId}`);
-        channel.notification(() => {
-            fetchNotifications();
-        });
+        if (echo) {
+            const channel = echo.private(`App.Models.User.${userId}`);
+            channel.notification(() => {
+                fetchNotifications();
+            });
+        }
 
         return () => {
-            echo.leave(`App.Models.User.${userId}`);
+            clearInterval(interval);
+            if (echo) echo.leave(`App.Models.User.${userId}`);
         };
     }, [props.auth?.user?.id]);
 

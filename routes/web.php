@@ -17,6 +17,7 @@ use App\Http\Controllers\ElectricityController;
 use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\SuperuserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TeamController;
@@ -93,6 +94,9 @@ Route::middleware('auth')->group(function () {
         Route::get('superuser/notifications', [SuperuserController::class, 'getNotifications'])->name('superuser.notifications.index');
         Route::post('superuser/notifications/read', [SuperuserController::class, 'markNotificationsRead'])->name('superuser.notifications.read');
         Route::delete('superuser/notifications', [SuperuserController::class, 'clearNotifications'])->name('superuser.notifications.clear');
+        // Notifications for all non-superuser roles
+        Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+        Route::post('notifications/read', [NotificationController::class, 'markAllRead'])->name('notifications.read');
         Route::patch('profile', [ProfileController::class, 'updateProfile'])->name('profile.update');
         Route::patch('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password.change');
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update');

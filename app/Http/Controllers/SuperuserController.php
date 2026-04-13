@@ -16,6 +16,7 @@ use App\Models\Property;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Notifications\LeaseDecisionNotification;
+use App\Notifications\MaintenanceApprovalNotification;
 use App\Notifications\MaintenanceDecisionNotification;
 use App\Traits\LogsAudit;
 use Carbon\Carbon;
@@ -461,10 +462,18 @@ class SuperuserController extends Controller
 
         $ticket->update(['workflow_status' => 'approved', 'status' => 'open']);
 
+        $freshTicket = $ticket->fresh();
+
         // Notify the property manager
         $manager = $ticket->unit?->property?->manager ?? $ticket->property?->manager;
         if ($manager) {
-            $manager->notify(new MaintenanceDecisionNotification($ticket->fresh(), 'approved', $message, $actor));
+            $manager->notify(new MaintenanceDecisionNotification($freshTicket, 'approved', $message, $actor));
+        }
+
+        // Notify the reporter (in-app + email)
+        $reporter = User::where('name', $freshTicket->reported_by)->first();
+        if ($reporter && $reporter->id !== $manager?->id) {
+            $reporter->notify(new MaintenanceApprovalNotification($freshTicket, 'approved'));
         }
 
         $propertyName = $ticket->unit?->property?->name ?? Property::where('id', $ticket->property_id)->value('name');

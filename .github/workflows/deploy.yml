@@ -34,3 +34,9 @@ jobs:
             npm run build
 
             php artisan queue:restart
+
+            # Restart Laravel Reverb WebSocket server via supervisor
+            # (supervisor must have a [program:reverb] section configured)
+            if command -v supervisorctl &> /dev/null; then
+              sudo supervisorctl restart reverb 2>/dev/null || true
+            fi

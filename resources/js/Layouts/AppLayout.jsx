@@ -1,6 +1,192 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import echo from '@/echo';
+
+/* ─── Notification Bell (all non-superuser roles) ────────────────── */
+function timeAgo(ts) {
+    if (!ts) return '';
+    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return 'Just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function NotificationBell() {
+    const { props } = usePage();
+    const [open, setOpen] = useState(false);
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [localUnread, setLocalUnread] = useState(null);
+    const ref = useRef(null);
+
+    const unread = localUnread !== null ? localUnread : (props.notifications_unread ?? 0);
+
+    // Close on outside click
+    useEffect(() => {
+        const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const fetchNotifications = useCallback(async () => {
+        try {
+            const res = await fetch('/notifications', { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            setItems(json.notifications ?? []);
+            setLocalUnread(json.unread_count ?? 0);
+        } catch {}
+    }, []);
+
+    // Subscribe to real-time push + 30s polling fallback
+    useEffect(() => {
+        const userId = props.auth?.user?.id;
+        if (!userId) return;
+
+        fetchNotifications();
+
+        // 30-second polling fallback (works even without Reverb)
+        const interval = setInterval(fetchNotifications, 30_000);
+
+        // Real-time via Reverb WebSocket
+        if (echo) {
+            const channel = echo.private(`App.Models.User.${userId}`);
+            channel.notification(() => { fetchNotifications(); });
+        }
+
+        return () => {
+            clearInterval(interval);
+            if (echo) echo.leave(`App.Models.User.${userId}`);
+        };
+    }, [props.auth?.user?.id, fetchNotifications]);
+
+    const handleOpen = () => {
+        setOpen((v) => !v);
+        if (!open) { setLoading(true); fetchNotifications().finally(() => setLoading(false)); }
+    };
+
+    const csrfToken = () => document.querySelector('meta[name=csrf-token]')?.content ?? '';
+
+    const handleMarkAllRead = async () => {
+        await fetch('/notifications/read', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken() },
+        });
+        setLocalUnread(0);
+        setItems((prev) => prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+    };
+
+    const getIcon = (data) => {
+        if (data?.stage === 'approved') {
+            return (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--green, #22c55e)' }}>
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            );
+        }
+        return (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--amber, #f59e0b)' }}>
+                <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
+            </svg>
+        );
+    };
+
+    const getTitle = (data) => {
+        if (data?.stage === 'approved') return 'Maintenance Approved';
+        if (data?.stage === 'rejected') return 'Maintenance Rejected';
+        if (data?.type === 'lease_decision') return data.decision === 'approved' ? 'Lease Approved' : 'Lease Rejected';
+        return 'Notification';
+    };
+
+    const getSub = (data) => {
+        if (data?.ticket_number) return [data.ticket_number, data.title].filter(Boolean).join(' · ');
+        if (data?.unit_ref) return data.unit_ref;
+        return '';
+    };
+
+    return (
+        <div ref={ref} style={{ position: 'relative' }}>
+            <button
+                className="icon-btn"
+                title="Notifications"
+                onClick={handleOpen}
+                style={{ position: 'relative' }}
+            >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+                </svg>
+                {unread > 0 && (
+                    <span style={{
+                        position: 'absolute', top: 3, right: 3,
+                        minWidth: 16, height: 16, borderRadius: 8, padding: '0 4px',
+                        background: '#e53935', color: '#fff',
+                        fontSize: 10, fontWeight: 700,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: '2px solid var(--bg-surface)',
+                    }}>
+                        {unread > 99 ? '99+' : unread}
+                    </span>
+                )}
+            </button>
+
+            {open && (
+                <div style={{
+                    position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                    width: 320, background: 'var(--bg-surface)',
+                    border: '1px solid var(--border)', borderRadius: 12,
+                    boxShadow: 'var(--shadow-float)', zIndex: 200,
+                    overflow: 'hidden',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ fontWeight: 700, fontSize: 13 }}>Notifications</span>
+                        {unread > 0 && (
+                            <button type="button" onClick={handleMarkAllRead}
+                                style={{ fontSize: 11.5, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                                Mark all read
+                            </button>
+                        )}
+                    </div>
+                    <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+                        {loading && (
+                            <div style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>Loading…</div>
+                        )}
+                        {!loading && items.length === 0 && (
+                            <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>You're all caught up ✓</div>
+                        )}
+                        {!loading && items.map((n) => {
+                            const isUnread = !n.read_at;
+                            return (
+                                <div
+                                    key={n.id}
+                                    style={{
+                                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                                        padding: '11px 16px',
+                                        background: isUnread ? 'var(--bg-elevated)' : 'transparent',
+                                        borderBottom: '1px solid var(--border)',
+                                    }}
+                                >
+                                    {isUnread && <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0, marginTop: 4 }} />}
+                                    {!isUnread && <span style={{ width: 7, flexShrink: 0 }} />}
+                                    <span style={{ marginTop: 1 }}>{getIcon(n.data)}</span>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 13, fontWeight: isUnread ? 600 : 400, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {getTitle(n.data)}
+                                        </div>
+                                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {getSub(n.data)}
+                                        </div>
+                                    </div>
+                                    <span style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, marginTop: 2 }}>{timeAgo(n.created_at)}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
 
 const NAV = [
   { label: 'Dashboard',    href: '/',            icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>, section: 'Overview' },
@@ -404,10 +590,7 @@ export default function AppLayout({ children, title, subtitle }) {
               : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
             }
           </button>
-          <button className="icon-btn" title="Notifications">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg>
-            <span className="notif-dot"></span>
-          </button>
+          <NotificationBell />
         </header>
 
         <div className="content">

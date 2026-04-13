@@ -59,10 +59,7 @@ class HandleInertiaRequests extends Middleware
                 'warning' => fn() => $request->session()->get('warning'),
                 'created_invoice_id' => fn() => $request->session()->get('created_invoice_id'),
             ],
-            'notifications_unread' => fn() =>
-                $request->user()?->role === 'superuser'
-                    ? $request->user()->unreadNotifications()->count()
-                    : 0,
+            'notifications_unread' => fn() => $request->user()?->unreadNotifications()->count() ?? 0,
             'viewing_property' => fn() => (
                 $request->user()?->role === 'superuser' && $request->session()->get('superuser_viewing_property_id')
                     ? Property::find($request->session()->get('superuser_viewing_property_id'), ['id', 'name'])
