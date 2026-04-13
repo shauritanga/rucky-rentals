@@ -379,11 +379,6 @@
     </div>
     @endif
 
-    {{-- ── Notes ── --}}
-    @if($invoice->notes)
-    <div class="notes">{{ $invoice->notes }}</div>
-    @endif
-
     {{-- ── Footer ── --}}
     <div class="footer">
         <div class="footer-left">Approved by: {{ $companyName }}</div>
