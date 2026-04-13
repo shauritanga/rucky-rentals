@@ -21,6 +21,10 @@ class MaintenanceRecordObserver
         }
 
         if ($record->status === 'resolved' && $originalStatus !== 'resolved') {
+            // Stamp resolution date if not already set
+            if (empty($record->resolved_date)) {
+                $record->updateQuietly(['resolved_date' => now()]);
+            }
             $this->accountingService->postMaintenanceRecord($record);
             return;
         }

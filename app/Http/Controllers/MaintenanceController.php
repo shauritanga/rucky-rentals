@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
 use App\Models\MaintenanceRecord;
 use App\Models\Property;
 use App\Models\ScheduledMaintenance;
 use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use App\Notifications\MaintenanceApprovalNotification;
 use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
@@ -32,7 +34,7 @@ class MaintenanceController extends Controller
             ]);
         }
 
-        $tickets = MaintenanceRecord::with('unit')->orderByDesc('reported_date');
+        $tickets = MaintenanceRecord::with(['unit', 'documents'])->orderByDesc('reported_date');
         $units   = Unit::query()->orderBy('unit_number');
 
         $this->scopeByUserProperty($tickets, $request);
@@ -75,12 +77,20 @@ class MaintenanceController extends Controller
         $user = $request->user();
 
         $data = $request->validate([
-            'title'       => 'required|string',
-            'description' => 'nullable|string',
-            'unit_ref'    => 'required|string',
-            'category'    => 'required|string',
-            'priority'    => 'required|in:high,med,low',
-            'assignee'    => 'nullable|string',
+            'title'              => 'required|string|max:255',
+            'description'        => 'nullable|string',
+            'unit_ref'           => 'required|string',
+            'category'           => 'required|string',
+            'priority'           => 'required|in:high,med,low,critical',
+            'assignee'           => 'nullable|string|max:255',
+            'cost'               => 'nullable|numeric|min:0',
+            'materials'          => 'nullable|array',
+            'materials.*.name'   => 'required|string|max:255',
+            'materials.*.unit'   => 'nullable|string|max:50',
+            'materials.*.qty'    => 'required|numeric|min:0',
+            'materials.*.unit_price' => 'required|numeric|min:0',
+            'images'             => 'nullable|array',
+            'images.*'           => 'file|image|max:5120',
         ]);
 
         $unit = Unit::where('unit_number', $data['unit_ref'])->first();
@@ -102,7 +112,14 @@ class MaintenanceController extends Controller
 
         $count  = MaintenanceRecord::count() + 1;
         $ticket = MaintenanceRecord::create([
-            ...$data,
+            'title'           => $data['title'],
+            'description'     => $data['description'] ?? null,
+            'unit_ref'        => $data['unit_ref'],
+            'category'        => $data['category'],
+            'priority'        => $data['priority'],
+            'assignee'        => $data['assignee'] ?? null,
+            'cost'            => !empty($data['cost']) ? $data['cost'] : null,
+            'materials'       => !empty($data['materials']) ? $data['materials'] : null,
             'property_id'     => $propertyId,
             'unit_id'         => $unit?->id,
             'ticket_number'   => 'TK-' . str_pad($count, 3, '0', STR_PAD_LEFT),
@@ -112,6 +129,24 @@ class MaintenanceController extends Controller
             'reported_date'   => now()->toDateString(),
             'notes'           => json_encode([]),
         ]);
+
+        // Save uploaded images as Document records
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $image) {
+                $path = $image->store('maintenance/' . $ticket->id, 'public');
+                Document::create([
+                    'maintenance_record_id' => $ticket->id,
+                    'name'          => $image->getClientOriginalName(),
+                    'file_path'     => $path,
+                    'file_type'     => $image->getClientOriginalExtension() ?: 'jpg',
+                    'file_size'     => round($image->getSize() / 1024, 1) . ' KB',
+                    'tag'           => 'maintenance',
+                    'document_type' => 'maintenance_image',
+                    'unit_ref'      => $ticket->unit_ref,
+                    'uploaded_by'   => $user?->name ?? 'System',
+                ]);
+            }
+        }
 
         // Send notifications — to superuser if submitted, not to accountants
         if ($workflowStatus === 'submitted') {

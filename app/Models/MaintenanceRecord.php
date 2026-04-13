@@ -25,10 +25,15 @@ class MaintenanceRecord extends Model
         'currency',
         'cost_in_base',
         'reported_date',
+        'resolved_date',
         'notes',
+        'materials',
     ];
 
-    protected $casts = ['notes' => 'array'];
+    protected $casts = [
+        'notes'     => 'array',
+        'materials' => 'array',
+    ];
 
     protected $appends = ['record_number'];
 
@@ -45,5 +50,10 @@ class MaintenanceRecord extends Model
     public function property()
     {
         return $this->belongsTo(Property::class);
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(Document::class, 'maintenance_record_id');
     }
 }

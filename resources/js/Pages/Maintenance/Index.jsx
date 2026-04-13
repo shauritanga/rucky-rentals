@@ -323,15 +323,31 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
   const submitRequest = (e) => {
     e.preventDefault();
     setSubmitError('');
-    post('/maintenance', {
-      data: {
-        title: data.title,
-        description: data.description,
-        unit_ref: data.unit_ref,
-        category: data.category || 'General',
-        priority: data.priority === 'critical' ? 'high' : data.priority,
-        assignee: data.assignee,
-      },
+
+    const formData = new FormData();
+    formData.append('title', data.title);
+    formData.append('description', data.description || '');
+    formData.append('unit_ref', data.unit_ref);
+    formData.append('category', data.category || 'General');
+    formData.append('priority', data.priority);
+    formData.append('assignee', data.assignee || '');
+    if (data.labour) formData.append('cost', data.labour);
+
+    // Append materials as indexed array
+    materials.forEach((row, i) => {
+      formData.append(`materials[${i}][name]`, row.name || '');
+      formData.append(`materials[${i}][unit]`, row.unit || '');
+      formData.append(`materials[${i}][qty]`, row.qty || 0);
+      formData.append(`materials[${i}][unit_price]`, row.unit_price || 0);
+    });
+
+    // Append image files
+    images.forEach((img) => {
+      if (img.file) formData.append('images[]', img.file);
+    });
+
+    router.post('/maintenance', formData, {
+      forceFormData: true,
       onSuccess: () => {
         reset();
         setMaterials([]);
@@ -386,14 +402,10 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
   const handleImageUpload = (files) => {
     const list = Array.from(files || []).filter((f) => String(f.type || '').startsWith('image/'));
     if (!list.length) return;
-
-    list.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        setImages((prev) => [...prev, String(ev.target?.result || '')]);
-      };
-      reader.readAsDataURL(file);
-    });
+    setImages((prev) => [
+      ...prev,
+      ...list.map((file) => ({ file, preview: URL.createObjectURL(file) })),
+    ]);
   };
 
   const upcomingSchedule = scheduledTasks.filter((task) => task.status === 'upcoming');
@@ -690,17 +702,45 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
 
                 <div className="drawer-section">
                   <div className="drawer-section-title">Materials & Costs</div>
-                  <div style={{fontSize:13,color:'var(--text-muted)',padding:'8px 0'}}>No materials listed</div>
-                  <div style={{background:'var(--bg-elevated)',borderRadius:9,padding:'10px 12px',marginTop:8,fontSize:13}}>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Materials Total (market rate)</span><strong>{selected.material_cost ? formatTzsFromUsd(selected.material_cost) : '—'}</strong></div>
-                    <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Labour</span><strong>{selected.labour ? formatTzsFromUsd(selected.labour) : '—'}</strong></div>
-                    <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Cost</span><strong style={{color:'var(--accent)'}}>{selected.total_cost ? formatTzsFromUsd(selected.total_cost) : '—'}</strong></div>
-                  </div>
+                  {(() => {
+                    const mats = Array.isArray(selected.materials) && selected.materials.length ? selected.materials : null;
+                    const matCost = mats ? mats.reduce((s, m) => s + Number(m.qty || 0) * Number(m.unit_price || 0), 0) : 0;
+                    return (
+                      <>
+                        {mats ? (
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, marginBottom: 8 }}>
+                            <thead><tr style={{ color: 'var(--text-muted)', fontSize: 11 }}><th style={{ textAlign: 'left', paddingBottom: 4 }}>Material</th><th style={{ textAlign: 'center', paddingBottom: 4 }}>Qty</th><th style={{ textAlign: 'right', paddingBottom: 4 }}>Price/Unit</th><th style={{ textAlign: 'right', paddingBottom: 4 }}>Total</th></tr></thead>
+                            <tbody>{mats.map((m, i) => <tr key={i} style={{ borderTop: '1px solid var(--border-subtle)' }}><td style={{ padding: '4px 0' }}>{m.name} {m.unit ? <span style={{ color: 'var(--text-muted)' }}>({m.unit})</span> : ''}</td><td style={{ textAlign: 'center' }}>{m.qty}</td><td style={{ textAlign: 'right' }}>{formatTzsFromUsd(Number(m.unit_price || 0))}</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{formatTzsFromUsd(Number(m.qty || 0) * Number(m.unit_price || 0))}</td></tr>)}</tbody>
+                          </table>
+                        ) : (
+                          <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>No materials listed</div>
+                        )}
+                        <div style={{ background: 'var(--bg-elevated)', borderRadius: 9, padding: '10px 12px', marginTop: 8, fontSize: 13 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span style={{ color: 'var(--text-muted)' }}>Materials Total</span><strong>{matCost ? formatTzsFromUsd(matCost) : '—'}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}><span style={{ color: 'var(--text-muted)' }}>Labour</span><strong>{selected.labour ? formatTzsFromUsd(selected.labour) : '—'}</strong></div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, marginTop: 6, borderTop: '1px solid var(--border)' }}><span style={{ fontWeight: 700 }}>Total Cost</span><strong style={{ color: 'var(--accent)' }}>{selected.total_cost ? formatTzsFromUsd(selected.total_cost) : '—'}</strong></div>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="drawer-section">
                   <div className="drawer-section-title">Image Evidence</div>
-                  <div style={{fontSize:13,color:'var(--text-muted)'}}>No images attached</div>
+                  {(() => {
+                    const docs = selected.documents?.filter(d => d.document_type === 'maintenance_image') || [];
+                    return docs.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {docs.map((doc) => (
+                          <a key={doc.id} href={`/storage/${doc.file_path}`} target="_blank" rel="noreferrer">
+                            <img src={`/storage/${doc.file_path}`} alt={doc.name} style={{ width: 80, height: 80, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }} />
+                          </a>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No images attached</div>
+                    );
+                  })()}
                 </div>
 
                 <div className="drawer-section">
@@ -769,7 +809,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Priority *</label><select className="form-input form-select" value={data.priority} onChange={(e) => setData('priority', e.target.value)}><option value="low">Low — can wait</option><option value="med">Medium — within a week</option><option value="high">High — within 48 hours</option><option value="critical">Critical — immediate</option></select></div>
-                <div className="form-group"><label className="form-label">Assign To</label><select className="form-input form-select" value={data.assignee} onChange={(e) => setData('assignee', e.target.value)}><option value="">Unassigned</option>{['Peter Ng.', 'JK Electric', 'Cool Air Ltd', 'In-house', 'SecurePro'].map((a) => <option key={a} value={a}>{a}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Assign To</label><input className="form-input" type="text" list="assignee-hints" value={data.assignee} onChange={(e) => setData('assignee', e.target.value)} placeholder="Type name or select…" /><datalist id="assignee-hints">{['Peter Ng.', 'JK Electric', 'Cool Air Ltd', 'In-house', 'SecurePro'].map((a) => <option key={a} value={a} />)}</datalist></div>
               </div>
               <div className="form-group"><label className="form-label">Title *</label><input className="form-input" type="text" value={data.title} onChange={(e) => setData('title', e.target.value)} placeholder="e.g. Broken water pipe in bathroom" required /></div>
               <div className="form-group"><label className="form-label">Description & Observations</label><textarea className="form-input" value={data.description} onChange={(e) => setData('description', e.target.value)} rows={3} style={{ resize: 'vertical' }} placeholder="Describe the issue, when it started, any safety concerns…" /></div>
@@ -814,8 +854,8 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 {images.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
                     {images.map((img, i) => (
-                      <div key={`${img.slice(0, 24)}-${i}`} style={{ position: 'relative' }}>
-                        <img src={img} alt="evidence" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
+                      <div key={`img-${i}`} style={{ position: 'relative' }}>
+                        <img src={img.preview} alt="evidence" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)' }} />
                         <button
                           type="button"
                           onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
