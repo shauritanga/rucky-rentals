@@ -66,6 +66,13 @@ export default function useExchangeRate() {
     return `TZS ${tzs.toLocaleString()}`;
   }, [rate]);
 
+  // Full-precision TZS formatter — no exchange rate applied.
+  // Use for values already stored in TZS (e.g. maintenance cost, deposits).
+  const formatTzs = useCallback((tzsAmount) => {
+    if (tzsAmount == null || Number.isNaN(Number(tzsAmount))) return '—';
+    return `TZS ${Math.round(Number(tzsAmount)).toLocaleString()}`;
+  }, []);
+
   // Format an amount that is ALREADY in TZS — no exchange rate applied.
   // Use this for values the backend has pre-converted (e.g. monthlyRevenue, overdueBalance).
   const formatCompactTzs = useCallback((tzsAmount) => {
@@ -99,6 +106,7 @@ export default function useExchangeRate() {
     refreshRate: () => fetchRate({ force: true }),
     formatTzsFromUsd,
     formatCompactTzsFromUsd,
+    formatTzs,
     formatCompactTzs,
     formatMoney,
   };
