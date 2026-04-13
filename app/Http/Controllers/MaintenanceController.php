@@ -93,12 +93,16 @@ class MaintenanceController extends Controller
             'images.*'           => 'file|image|max:5120',
         ]);
 
-        $unit = Unit::where('unit_number', $data['unit_ref'])->first();
-        $this->authorizeUnitProperty($request, $unit);
+        // Property always comes from the authenticated user's context — not inferred from the unit.
+        // The unit lookup is only used to capture unit_id for reference.
+        $propertyId = $this->effectivePropertyId($request)
+            ?? $request->user()?->property_id;
 
-        $propertyId = $unit?->property_id ?? $this->effectivePropertyId($request);
+        abort_if(empty($propertyId), 422, 'No property context found. Please select a property first.');
 
-        abort_if(empty($propertyId), 422, 'Unable to determine property for this ticket.');
+        $unit = Unit::where('unit_number', $data['unit_ref'])
+            ->where('property_id', $propertyId)
+            ->first();
 
         // Superuser acting in property view → auto-approve
         if ($this->isSuperuserActing($request)) {
