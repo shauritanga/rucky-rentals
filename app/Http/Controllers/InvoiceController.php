@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ProformaInvoiceMail;
+use App\Models\Document;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lease;
@@ -360,6 +361,24 @@ class InvoiceController extends Controller
         ))->setPaper('a4', 'portrait')->output();
 
         $filename = $invoice->invoice_number . '.pdf';
+
+        // ── Register in Documents (no file saved to disk — always regenerated on download) ──
+        Document::updateOrCreate(
+            ['invoice_id' => $invoice->id],
+            [
+                'name'          => $invoice->invoice_number,
+                'file_path'     => 'invoices/' . $filename,
+                'file_type'     => 'pdf',
+                'file_size'     => round(strlen($pdfContent) / 1024, 1) . ' KB',
+                'tag'           => 'other',
+                'document_type' => 'invoice',
+                'unit_ref'      => $invoice->unit_ref,
+                'tenant_id'     => $tenantId,
+                'invoice_id'    => $invoice->id,
+                'description'   => $invoiceLabel . ' — ' . $invoice->tenant_name,
+                'uploaded_by'   => $request->user()?->name ?? 'System',
+            ]
+        );
 
         return response($pdfContent, 200, [
             'Content-Type'        => 'application/pdf',
