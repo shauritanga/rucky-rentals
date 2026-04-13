@@ -59,16 +59,20 @@ const invoiceStatusLabel = (status = '') => {
 };
 
 function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
-  const total = (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
   const fitoutBadge = (description = '') => {
     const text = String(description || '').toLowerCase();
     if (!text.includes('fit-out')) return null;
     if (text.includes('vat')) return 'FIT-OUT VAT';
     return 'FIT-OUT';
   };
-  const explicitVat = (inv.items || [])
-    .filter((i) => String(i.description || '').toLowerCase().includes('vat'))
-    .reduce((s, i) => s + Number(i.total || 0), 0);
+  const lineItems    = (inv.items || []).filter(i => i.item_type !== 'electricity_vat');
+  const vatItems     = (inv.items || []).filter(i => i.item_type === 'electricity_vat');
+  const subtotal     = lineItems.reduce((s, i) => s + Number(i.total || 0), 0);
+  const vatFromItems = vatItems.reduce((s, i) => s + Number(i.total || 0), 0);
+  const vatRate      = Number(lease?.vat_rate ?? 18);
+  const vatAmount    = vatFromItems > 0 ? vatFromItems : Math.round(subtotal * vatRate / 100);
+  const vatLabel     = `VAT (${vatRate}%)`;
+  const grandTotal   = subtotal + vatAmount;
   const isPaid = inv.status === 'paid';
   const isOver = inv.status === 'overdue';
   return (
@@ -119,20 +123,10 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
         </tbody>
       </table>
       <div style={{marginLeft:'auto',width:320}}>
-        {explicitVat > 0 ? (
-          <>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Net Charge</span><span>{formatMoney(total - explicitVat, currency)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>VAT (18% inclusive)</span><span>{formatMoney(explicitVat, currency)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(total, currency)}</span></div>
-          </>
-        ) : (
-          <>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(total, currency)}</span></div>
-            <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(total, currency)}</span></div>
-          </>
-        )}
+        <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{vatLabel}</span><span>{formatMoney(vatAmount, currency)}</span></div>
+        <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(grandTotal, currency)}</span></div>
       </div>
-      {inv.notes && <div style={{marginTop:28,paddingTop:16,borderTop:'1px solid var(--border-subtle)',fontSize:'11.5px',color:'var(--text-muted)',lineHeight:1.7}}>{inv.notes.split('\n').map((l,i)=><div key={i}>{l}</div>)}</div>}
     </div>
   );
 }
