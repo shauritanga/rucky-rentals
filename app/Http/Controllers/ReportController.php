@@ -65,22 +65,34 @@ class ReportController extends Controller
 
         $occupancyRate = $totalUnits > 0 ? ($occupiedUnits / $totalUnits) * 100 : 0;
 
+        // Invoiced amount: total value of invoices that have payments recorded in this period.
+        // Scoped by payment date (not issued_date) so the collection rate denominator matches
+        // the paid numerator — invoices issued in a prior period but paid now are included.
         $invoices = Invoice::query()
-            ->with('items')
+            ->with(['items', 'lease:id,vat_rate'])
+            ->whereHas('payments', function ($q) use ($start, $end) {
+                $q->where('status', 'paid')
+                  ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()]);
+            })
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
             ->where('type', 'invoice')
-            ->whereBetween('issued_date', [$start->toDateString(), $end->toDateString()])
             ->get();
 
         $invoicedAmount = $invoices->reduce(function ($sum, $invoice) {
-            $lineTotal = (float) $invoice->items->sum('total');
+            $lineItems   = $invoice->items->reject(fn($i) => $i->item_type === 'electricity_vat');
+            $elecVat     = (float) $invoice->items->where('item_type', 'electricity_vat')->sum('total');
+            $lineTotal   = (float) $lineItems->sum('total');
+            $vatRate     = (float) ($invoice->lease?->vat_rate ?? 0);
+            $vatAmount   = $elecVat > 0 ? $elecVat : round($lineTotal * $vatRate / 100, 2);
+            $grandTotal  = $lineTotal + $vatAmount;
+
             if (!empty($invoice->total_in_base)) {
                 return $sum + (float) $invoice->total_in_base;
             }
             if (($invoice->currency ?? 'TZS') === 'TZS' || empty($invoice->exchange_rate)) {
-                return $sum + $lineTotal;
+                return $sum + $grandTotal;
             }
-            return $sum + ($lineTotal * (float) $invoice->exchange_rate);
+            return $sum + ($grandTotal * (float) $invoice->exchange_rate);
         }, 0.0);
 
         $paidAgainstInvoices = Payment::query()
