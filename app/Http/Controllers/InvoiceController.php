@@ -18,6 +18,7 @@ use App\Traits\LogsAudit;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -360,14 +361,16 @@ class InvoiceController extends Controller
             'vatRate', 'invoiceLabel',
         ))->setPaper('a4', 'portrait')->output();
 
-        $filename = $invoice->invoice_number . '.pdf';
+        $filename    = $invoice->invoice_number . '.pdf';
+        $storagePath = 'documents/' . $filename;
 
-        // ── Register in Documents (no file saved to disk — always regenerated on download) ──
+        Storage::disk('public')->put($storagePath, $pdfContent);
+
         Document::updateOrCreate(
             ['invoice_id' => $invoice->id],
             [
                 'name'          => $invoice->invoice_number,
-                'file_path'     => 'invoices/' . $filename,
+                'file_path'     => $storagePath,
                 'file_type'     => 'pdf',
                 'file_size'     => round(strlen($pdfContent) / 1024, 1) . ' KB',
                 'tag'           => 'other',
