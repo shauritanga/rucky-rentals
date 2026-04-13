@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExchangeRate;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Lease;
 use App\Models\MaintenanceRecord;
 use App\Models\Payment;
@@ -90,11 +92,84 @@ class ReportController extends Controller
 
         $collectionRate = $invoicedAmount > 0 ? min(100, ($paidAgainstInvoices / $invoicedAmount) * 100) : 0;
 
+        // --- WHT Total (period-scoped, wht_confirmed payments only) ---
+        $whtPayments = Payment::query()
+            ->with(['invoice.lease:id,wht_rate'])
+            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+            ->where('status', 'paid')
+            ->where('wht_confirmed', true)
+            ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
+            ->whereNotNull('invoice_id')
+            ->get();
+
+        $whtTotal = $whtPayments->sum(function ($p) {
+            $rate = (float) ($p->invoice?->lease?->wht_rate ?? 0);
+            if ($rate <= 0) return 0.0;
+            $base = (float) $p->breakdown_rent + (float) $p->breakdown_service_charge;
+            $fx   = ($p->amount > 0 && !empty($p->amount_in_base))
+                ? (float) $p->amount_in_base / (float) $p->amount
+                : (float) ($p->exchange_rate ?? 1);
+            return round($base * $fx * ($rate / 100), 2);
+        });
+
+        // --- VAT Total (period-scoped, two parts — no double-counting) ---
+        // Part A: electricity & generator VAT stored as item_type = 'electricity_vat'
+        $vatFromElectricity = DB::table('invoice_items')
+            ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+            ->when($propertyId !== null, fn($q) => $q->where('invoices.property_id', $propertyId))
+            ->where('invoice_items.item_type', 'electricity_vat')
+            ->where('invoices.type', 'invoice')
+            ->whereIn('invoices.status', ['paid', 'partially_paid'])
+            ->whereBetween('invoices.issued_date', [$start->toDateString(), $end->toDateString()])
+            ->sum(DB::raw('invoice_items.total * COALESCE(invoices.exchange_rate, 1)'));
+
+        // Part B: lease VAT on rent/service-charge items using each lease's vat_rate
+        $leasePaidInvoices = Invoice::query()
+            ->with(['items', 'lease:id,vat_rate'])
+            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+            ->where('type', 'invoice')
+            ->whereIn('status', ['paid', 'partially_paid'])
+            ->whereBetween('issued_date', [$start->toDateString(), $end->toDateString()])
+            ->get();
+
+        $vatFromLeases = $leasePaidInvoices->sum(function ($inv) {
+            $vatRate = (float) ($inv->lease?->vat_rate ?? 0);
+            if ($vatRate <= 0) return 0.0;
+            $rentAndSc  = $inv->items
+                ->reject(fn($i) => in_array($i->item_type, ['electricity_charge', 'electricity_vat']))
+                ->sum('total');
+            $itemsTotal = (float) $inv->items->sum('total');
+            $fx = ($itemsTotal > 0 && !empty($inv->total_in_base))
+                ? (float) $inv->total_in_base / $itemsTotal
+                : (float) ($inv->exchange_rate ?? 1);
+            return round((float) $rentAndSc * $fx * ($vatRate / 100), 2);
+        });
+
+        $vatTotal = round((float) $vatFromElectricity + $vatFromLeases, 2);
+
+        // --- Security Deposits Held (live balance — not period-scoped) ---
+        $depositsHeld = Lease::query()
+            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+            ->whereIn('status', ['active', 'expiring', 'overdue'])
+            ->get(['deposit', 'currency'])
+            ->sum(function ($lease) {
+                $amount   = (float) ($lease->deposit ?? 0);
+                $currency = $lease->currency ?? 'TZS';
+                if ($currency === 'TZS') return $amount;
+                return round($amount * ExchangeRate::getLiveRate($currency, 'TZS'), 2);
+            });
+
         // --- Monthly Revenue ---
         $periodMonths = [];
         $cursor = $start->copy()->startOfMonth();
         while ($cursor->lte($end)) {
-            $periodMonths[$cursor->format('Y-m')] = ['month' => $cursor->format('M'), 'value' => 0.0];
+            $periodMonths[$cursor->format('Y-m')] = [
+                'month'          => $cursor->format('M'),
+                'value'          => 0.0,
+                'rent'           => 0.0,
+                'service_charge' => 0.0,
+                'electricity'    => 0.0,
+            ];
             $cursor->addMonth();
         }
 
@@ -109,22 +184,41 @@ class ReportController extends Controller
             ->orderBy('ym')
             ->get();
 
+        // Revenue breakdown by type (rent / service charge / electricity) per month
+        $monthBreakdown = Payment::query()
+            ->selectRaw("{$dateGroupExpr} as ym")
+            ->selectRaw('SUM(COALESCE(breakdown_rent, 0) * COALESCE(amount_in_base / NULLIF(amount, 0), COALESCE(exchange_rate, 1))) as rent_total')
+            ->selectRaw('SUM(COALESCE(breakdown_service_charge, 0) * COALESCE(amount_in_base / NULLIF(amount, 0), COALESCE(exchange_rate, 1))) as sc_total')
+            ->selectRaw('SUM(COALESCE(breakdown_electricity, 0) * COALESCE(amount_in_base / NULLIF(amount, 0), COALESCE(exchange_rate, 1))) as elec_total')
+            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+            ->where('status', 'paid')
+            ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
+            ->groupBy('ym')
+            ->orderBy('ym')
+            ->get()
+            ->keyBy('ym');
+
         foreach ($monthRevenue as $row) {
             if (isset($periodMonths[$row->ym])) {
                 $periodMonths[$row->ym]['value'] = (float) $row->total;
             }
         }
 
-        $monthlyList    = array_values($periodMonths);
-        $maxMonth       = max(1, ...array_map(fn($m) => (float) $m['value'], $monthlyList));
-        $monthlyRevenue = array_map(function ($m, $index) use ($maxMonth, $monthlyList) {
-            return [
-                'month'  => $m['month'],
-                'value'  => (float) $m['value'],
-                'fill'   => round(((float) $m['value'] / $maxMonth) * 100),
-                'accent' => $index === (count($monthlyList) - 1),
-            ];
-        }, $monthlyList, array_keys($monthlyList));
+        foreach ($periodMonths as $ym => &$slot) {
+            $row = $monthBreakdown->get($ym);
+            $slot['rent']           = (float) ($row?->rent_total ?? 0);
+            $slot['service_charge'] = (float) ($row?->sc_total   ?? 0);
+            $slot['electricity']    = (float) ($row?->elec_total  ?? 0);
+        }
+        unset($slot);
+
+        $monthlyRevenue = array_map(fn($m) => [
+            'month'          => $m['month'],
+            'value'          => (float) $m['value'],
+            'rent'           => (float) $m['rent'],
+            'service_charge' => (float) $m['service_charge'],
+            'electricity'    => (float) $m['electricity'],
+        ], array_values($periodMonths));
 
         // --- Expense Breakdown ---
         $expenseColors   = ['var(--amber)', 'var(--accent)', 'var(--green)', 'var(--red)', 'var(--text-muted)'];
@@ -309,6 +403,9 @@ class ReportController extends Controller
                     'collectionRate'      => (float) $collectionRate,
                     'paidAmount'          => (float) $paidAgainstInvoices,
                     'invoicedAmount'      => (float) $invoicedAmount,
+                    'vatTotal'            => (float) $vatTotal,
+                    'whtTotal'            => (float) $whtTotal,
+                    'depositsHeld'        => (float) $depositsHeld,
                 ],
                 'monthlyRevenue'   => $monthlyRevenue,
                 'expenseBreakdown' => $expenseBreakdown,
@@ -472,12 +569,70 @@ class ReportController extends Controller
                     $totalUnits    = Unit::query()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->count();
                     $occupiedUnits = Unit::query()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->whereIn('status', ['occupied', 'overdue'])->count();
 
-                    fputcsv($out, ['Revenue',          number_format((float) $revenue, 2)]);
-                    fputcsv($out, ['Maintenance Cost', number_format((float) $maintenanceCost, 2)]);
-                    fputcsv($out, ['NOI',              number_format((float) $revenue - (float) $maintenanceCost, 2)]);
-                    fputcsv($out, ['Total Units',      $totalUnits]);
-                    fputcsv($out, ['Occupied Units',   $occupiedUnits]);
-                    fputcsv($out, ['Occupancy Rate',   round($totalUnits > 0 ? ($occupiedUnits / $totalUnits) * 100 : 0, 1) . '%']);
+                    // VAT export
+                    $exportVatElec = DB::table('invoice_items')
+                        ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+                        ->when($propertyId !== null, fn($q) => $q->where('invoices.property_id', $propertyId))
+                        ->where('invoice_items.item_type', 'electricity_vat')
+                        ->where('invoices.type', 'invoice')
+                        ->whereIn('invoices.status', ['paid', 'partially_paid'])
+                        ->whereBetween('invoices.issued_date', [$start->toDateString(), $end->toDateString()])
+                        ->sum(DB::raw('invoice_items.total * COALESCE(invoices.exchange_rate, 1)'));
+
+                    $exportLeaseInvoices = Invoice::query()
+                        ->with(['items', 'lease:id,vat_rate'])
+                        ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+                        ->where('type', 'invoice')
+                        ->whereIn('status', ['paid', 'partially_paid'])
+                        ->whereBetween('issued_date', [$start->toDateString(), $end->toDateString()])
+                        ->get();
+
+                    $exportVatLeases = $exportLeaseInvoices->sum(function ($inv) {
+                        $vatRate = (float) ($inv->lease?->vat_rate ?? 0);
+                        if ($vatRate <= 0) return 0.0;
+                        $rentAndSc  = $inv->items->reject(fn($i) => in_array($i->item_type, ['electricity_charge', 'electricity_vat']))->sum('total');
+                        $itemsTotal = (float) $inv->items->sum('total');
+                        $fx = ($itemsTotal > 0 && !empty($inv->total_in_base)) ? (float) $inv->total_in_base / $itemsTotal : (float) ($inv->exchange_rate ?? 1);
+                        return round((float) $rentAndSc * $fx * ($vatRate / 100), 2);
+                    });
+
+                    // WHT export
+                    $exportWhtPayments = Payment::query()
+                        ->with(['invoice.lease:id,wht_rate'])
+                        ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+                        ->where('status', 'paid')->where('wht_confirmed', true)
+                        ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
+                        ->whereNotNull('invoice_id')->get();
+
+                    $exportWht = $exportWhtPayments->sum(function ($p) {
+                        $rate = (float) ($p->invoice?->lease?->wht_rate ?? 0);
+                        if ($rate <= 0) return 0.0;
+                        $base = (float) $p->breakdown_rent + (float) $p->breakdown_service_charge;
+                        $fx   = ($p->amount > 0 && !empty($p->amount_in_base)) ? (float) $p->amount_in_base / (float) $p->amount : (float) ($p->exchange_rate ?? 1);
+                        return round($base * $fx * ($rate / 100), 2);
+                    });
+
+                    // Deposits export
+                    $exportDeposits = Lease::query()
+                        ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+                        ->whereIn('status', ['active', 'expiring', 'overdue'])
+                        ->get(['deposit', 'currency'])
+                        ->sum(function ($lease) {
+                            $amount   = (float) ($lease->deposit ?? 0);
+                            $currency = $lease->currency ?? 'TZS';
+                            if ($currency === 'TZS') return $amount;
+                            return round($amount * ExchangeRate::getLiveRate($currency, 'TZS'), 2);
+                        });
+
+                    fputcsv($out, ['Revenue',                  number_format((float) $revenue, 2)]);
+                    fputcsv($out, ['Maintenance Cost',         number_format((float) $maintenanceCost, 2)]);
+                    fputcsv($out, ['NOI',                      number_format((float) $revenue - (float) $maintenanceCost, 2)]);
+                    fputcsv($out, ['Total Units',              $totalUnits]);
+                    fputcsv($out, ['Occupied Units',           $occupiedUnits]);
+                    fputcsv($out, ['Occupancy Rate',           round($totalUnits > 0 ? ($occupiedUnits / $totalUnits) * 100 : 0, 1) . '%']);
+                    fputcsv($out, ['VAT Collected',            number_format(round((float) $exportVatElec + $exportVatLeases, 2), 2)]);
+                    fputcsv($out, ['WHT Withheld',             number_format($exportWht, 2)]);
+                    fputcsv($out, ['Security Deposits Held',   number_format($exportDeposits, 2)]);
                 }
 
                 fclose($out);

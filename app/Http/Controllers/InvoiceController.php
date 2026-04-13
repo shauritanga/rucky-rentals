@@ -3,18 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ProformaInvoiceMail;
+use App\Models\Document;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
+use App\Models\SystemSetting;
 use App\Models\Tenant;
 use App\Models\ExchangeRate;
 use App\Services\InvoiceNumberService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -300,6 +304,87 @@ class InvoiceController extends Controller
         if ($installment) {
             $installment->update(['invoice_id' => $invoice->id]);
         }
+    }
+
+    /**
+     * Generate a PDF for any invoice, save it to Documents, and return it as a download.
+     */
+    public function downloadPdf(Request $request, Invoice $invoice): \Illuminate\Http\Response
+    {
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
+        }
+
+        $invoice->load('items');
+
+        // ── Company & property details (mirrors ProformaInvoiceMail::generatePdf) ──
+        $companyName     = SystemSetting::get('company_name', 'Ruky Rentals');
+        $companyEmail    = SystemSetting::get('support_email', '');
+        $vatNumber       = SystemSetting::get('vat_number', '');
+        $companyReg      = SystemSetting::get('company_registration', '');
+        $property        = $invoice->property_id ? Property::find($invoice->property_id) : null;
+        $companyPhone    = $property?->phone ?? '';
+        $bankName        = $property?->bank_name ?? '';
+        $bankAccount     = $property?->bank_account ?? '';
+        $bankAccountName = $property?->bank_account_name ?? '';
+        $swiftCode       = $property?->swift_code ?? '';
+        $tenantPhone     = '';
+        $tenantId        = null;
+        $vatRate         = 0;
+
+        if ($invoice->lease_id) {
+            $lease = $invoice->relationLoaded('lease') ? $invoice->lease : $invoice->load('lease')->lease;
+            if ($lease) {
+                $tenantId    = $lease->tenant_id;
+                $vatRate     = (float) ($lease->vat_rate ?? 0);
+                $tenant      = Tenant::find($tenantId);
+                $tenantPhone = $tenant?->phone ?? '';
+            }
+        }
+        if (!$tenantPhone && $invoice->tenant_email) {
+            $tenant      = Tenant::where('email', $invoice->tenant_email)->first();
+            $tenantPhone = $tenant?->phone ?? '';
+            $tenantId    = $tenantId ?? $tenant?->id;
+        }
+
+        $invoiceLabel = $invoice->type === 'proforma' ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+        $items        = $invoice->items;
+        $tenantUnit   = $invoice->unit_ref ?? '';
+
+        $pdfContent = Pdf::loadView('pdf.proforma-invoice', compact(
+            'invoice', 'items', 'property',
+            'companyName', 'companyEmail', 'companyPhone',
+            'vatNumber', 'companyReg',
+            'tenantUnit', 'tenantPhone',
+            'bankName', 'bankAccount', 'bankAccountName', 'swiftCode',
+            'vatRate', 'invoiceLabel',
+        ))->setPaper('a4', 'portrait')->output();
+
+        // ── Save to Documents section ──
+        $filename    = $invoice->invoice_number . '.pdf';
+        $storagePath = 'documents/' . $filename;
+        Storage::disk('public')->put($storagePath, $pdfContent);
+
+        Document::updateOrCreate(
+            ['file_path' => $storagePath],
+            [
+                'name'          => $invoice->invoice_number,
+                'file_type'     => 'pdf',
+                'file_size'     => round(strlen($pdfContent) / 1024, 1) . ' KB',
+                'tag'           => 'other',
+                'document_type' => 'invoice',
+                'unit_ref'      => $invoice->unit_ref,
+                'tenant_id'     => $tenantId,
+                'description'   => $invoiceLabel . ' — ' . $invoice->tenant_name,
+                'uploaded_by'   => $request->user()?->name ?? 'System',
+            ]
+        );
+
+        return response($pdfContent, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 
     /**

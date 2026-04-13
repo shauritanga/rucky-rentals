@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
+import ReactApexChart from 'react-apexcharts';
+
+const getCSSVar = (name) =>
+  typeof window !== 'undefined'
+    ? getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+    : '#6366f1';
 
 const toNum = (v) => Number(v ?? 0) || 0;
 const fmtMoney = (v) => `TZS ${toNum(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -31,11 +37,13 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
   const period = report.period ?? { label: 'Current Quarter', from: '', to: '', preset: 'this_quarter' };
   const kpis   = report.kpis ?? {};
 
-  const [activeTab,   setActiveTab]   = useState('overview');
-  const [selPeriod,   setSelPeriod]   = useState(filters.period ?? 'this_quarter');
-  const [customFrom,  setCustomFrom]  = useState(filters.from ?? '');
-  const [customTo,    setCustomTo]    = useState(filters.to ?? '');
-  const [selProperty, setSelProperty] = useState(filters.property_id ?? '');
+  const [activeTab,    setActiveTab]    = useState('overview');
+  const [selPeriod,    setSelPeriod]    = useState(filters.period ?? 'this_quarter');
+  const [customFrom,   setCustomFrom]   = useState(filters.from ?? '');
+  const [customTo,     setCustomTo]     = useState(filters.to ?? '');
+  const [selProperty,  setSelProperty]  = useState(filters.property_id ?? '');
+  const [chartMounted, setChartMounted] = useState(false);
+  useEffect(() => setChartMounted(true), []);
 
   const isCustom = selPeriod === 'custom';
 
@@ -87,12 +95,56 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
     { title: 'Net Operating Income',    value: fmtMoney(kpis.noi),             delta: `${noiDelta.trend === 'up' ? '↑' : noiDelta.trend === 'down' ? '↓' : '→'} ${noiDelta.delta}`,                       trend: noiDelta.trend === 'flat' ? 'up' : noiDelta.trend,                 tone: 'green' },
   ];
 
-  const MONTHLY_REVENUE   = (report.monthlyRevenue   ?? []).map((r) => ({ ...r, value: fmtMoney(r.value), fill: r.fill, accent: Boolean(r.accent) }));
+  const MONTHLY_REVENUE   = report.monthlyRevenue   ?? [];
   const EXPENSE_BREAKDOWN = (report.expenseBreakdown ?? []).map((r) => ({ ...r, value: fmtMoney(r.value) }));
   const TOP_UNITS         = (report.topUnits         ?? []).map((r) => ({ ...r, amount: fmtMoney(r.amount) }));
   const AR_AGING          = (report.arAging          ?? []);
   const LEASE_EXPIRY      = (report.leaseExpiry      ?? []);
   const TENANT_SUMMARY    = (report.tenantSummary    ?? []);
+
+  // Financial obligation KPI cards
+  const FIN_CARDS = [
+    { title: 'VAT Collected',          value: fmtMoney(kpis.vatTotal),     sub: 'Electricity, generator & lease VAT on paid invoices', tone: 'blue'  },
+    { title: 'WHT Withheld',           value: fmtMoney(kpis.whtTotal),     sub: 'Confirmed withholding tax in period',                  tone: 'amber' },
+    { title: 'Security Deposits Held', value: fmtMoney(kpis.depositsHeld), sub: 'Across all active leases — live balance',              tone: 'green' },
+  ];
+
+  // ApexCharts config — resolved at render time so CSS vars are available
+  const accentColor  = getCSSVar('--accent');
+  const greenColor   = getCSSVar('--green');
+  const amberColor   = getCSSVar('--amber');
+  const monthLabels  = MONTHLY_REVENUE.map(r => r.month);
+
+  const areaOptions = {
+    chart: { type: 'area', toolbar: { show: false }, background: 'transparent', animations: { enabled: true, speed: 600 } },
+    stroke: { curve: 'smooth', width: 2 },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.02, stops: [0, 100] } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: monthLabels, axisBorder: { show: false }, axisTicks: { show: false }, labels: { style: { colors: '#888', fontSize: '11px' } } },
+    yaxis: { labels: { formatter: v => v >= 1e9 ? `${(v/1e9).toFixed(1)}B` : v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}k` : String(Math.round(v)), style: { colors: '#888', fontSize: '11px' } } },
+    tooltip: { theme: 'dark', y: { formatter: v => fmtMoney(v) } },
+    grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4, xaxis: { lines: { show: false } } },
+    colors: [accentColor || '#6366f1'],
+  };
+  const areaSeries = [{ name: 'Revenue', data: MONTHLY_REVENUE.map(r => r.value) }];
+
+  const stackedOptions = {
+    chart: { type: 'bar', stacked: true, toolbar: { show: false }, background: 'transparent', animations: { enabled: true, speed: 600 } },
+    plotOptions: { bar: { borderRadius: 3, columnWidth: '55%' } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: monthLabels, axisBorder: { show: false }, axisTicks: { show: false }, labels: { style: { colors: '#888', fontSize: '11px' } } },
+    yaxis: { labels: { formatter: v => v >= 1e9 ? `${(v/1e9).toFixed(1)}B` : v >= 1e6 ? `${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `${(v/1e3).toFixed(0)}k` : String(Math.round(v)), style: { colors: '#888', fontSize: '11px' } } },
+    tooltip: { theme: 'dark', y: { formatter: v => fmtMoney(v) } },
+    legend: { position: 'top', horizontalAlign: 'right', labels: { colors: '#aaa' }, fontSize: '12px' },
+    grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 4 },
+    colors: [accentColor || '#6366f1', greenColor || '#22c55e', amberColor || '#f59e0b'],
+    fill: { opacity: 1 },
+  };
+  const stackedSeries = [
+    { name: 'Rent',           data: MONTHLY_REVENUE.map(r => r.rent           ?? 0) },
+    { name: 'Service Charge', data: MONTHLY_REVENUE.map(r => r.service_charge ?? 0) },
+    { name: 'Electricity',    data: MONTHLY_REVENUE.map(r => r.electricity    ?? 0) },
+  ];
 
   return (
     <AppLayout title="Reports" subtitle={period.label}>
@@ -217,6 +269,25 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
             ))}
           </div>
 
+          {/* Financial Obligations row */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.8px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>Financial Obligations</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
+              {FIN_CARDS.map((card) => (
+                <div key={card.title} className="stat-card">
+                  <div className="stat-top">
+                    <div className={`stat-icon ${card.tone}`}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+                    </div>
+                  </div>
+                  <div className="stat-value">{card.value}</div>
+                  <div className="stat-label">{card.title}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{card.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             <div className="card">
               <div className="card-header">
@@ -225,21 +296,11 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
                   <div className="card-sub">{period.label}</div>
                 </div>
               </div>
-              <div style={{ padding: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 120 }}>
-                  {MONTHLY_REVENUE.length === 0 && (
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No revenue data in selected period</div>
-                  )}
-                  {MONTHLY_REVENUE.map((row) => (
-                    <div key={row.month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: row.accent ? 'var(--accent)' : 'var(--text-secondary)' }}>{row.value}</div>
-                      <div style={{ width: '100%', background: 'var(--accent-dim)', borderRadius: '6px 6px 0 0', height: 80, position: 'relative', overflow: 'hidden' }}>
-                        <div style={{ position: 'absolute', bottom: 0, width: '100%', background: 'var(--accent)', height: `${row.fill}%`, borderRadius: '6px 6px 0 0', opacity: row.accent ? 1 : 0.8 }} />
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{row.month}</div>
-                    </div>
-                  ))}
-                </div>
+              <div style={{ padding: '8px 12px 16px' }}>
+                {MONTHLY_REVENUE.length === 0
+                  ? <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '24px 8px' }}>No revenue data in selected period</div>
+                  : chartMounted && <ReactApexChart type="area" options={areaOptions} series={areaSeries} height={180} />
+                }
               </div>
             </div>
 
@@ -259,6 +320,22 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Revenue breakdown by type — full width stacked bar */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header">
+              <div>
+                <div className="card-title">Revenue Breakdown by Type</div>
+                <div className="card-sub">Rent · Service Charge · Electricity — {period.label}</div>
+              </div>
+            </div>
+            <div style={{ padding: '8px 12px 16px' }}>
+              {MONTHLY_REVENUE.length === 0
+                ? <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '24px 8px' }}>No data in selected period</div>
+                : chartMounted && <ReactApexChart type="bar" options={stackedOptions} series={stackedSeries} height={220} />
+              }
             </div>
           </div>
 

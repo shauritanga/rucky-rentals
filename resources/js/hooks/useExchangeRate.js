@@ -60,8 +60,9 @@ export default function useExchangeRate() {
   const formatCompactTzsFromUsd = useCallback((usdAmount) => {
     if (usdAmount == null || Number.isNaN(Number(usdAmount))) return '—';
     const tzs = Math.round(Number(usdAmount) * rate);
+    if (tzs >= 1_000_000_000) return `TZS ${(tzs / 1_000_000_000).toFixed(1)}B`;
     if (tzs >= 1_000_000) return `TZS ${(tzs / 1_000_000).toFixed(1)}M`;
-    if (tzs >= 1_000) return `TZS ${(tzs / 1_000).toFixed(0)}k`;
+    if (tzs >= 1_000) return `TZS ${(tzs / 1_000).toFixed(0)}K`;
     return `TZS ${tzs.toLocaleString()}`;
   }, [rate]);
 

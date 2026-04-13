@@ -48,6 +48,7 @@ Route::middleware('auth')->group(function () {
         Route::resource('documents', DocumentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('invoices', InvoiceController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send'])->name('invoices.send');
+        Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
         Route::post('team', [TeamController::class, 'store'])->name('team.store');
         Route::patch('team/{user}/permissions', [TeamController::class, 'updatePermissions'])->name('team.permissions.update');

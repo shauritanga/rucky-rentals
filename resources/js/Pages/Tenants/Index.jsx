@@ -14,7 +14,7 @@ function getLeaseStatus(tenant) {
 }
 
 export default function TenantsIndex({ tenants }) {
-  const { formatCompactTzsFromUsd, formatMoney } = useExchangeRate();
+  const { formatCompactTzs, formatMoney, rate } = useExchangeRate();
   const leaseCurrency = (t) => t.leases?.[0]?.currency || t.leases?.[0]?.unit?.currency || 'USD';
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -69,7 +69,12 @@ export default function TenantsIndex({ tenants }) {
   });
 
   const overdueCount = tenants.filter(t => getLeaseStatus(t) === 'overdue').length;
-  const monthlyRevenue = tenants.reduce((s, t) => s + totalRent(t), 0);
+  const monthlyRevenue = tenants.reduce((s, t) =>
+    s + (t.leases||[]).reduce((ls, l) => {
+      const amt = Number(l.monthly_rent);
+      const cur = (l.currency || 'TZS').toUpperCase();
+      return ls + (cur === 'TZS' ? amt : amt * rate);
+    }, 0), 0);
 
   const submit = (e) => {
     e.preventDefault();
@@ -147,7 +152,7 @@ export default function TenantsIndex({ tenants }) {
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--red)'}}>{overdueCount}</div><div className="tn-stat-label">Overdue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactTzsFromUsd(monthlyRevenue)}</div><div className="tn-stat-label">Monthly Revenue</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactTzs(monthlyRevenue)}</div><div className="tn-stat-label">Monthly Rent Roll</div></div>
       </div>
 
       {/* Toolbar */}
