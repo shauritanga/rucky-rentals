@@ -96,10 +96,7 @@ class MaintenanceController extends Controller
         $unit = Unit::where('unit_number', $data['unit_ref'])->first();
         $this->authorizeUnitProperty($request, $unit);
 
-        $propertyId = $unit?->property_id;
-        if ($propertyId === null && $this->shouldScopeToProperty($request)) {
-            $propertyId = $this->effectivePropertyId($request);
-        }
+        $propertyId = $unit?->property_id ?? $this->effectivePropertyId($request);
 
         abort_if(empty($propertyId), 422, 'Unable to determine property for this ticket.');
 
