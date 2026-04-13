@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Mail\ProformaInvoiceMail;
-use App\Models\Document;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lease;
@@ -18,7 +17,6 @@ use App\Traits\LogsAudit;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -307,7 +305,7 @@ class InvoiceController extends Controller
     }
 
     /**
-     * Generate a PDF for any invoice, save it to Documents, and return it as a download.
+     * Generate a PDF for any invoice and return it as a download (always fresh — not cached).
      */
     public function downloadPdf(Request $request, Invoice $invoice): \Illuminate\Http\Response
     {
@@ -361,25 +359,7 @@ class InvoiceController extends Controller
             'vatRate', 'invoiceLabel',
         ))->setPaper('a4', 'portrait')->output();
 
-        // ── Save to Documents section ──
-        $filename    = $invoice->invoice_number . '.pdf';
-        $storagePath = 'documents/' . $filename;
-        Storage::disk('public')->put($storagePath, $pdfContent);
-
-        Document::updateOrCreate(
-            ['file_path' => $storagePath],
-            [
-                'name'          => $invoice->invoice_number,
-                'file_type'     => 'pdf',
-                'file_size'     => round(strlen($pdfContent) / 1024, 1) . ' KB',
-                'tag'           => 'other',
-                'document_type' => 'invoice',
-                'unit_ref'      => $invoice->unit_ref,
-                'tenant_id'     => $tenantId,
-                'description'   => $invoiceLabel . ' — ' . $invoice->tenant_name,
-                'uploaded_by'   => $request->user()?->name ?? 'System',
-            ]
-        );
+        $filename = $invoice->invoice_number . '.pdf';
 
         return response($pdfContent, 200, [
             'Content-Type'        => 'application/pdf',
