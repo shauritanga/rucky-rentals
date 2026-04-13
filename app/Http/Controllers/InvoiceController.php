@@ -228,16 +228,18 @@ class InvoiceController extends Controller
         ]);
 
         $original = $invoice->getOriginal();
-        $invoice->update($data);
 
-        // Promote type from proforma → invoice on conversion (quiet update avoids re-firing observer)
+        // Promote type proforma→invoice in the SAME update so the observer sees type='invoice'
+        // when postInvoice() is called (postInvoice skips type='proforma')
         if (
             ($original['status'] ?? '') === 'proforma' &&
-            $invoice->status !== 'proforma' &&
+            ($data['status'] ?? '') !== 'proforma' &&
             $invoice->type === 'proforma'
         ) {
-            $invoice->updateQuietly(['type' => 'invoice']);
+            $data['type'] = 'invoice';
         }
+
+        $invoice->update($data);
 
         // Observer handles status transitions (post/void as appropriate)
 
