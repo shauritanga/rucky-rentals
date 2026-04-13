@@ -502,7 +502,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:8,flexShrink:0,background:'var(--bg-surface)'}}>
               {(selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
-              {selected.status==='proforma' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(s=>s?{...s,status:'unpaid'}:null)})}>Convert to Invoice</button>}
+              {selected.status==='proforma' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(s=>s?{...s,status:'unpaid',type:'invoice'}:null)})}>Convert to Invoice</button>}
               {selected.status==='paid' && <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>window.location.href=`/invoices/${selected.id}/pdf`}>Save PDF</button>}
               {selected.type === 'proforma' && selected.tenant_email
                 ? <button className="btn-secondary" onClick={()=>router.post(`/invoices/${selected.id}/send`,{},{preserveScroll:true,onSuccess:()=>setSelected(null)})}>Email Proforma</button>

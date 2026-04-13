@@ -227,7 +227,17 @@ class InvoiceController extends Controller
             'status' => 'required|in:draft,proforma,unpaid,partially_paid,paid,overdue',
         ]);
 
+        $original = $invoice->getOriginal();
         $invoice->update($data);
+
+        // Promote type from proforma → invoice on conversion (quiet update avoids re-firing observer)
+        if (
+            ($original['status'] ?? '') === 'proforma' &&
+            $invoice->status !== 'proforma' &&
+            $invoice->type === 'proforma'
+        ) {
+            $invoice->updateQuietly(['type' => 'invoice']);
+        }
 
         // Observer handles status transitions (post/void as appropriate)
 
