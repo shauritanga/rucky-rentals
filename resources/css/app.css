@@ -87,6 +87,39 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .stat-delta.down{background:var(--red-dim);color:var(--red)}
 .stat-value{font-size:28px;font-weight:600;letter-spacing:-.5px;line-height:1;margin-bottom:4px}
 .stat-label{font-size:12.5px;color:var(--text-secondary)}
+.reports-page .reports-kpi-grid{gap:12px;margin-bottom:18px}
+.reports-page .reports-fin-grid{gap:12px}
+.reports-page .reports-dual-grid{gap:12px;margin-bottom:14px}
+.reports-page .reports-triple-grid{gap:12px}
+.reports-page .reports-stat-card{padding:14px 16px;border-radius:10px}
+.reports-page .reports-stat-card .stat-top{margin-bottom:10px}
+.reports-page .reports-stat-card .stat-value{font-size:19px;letter-spacing:-.2px;margin-bottom:2px}
+.reports-page .reports-stat-card .stat-label{font-size:11.5px;line-height:1.3}
+.reports-page .reports-stat-card .stat-delta{font-size:10.5px;padding:2px 6px}
+.reports-page .reports-stat-card .stat-icon{width:30px;height:30px}
+.reports-page .reports-stat-card .stat-icon svg{width:14px;height:14px}
+.reports-page .card{border-radius:10px}
+.reports-page .card-header{padding:12px 14px}
+.reports-page .card-title{font-size:12.5px}
+.reports-page .card-sub{font-size:11px}
+.reports-page .toolbar{margin-bottom:16px}
+.reports-page .btn-primary,.reports-page .btn-ghost{padding:6px 12px;font-size:12px}
+.reports-page .reports-tabbar button{padding:7px 12px!important;font-size:12px!important}
+.reports-page .data-table th,.reports-page table th{padding:9px 14px;font-size:10.5px!important}
+.reports-page .data-table td,.reports-page table td{padding:10px 14px;font-size:12px!important}
+.reports-page .pay-item{padding:10px 14px}
+.reports-page .pay-name{font-size:12.5px}
+.reports-page .pay-unit,.reports-page .pay-date,.reports-page .reports-card-note{font-size:10.5px}
+.reports-page .pay-amount{font-size:12.5px}
+.reports-page .badge{font-size:10.5px;padding:2px 7px}
+.reports-page .form-input,.reports-page .form-select{font-size:12.5px}
+
+@media (max-width: 900px){
+.reports-page .reports-kpi-grid{grid-template-columns:repeat(2,1fr)}
+.reports-page .reports-fin-grid{grid-template-columns:1fr}
+.reports-page .reports-dual-grid{grid-template-columns:1fr}
+.reports-page .reports-triple-grid{grid-template-columns:1fr}
+}
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;padding:3px 8px;border-radius:20px;white-space:nowrap}
 .badge::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
 .badge.occupied{background:var(--green-dim);color:var(--green)}

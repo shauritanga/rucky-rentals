@@ -129,7 +129,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
   const areaSeries = [{ name: 'Revenue', data: MONTHLY_REVENUE.map(r => r.value) }];
 
   const stackedOptions = {
-    chart: { type: 'bar', stacked: true, toolbar: { show: false }, background: 'transparent', animations: { enabled: true, speed: 600 } },
+    chart: { type: 'bar', stacked: false, toolbar: { show: false }, background: 'transparent', animations: { enabled: true, speed: 600 } },
     plotOptions: { bar: { borderRadius: 3, columnWidth: '55%' } },
     dataLabels: { enabled: false },
     xaxis: { categories: monthLabels, axisBorder: { show: false }, axisTicks: { show: false }, labels: { style: { colors: '#888', fontSize: '11px' } } },
@@ -150,6 +150,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
     <AppLayout title="Reports" subtitle={period.label}>
       <Head title="Reports" />
 
+      <div className="reports-page">
       {/* Toolbar */}
       <div className="toolbar" style={{ marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
@@ -225,7 +226,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
       </div>
 
       {/* Tab Bar */}
-      <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
+      <div className="reports-tabbar" style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
         {TABS.map((tab) => (
           <button
             key={tab.key}
@@ -250,9 +251,9 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
       {/* ── Overview Tab ── */}
       {activeTab === 'overview' && (
         <>
-          <div className="stats-grid" style={{ marginBottom: 20 }}>
+          <div className="stats-grid reports-kpi-grid" style={{ marginBottom: 20 }}>
             {KPI_CARDS.map((card) => (
-              <div key={card.title} className="stat-card">
+              <div key={card.title} className="stat-card reports-stat-card">
                 <div className="stat-top">
                   <div className={`stat-icon ${card.tone}`}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -270,11 +271,11 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
           </div>
 
           {/* Financial Obligations row */}
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.8px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>Financial Obligations</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.8px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 10 }}>Financial Obligations</div>
+            <div className="reports-fin-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
               {FIN_CARDS.map((card) => (
-                <div key={card.title} className="stat-card">
+                <div key={card.title} className="stat-card reports-stat-card">
                   <div className="stat-top">
                     <div className={`stat-icon ${card.tone}`}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -282,13 +283,13 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
                   </div>
                   <div className="stat-value">{card.value}</div>
                   <div className="stat-label">{card.title}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{card.sub}</div>
+                  <div className="reports-card-note" style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.35 }}>{card.sub}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+          <div className="reports-dual-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             <div className="card">
               <div className="card-header">
                 <div>
@@ -328,23 +329,23 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
             <div className="card-header">
               <div>
                 <div className="card-title">Revenue Breakdown by Type</div>
-                <div className="card-sub">Rent · Service Charge · Electricity — {period.label}</div>
+                <div className="card-sub">Grouped monthly bars for rent, service charge, and electricity — {period.label}</div>
               </div>
             </div>
             <div style={{ padding: '8px 12px 16px' }}>
               {MONTHLY_REVENUE.length === 0
                 ? <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '24px 8px' }}>No data in selected period</div>
-                : chartMounted && <ReactApexChart type="bar" options={stackedOptions} series={stackedSeries} height={220} />
+                : chartMounted && <ReactApexChart type="bar" options={stackedOptions} series={stackedSeries} height={340} />
               }
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+          <div className="reports-triple-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
             <div className="card">
               <div className="card-header"><div className="card-title">Occupancy Rate</div></div>
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                  <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1 }}>{fmtPct(kpis.occupancyRate)}</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5 }}>{fmtPct(kpis.occupancyRate)}</div>
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 500 }}>Live occupancy</div>
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{kpis.occupiedUnits ?? 0} of {kpis.totalUnits ?? 0} units occupied</div>
@@ -360,7 +361,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
               <div className="card-header"><div className="card-title">Collection Rate</div></div>
               <div style={{ padding: '16px 20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                  <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1 }}>{fmtPct(kpis.collectionRate)}</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: -0.5 }}>{fmtPct(kpis.collectionRate)}</div>
                   <div>
                     <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 500 }}>Invoiced collection in period</div>
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{fmtMoney(kpis.paidAmount)} of {fmtMoney(kpis.invoicedAmount)} collected</div>
@@ -569,6 +570,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
           </div>
         </div>
       )}
+      </div>
     </AppLayout>
   );
 }
