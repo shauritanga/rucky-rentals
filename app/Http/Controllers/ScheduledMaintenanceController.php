@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\ScheduledMaintenance;
-use App\Models\Unit;
 use Illuminate\Http\Request;
 
 class ScheduledMaintenanceController extends Controller
@@ -20,7 +19,7 @@ class ScheduledMaintenanceController extends Controller
             'notes'     => 'nullable|string',
         ]);
 
-        $unit       = !empty($data['unit_ref']) ? Unit::where('unit_number', $data['unit_ref'])->first() : null;
+        $unit       = $this->resolveUnitByReference($request, $data['unit_ref'] ?? null);
         $propertyId = $unit?->property_id ?? $request->user()?->property_id;
 
         abort_if(empty($propertyId), 422, 'Unable to determine property for this task.');

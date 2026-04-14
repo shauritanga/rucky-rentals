@@ -10,8 +10,10 @@ return new class extends Migration
         // Clear remaining journal entries and lines for completely fresh slate
         DB::table('journal_lines')->delete();
         DB::table('journal_entries')->delete();
-        DB::statement('ALTER SEQUENCE journal_entries_id_seq RESTART WITH 1');
-        DB::statement('ALTER SEQUENCE journal_lines_id_seq RESTART WITH 1');
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement('ALTER SEQUENCE journal_entries_id_seq RESTART WITH 1');
+            DB::statement('ALTER SEQUENCE journal_lines_id_seq RESTART WITH 1');
+        }
     }
 
     public function down(): void

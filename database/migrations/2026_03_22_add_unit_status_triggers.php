@@ -7,6 +7,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         // Trigger function: When a lease is created, mark unit as occupied
         DB::unprepared('
             CREATE OR REPLACE FUNCTION update_unit_on_lease_insert()
@@ -76,6 +80,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         DB::unprepared('DROP TRIGGER IF EXISTS update_unit_status_on_lease_create ON leases CASCADE');
         DB::unprepared('DROP TRIGGER IF EXISTS update_unit_status_on_lease_delete ON leases CASCADE');
         DB::unprepared('DROP TRIGGER IF EXISTS update_unit_status_on_lease_update ON leases CASCADE');

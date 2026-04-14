@@ -15,12 +15,13 @@ return new class extends Migration
         });
 
         // Populate property_id from related units
-        DB::statement(
-            'UPDATE maintenance_tickets mt 
-             SET property_id = u.property_id 
-             FROM units u 
-             WHERE mt.unit_id = u.id AND mt.property_id IS NULL'
-        );
+        DB::statement('
+            UPDATE maintenance_tickets
+            SET property_id = (
+                SELECT property_id FROM units WHERE units.id = maintenance_tickets.unit_id
+            )
+            WHERE property_id IS NULL
+        ');
 
         // For maintenance_tickets without unit_id, assign to default property
         $defaultPropertyId = DB::table('properties')->orderBy('id')->value('id');

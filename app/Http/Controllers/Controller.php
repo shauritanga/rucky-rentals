@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Unit;
 use Illuminate\Http\Request;
 
 abstract class Controller
@@ -41,5 +42,33 @@ abstract class Controller
     {
         return $request->user()?->role === 'superuser'
             && (bool) $request->session()->get('superuser_viewing_property_id');
+    }
+
+    /**
+     * Resolve a unit reference without guessing across properties.
+     * In property-scoped contexts, resolve inside that property only.
+     * Outside property scope, only resolve when the reference matches exactly one unit globally.
+     */
+    protected function resolveUnitByReference(Request $request, ?string $unitRef): ?Unit
+    {
+        $unitRef = trim((string) $unitRef);
+        if ($unitRef === '') {
+            return null;
+        }
+
+        $query = Unit::query()->where('unit_number', $unitRef);
+
+        if ($this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
+            if ($propertyId === null) {
+                return null;
+            }
+
+            return $query->where('property_id', $propertyId)->first();
+        }
+
+        $matches = $query->limit(2)->get();
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 }

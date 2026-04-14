@@ -72,7 +72,7 @@ class DocumentController extends Controller
             : ($ext === 'pdf' ? 'pdf'
                 : (in_array($ext, ['doc', 'docx']) ? 'word' : 'other'));
 
-        $unit = $request->unit_ref ? Unit::where('unit_number', $request->unit_ref)->first() : null;
+        $unit = $this->resolveUnitByReference($request, $request->unit_ref);
 
         $legacyTag = $this->legacyTagForDocumentType((string) $request->document_type);
         $document = Document::create([

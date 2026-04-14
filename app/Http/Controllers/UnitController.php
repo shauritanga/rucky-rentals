@@ -64,13 +64,14 @@ class UnitController extends Controller
 
     public function store(Request $request)
     {
-        $user = $request->user();
+        $effectivePropertyId = $this->shouldScopeToProperty($request)
+            ? $this->effectivePropertyId($request)
+            : null;
         $validFloorIds = [];
 
         if ($this->shouldScopeToProperty($request)) {
-            $effectiveId = $this->effectivePropertyId($request);
-            abort_if($effectiveId === null, 422, 'No property context available.');
-            $managerProperty = Property::find($effectiveId);
+            abort_if($effectivePropertyId === null, 422, 'No property context available.');
+            $managerProperty = Property::find($effectivePropertyId);
             abort_if(!$managerProperty, 422, 'Assigned property not found.');
             $validFloorIds = FloorConfig::floorIds(FloorConfig::parse($managerProperty->floor_config));
         }
@@ -79,8 +80,13 @@ class UnitController extends Controller
             ? ['required', 'string', Rule::in($validFloorIds)]
             : ['required', 'string'];
 
+        $unitNumberUniqueRule = Rule::unique('units', 'unit_number')
+            ->where(fn ($query) => $effectivePropertyId === null
+                ? $query->whereNull('property_id')
+                : $query->where('property_id', $effectivePropertyId));
+
         $data = $request->validate([
-            'unit_number'            => 'required|string|unique:units',
+            'unit_number'            => ['required', 'string', $unitNumberUniqueRule],
             'floor'                  => $floorRule,
             'type'                   => ['required', 'string', Rule::in(self::COMMERCIAL_UNIT_TYPES)],
             'size_sqm'               => 'required|numeric|min:0.1',
@@ -104,7 +110,7 @@ class UnitController extends Controller
         $data['deposit']                = round(($data['rent'] * $rentMonths) + ($data['service_charge'] * $scMonths), 2);
 
         if ($this->shouldScopeToProperty($request)) {
-            $data['property_id'] = $this->effectivePropertyId($request);
+            $data['property_id'] = $effectivePropertyId;
         }
 
         $unit = Unit::create($data);
@@ -128,12 +134,13 @@ class UnitController extends Controller
 
     public function update(Request $request, Unit $unit)
     {
-        $user = $request->user();
+        $effectivePropertyId = $this->shouldScopeToProperty($request)
+            ? $this->effectivePropertyId($request)
+            : ($unit->property_id ? (int) $unit->property_id : null);
         $validFloorIds = [];
         if ($this->shouldScopeToProperty($request)) {
-            $effectiveId = $this->effectivePropertyId($request);
-            abort_if($effectiveId !== null && (int) $unit->property_id !== $effectiveId, 403);
-            $managerProperty = $effectiveId ? Property::find($effectiveId) : null;
+            abort_if($effectivePropertyId !== null && (int) $unit->property_id !== $effectivePropertyId, 403);
+            $managerProperty = $effectivePropertyId ? Property::find($effectivePropertyId) : null;
             if ($managerProperty) {
                 $validFloorIds = FloorConfig::floorIds(FloorConfig::parse($managerProperty->floor_config));
             }
@@ -143,8 +150,14 @@ class UnitController extends Controller
             ? ['required', 'string', Rule::in($validFloorIds)]
             : ['required', 'string'];
 
+        $unitNumberUniqueRule = Rule::unique('units', 'unit_number')
+            ->ignore($unit->id)
+            ->where(fn ($query) => $effectivePropertyId === null
+                ? $query->whereNull('property_id')
+                : $query->where('property_id', $effectivePropertyId));
+
         $data = $request->validate([
-            'unit_number'            => 'required|string|unique:units,unit_number,' . $unit->id,
+            'unit_number'            => ['required', 'string', $unitNumberUniqueRule],
             'floor'                  => $floorRule,
             'type'                   => 'required|string',
             'size_sqm'               => 'required|numeric|min:0.1',
