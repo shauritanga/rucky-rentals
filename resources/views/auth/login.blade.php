@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ruky Rentals - Sign In</title>
+    <title>Mwamba Properties - Sign In</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
     <style>
@@ -556,9 +556,9 @@
             <div class="orb-2"></div>
 
             <div class="left-brand">
-                <div class="brand-mark">R</div>
+                <div class="brand-mark">M</div>
                 <div>
-                    <div class="brand-name">Ruky Rentals</div>
+                    <div class="brand-name">Mwamba Properties</div>
                     <div class="brand-tagline">Property Management System</div>
                 </div>
             </div>
@@ -592,7 +592,7 @@
                 </div>
             </div>
 
-            <div class="left-footer">© 2026 Ruky Rentals Ltd - Dar es Salaam, Tanzania</div>
+            <div class="left-footer">© 2026 Mwamba Properties Ltd - Dar es Salaam, Tanzania</div>
         </div>
 
         <div class="right-panel">
@@ -604,7 +604,7 @@
 
             <div class="login-form-wrap">
                 <div class="form-heading">Welcome back</div>
-                <div class="form-subheading">Sign in to your Ruky Rentals account</div>
+                <div class="form-subheading">Sign in to your Mwamba Properties account</div>
 
                 @if ($errors->any())
                 <div class="error-msg show" id="errorMsg">

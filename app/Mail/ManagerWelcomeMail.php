@@ -22,7 +22,7 @@ class ManagerWelcomeMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Welcome to the Ruky Rentals Management Team',
+            subject: 'Welcome to the Mwamba Properties Management Team',
         );
     }
 

@@ -18,7 +18,7 @@ return new class extends Migration
 
         // Seed default values
         $defaults = [
-            'company_name'         => 'Ruky Rentals Ltd',
+            'company_name'         => 'Mwamba Properties Ltd',
             'company_registration' => 'CPR-2021-00482',
             'vat_number'           => 'P051234567M',
             'default_currency'     => 'TZS',

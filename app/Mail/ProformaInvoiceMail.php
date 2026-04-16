@@ -26,7 +26,7 @@ class ProformaInvoiceMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Proforma Invoice ' . $this->invoice->invoice_number . ' — Ruky Rentals',
+            subject: 'Proforma Invoice ' . $this->invoice->invoice_number . ' — Mwamba Properties',
         );
     }
 
@@ -63,7 +63,7 @@ class ProformaInvoiceMail extends Mailable
         $items    = $this->items;
 
         // Company-level (global) settings
-        $companyName  = SystemSetting::get('company_name', 'Ruky Rentals');
+        $companyName  = SystemSetting::get('company_name', 'Mwamba Properties');
         $companyEmail = SystemSetting::get('support_email', '');
         $vatNumber    = SystemSetting::get('vat_number', '');
         $companyReg   = SystemSetting::get('company_registration', '');

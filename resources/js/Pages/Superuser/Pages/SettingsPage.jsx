@@ -18,7 +18,7 @@ export default function SettingsPage({ settings = {} }) {
 
   // ── General — Platform Identity ──────────────────────────────────────────
   const [identity, setIdentity] = useState({
-    company_name:         settings.company_name         ?? 'Ruky Rentals Ltd',
+    company_name:         settings.company_name         ?? 'Mwamba Properties Ltd',
     company_registration: settings.company_registration ?? '',
     vat_number:           settings.vat_number           ?? '',
     default_currency:     settings.default_currency     ?? 'TZS',
@@ -93,7 +93,7 @@ export default function SettingsPage({ settings = {} }) {
   return (
     <>
       <div className="page-header">
-        <div><div className="page-title">System Settings</div><div className="page-sub">Global configuration for the Ruky Rentals platform</div></div>
+        <div><div className="page-title">System Settings</div><div className="page-sub">Global configuration for the Mwamba Properties platform</div></div>
       </div>
 
       {submitMessage && (

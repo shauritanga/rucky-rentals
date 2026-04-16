@@ -443,8 +443,8 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
     <div className="app-layout superuser-shell">
       <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <div className="logo-mark">R</div>
-          <span className="logo-text">Ruky Rentals</span>
+          <div className="logo-mark">M</div>
+          <span className="logo-text">Mwamba Properties</span>
         </div>
 
         <nav className="nav" ref={navRef} style={{ position: 'relative' }}>

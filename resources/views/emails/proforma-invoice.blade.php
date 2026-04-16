@@ -18,7 +18,7 @@
                                 <tr>
                                     <td>
                                         <h1 style="margin:0;font-size:22px;font-weight:700;line-height:1.3;">PROFORMA INVOICE</h1>
-                                        <p style="margin:6px 0 0;font-size:14px;opacity:.9;">Ruky Rentals</p>
+                                        <p style="margin:6px 0 0;font-size:14px;opacity:.9;">Mwamba Properties</p>
                                     </td>
                                     <td align="right" style="font-size:20px;font-weight:800;letter-spacing:1px;opacity:.85;">
                                         {{ $invoice->invoice_number }}
@@ -141,7 +141,7 @@
                     {{-- Footer --}}
                     <tr>
                         <td style="padding:16px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;line-height:1.6;">
-                            This proforma invoice is issued by <strong>Ruky Rentals</strong>.
+                            This proforma invoice is issued by <strong>Mwamba Properties</strong>.
                             Payment converts this document into a legally binding Tax Invoice automatically.
                             For queries, contact your property manager.
                         </td>

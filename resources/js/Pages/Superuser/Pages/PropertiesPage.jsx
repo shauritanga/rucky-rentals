@@ -30,7 +30,7 @@ export default function PropertiesPage({
   return (
     <>
       <div className="page-header">
-        <div><div className="page-title">Properties</div><div className="page-sub">All buildings under Ruky Rentals management</div></div>
+        <div><div className="page-title">Properties</div><div className="page-sub">All buildings under Mwamba Properties management</div></div>
         <div className="ph-actions">
           <div className="search-box" style={{ width: 240 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>

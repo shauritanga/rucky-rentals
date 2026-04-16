@@ -331,7 +331,7 @@ class InvoiceController extends Controller
         $invoice->load('items');
 
         // ── Company & property details (mirrors ProformaInvoiceMail::generatePdf) ──
-        $companyName     = SystemSetting::get('company_name', 'Ruky Rentals');
+        $companyName     = SystemSetting::get('company_name', 'Mwamba Properties');
         $companyEmail    = SystemSetting::get('support_email', '');
         $vatNumber       = SystemSetting::get('vat_number', '');
         $companyReg      = SystemSetting::get('company_registration', '');
