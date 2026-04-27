@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const fmt = (n) => Number(n).toLocaleString();
 
@@ -125,7 +126,7 @@ export default function TenantsIndex({ tenants }) {
       ok: p.status === 'paid',
       month: p.month || 'Payment',
       amount: Number(p.amount || 0),
-      date: p.paid_date || p.created_at || '-',
+      date: formatDisplayDate(p.paid_date || p.created_at, '-'),
       status: p.status || 'pending',
     }));
   };
@@ -219,7 +220,7 @@ export default function TenantsIndex({ tenants }) {
                     <div className="tc-contact-row"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.84 1.16 2 2 0 012.82.84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 8.1a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg>{t.phone}</div>
                   </div>
                   <div className="tc-foot">
-                    <div style={{flex:1,fontSize:12,color:'var(--text-muted)'}}>{t.leases?.[0]?.end_date ? `Lease until ${t.leases[0].end_date}` : '—'}</div>
+                    <div style={{flex:1,fontSize:12,color:'var(--text-muted)'}}>{t.leases?.[0]?.end_date ? `Lease until ${formatDisplayDate(t.leases[0].end_date)}` : '—'}</div>
                     <div className="tc-rent">{formatMoney(rent, leaseCurrency(t))}<span style={{fontWeight:400,fontSize:11,color:'var(--text-muted)'}}>/mo</span></div>
                   </div>
                 </div>
@@ -261,7 +262,7 @@ export default function TenantsIndex({ tenants }) {
                       <td style={{fontWeight:500,color:'var(--text-secondary)'}}>{units||'—'}</td>
                       <td style={{fontWeight:600}}>{formatMoney(totalRent(t), leaseCurrency(t))}</td>
                       <td>{bal>0?<span style={{color:'var(--red)',fontWeight:600}}>{formatMoney(bal, leaseCurrency(t))}</span>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                      <td style={{color:'var(--text-secondary)'}}>{t.leases?.[0]?.end_date||'—'}</td>
+                      <td style={{color:'var(--text-secondary)'}}>{formatDisplayDate(t.leases?.[0]?.end_date)}</td>
                     </tr>
                   );
                 })}

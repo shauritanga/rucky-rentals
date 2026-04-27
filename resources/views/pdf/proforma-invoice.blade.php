@@ -247,7 +247,7 @@
     <div class="meta-row">
         <div class="meta-cell">
             <div class="meta-label">Date</div>
-            <div class="meta-value">{{ \Carbon\Carbon::parse($invoice->issued_date)->format('d M Y') }}</div>
+            <div class="meta-value">{{ \Carbon\Carbon::parse($invoice->issued_date)->format('d/m/Y') }}</div>
         </div>
         <div class="meta-cell right">
             <div class="meta-label">Invoice Number</div>
@@ -272,7 +272,7 @@
         <div class="bill-to-line" style="margin-top:4px;color:#555;">Period: {{ $invoice->period }}</div>
         @endif
         @if($invoice->due_date)
-        <div class="bill-to-line" style="color:#555;">Due: {{ \Carbon\Carbon::parse($invoice->due_date)->format('d M Y') }}</div>
+        <div class="bill-to-line" style="color:#555;">Due: {{ \Carbon\Carbon::parse($invoice->due_date)->format('d/m/Y') }}</div>
         @endif
     </div>
 

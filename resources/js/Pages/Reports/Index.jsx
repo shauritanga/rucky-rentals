@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import ReactApexChart from 'react-apexcharts';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const getCSSVar = (name) =>
   typeof window !== 'undefined'
@@ -494,7 +495,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
                     <tr key={i} style={{ borderBottom: '1px solid var(--border-dim)' }}>
                       <td style={{ padding: '12px 20px', fontWeight: 500 }}>{row.unit}</td>
                       <td style={{ padding: '12px 20px', color: 'var(--text-secondary)' }}>{row.tenant}</td>
-                      <td style={{ padding: '12px 20px', color: 'var(--text-secondary)' }}>{row.end_date}</td>
+                      <td style={{ padding: '12px 20px', color: 'var(--text-secondary)' }}>{formatDisplayDate(row.end_date)}</td>
                       <td style={{ padding: '12px 20px' }}>
                         <span style={{ fontWeight: 700, color: urgency }}>{row.days_left}d</span>
                       </td>

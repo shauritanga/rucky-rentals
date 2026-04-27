@@ -69,7 +69,6 @@ export default function Profile() {
   const [bio, setBio] = useState('Platform owner responsible for global portfolio controls, manager assignments, and system governance.');
   const [avatarSrc, setAvatarSrc] = useState(user?.avatar_url || '');
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [twofaEnabled, setTwofaEnabled] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState(NOTIF_PREFS_SEED);
   const [sessions, setSessions] = useState(SESSION_SEED);
   const [toast, setToast] = useState('');
@@ -132,12 +131,6 @@ export default function Profile() {
       },
       onError: () => showToast('Current password is incorrect'),
     });
-  };
-
-  const onToggle2FA = () => {
-    const next = !twofaEnabled;
-    setTwofaEnabled(next);
-    showToast(next ? 'Two-factor authentication enabled' : 'Two-factor authentication disabled');
   };
 
   const togglePref = (key) => {
@@ -213,7 +206,7 @@ export default function Profile() {
                 <div style={{ height: 1, background: 'var(--border-subtle)', margin: '2px 0' }}></div>
                 <div className="profile-2fa-row">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                  <span style={{ color: twofaEnabled ? 'var(--green)' : 'var(--amber)' }}>{twofaEnabled ? '2FA enabled' : '2FA not enabled'}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>Email OTP login is controlled from System Settings.</span>
                 </div>
               </div>
             </div>
@@ -277,12 +270,11 @@ export default function Profile() {
                 <div style={{ padding: 20 }}>
                   <div className="profile-twofa-box">
                     <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 500 }}>Authenticator App (TOTP)</div>
-                      <div style={{ fontSize: 12, color: twofaEnabled ? 'var(--green)' : 'var(--text-muted)', marginTop: 2 }}>
-                        {twofaEnabled ? 'Enabled - your account is protected' : 'Not enabled - your account is less secure'}
+                      <div style={{ fontSize: 13.5, fontWeight: 500 }}>Global Email OTP</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        Turn the real 2FA requirement on or off from the Superuser security settings page. Login then requires a 6-digit email code after the password step.
                       </div>
                     </div>
-                    <button className="btn-primary" style={{ fontSize: 12.5, padding: '6px 14px' }} onClick={onToggle2FA}>{twofaEnabled ? 'Disable 2FA' : 'Enable 2FA'}</button>
                   </div>
                 </div>
               </div>

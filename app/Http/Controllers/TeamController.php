@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Mail\TeamInviteMail;
+use App\Notifications\TeamApprovalRequestNotification;
 use App\Models\Property;
 use App\Models\User;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class TeamController extends Controller
@@ -81,13 +83,21 @@ class TeamController extends Controller
 
         $teamMembers = $this->teamQueryFor($user)
             ->orderBy('name')
-            ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'permissions', 'created_at', 'updated_at'])
+            ->get([
+                'id', 'name', 'email', 'phone', 'role', 'property_id', 'requested_by_user_id',
+                'status', 'permissions', 'created_at', 'updated_at', 'approval_requested_at',
+                'approval_decided_at', 'approval_note',
+            ])
             ->map(fn(User $member) => $this->mapTeamMember($member))
             ->values();
 
         $archivedMembers = $this->teamQueryFor($user, true)
             ->orderByDesc('deleted_at')
-            ->get(['id', 'name', 'email', 'role', 'property_id', 'status', 'permissions', 'created_at', 'updated_at', 'deleted_at'])
+            ->get([
+                'id', 'name', 'email', 'phone', 'role', 'property_id', 'requested_by_user_id',
+                'status', 'permissions', 'created_at', 'updated_at', 'deleted_at',
+                'approval_requested_at', 'approval_decided_at', 'approval_note',
+            ])
             ->map(fn(User $member) => $this->mapTeamMember($member))
             ->values();
 
@@ -106,33 +116,64 @@ class TeamController extends Controller
             'name' => 'required|string|max:120',
             'email' => 'required|email|max:120|unique:users,email',
             'phone' => 'nullable|string|max:30',
-            'role' => 'required|in:lease_manager,maintenance_staff,viewer',
-            'password' => 'required|string|min:8',
+            'role' => 'required|in:accountant,lease_manager,maintenance_staff,viewer',
             'permissions' => 'nullable|array',
         ]);
 
         $propertyId = $this->resolvePropertyIdForActor($actor);
-
-        $initialPassword = $data['password'];
+        $propertyName = $propertyId ? Property::where('id', $propertyId)->value('name') : null;
 
         $permissions = !empty($data['permissions'])
             ? $data['permissions']
             : (self::ROLE_DEFAULTS[$data['role']] ?? []);
 
+        $isPendingApproval = !$actor?->isSuperuser();
+        $initialPassword = Str::password(12);
+
         $member = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
+            'phone' => $data['phone'] ?? null,
             'password' => Hash::make($initialPassword),
             'role' => $data['role'],
             'property_id' => $propertyId,
-            'status' => 'active',
+            'requested_by_user_id' => $actor?->id,
+            'status' => $isPendingApproval ? 'pending_approval' : 'active',
             'must_change_password' => true,
             'permissions' => $permissions,
+            'approval_requested_at' => $isPendingApproval ? now() : null,
+            'approval_decided_at' => $isPendingApproval ? null : now(),
+            'approval_note' => null,
         ]);
 
-        $propertyName = $propertyId ? Property::where('id', $propertyId)->value('name') : null;
-        $inviteMailSent = true;
+        if ($isPendingApproval) {
+            $superusers = User::query()->where('role', 'superuser')->get();
+            foreach ($superusers as $superuser) {
+                $superuser->notify(new TeamApprovalRequestNotification(
+                    member: $member,
+                    submittedBy: $actor?->name ?? 'System',
+                    propertyName: $propertyName,
+                ));
+            }
 
+            $this->logAudit(
+                request: $request,
+                action: 'Team approval requested',
+                resource: sprintf('%s (%s)', $member->name, $member->role),
+                propertyName: $propertyName,
+                category: 'team',
+                metadata: [
+                    'member_id' => $member->id,
+                    'member_email' => $member->email,
+                    'requested_by' => $actor?->name,
+                ],
+                propertyId: $member->property_id ? (int) $member->property_id : null,
+            );
+
+            return back()->with('success', 'Staff member submitted for superuser approval.');
+        }
+
+        $inviteMailSent = true;
         try {
             Mail::to($member->email)->send(new TeamInviteMail(
                 memberName: $member->name,
@@ -263,6 +304,44 @@ class TeamController extends Controller
         return back()->with('success', 'Staff member restored.');
     }
 
+    public function resubmit(Request $request, User $user)
+    {
+        $this->authorizeTeamMember($request, $user);
+        abort_unless($user->status === 'rejected', 422, 'Only rejected team requests can be resubmitted.');
+
+        $actor = $request->user();
+        $propertyName = $user->property_id ? Property::where('id', $user->property_id)->value('name') : null;
+
+        $user->update([
+            'status' => 'pending_approval',
+            'approval_requested_at' => now(),
+            'approval_decided_at' => null,
+            'approval_note' => null,
+            'requested_by_user_id' => $actor?->id,
+        ]);
+
+        $superusers = User::query()->where('role', 'superuser')->get();
+        foreach ($superusers as $superuser) {
+            $superuser->notify(new TeamApprovalRequestNotification(
+                member: $user->fresh(),
+                submittedBy: $actor?->name ?? 'System',
+                propertyName: $propertyName,
+            ));
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: 'Team approval request resubmitted',
+            resource: sprintf('%s (%s)', $user->name, $user->role),
+            propertyName: $propertyName,
+            category: 'team',
+            metadata: ['member_id' => $user->id],
+            propertyId: $user->property_id ? (int) $user->property_id : null,
+        );
+
+        return back()->with('success', 'Team approval request resubmitted.');
+    }
+
     private function resolvePropertyIdForActor(?User $actor): ?int
     {
         if (!$actor) {
@@ -289,7 +368,8 @@ class TeamController extends Controller
 
     private function teamQueryFor(?User $user, bool $onlyTrashed = false)
     {
-        $query = $onlyTrashed ? User::onlyTrashed() : User::query();
+        $query = ($onlyTrashed ? User::onlyTrashed() : User::query())
+            ->with('requestedBy:id,name');
         $query->whereIn('role', self::STAFF_ROLES);
 
         if ($user?->role === 'manager') {
@@ -309,11 +389,15 @@ class TeamController extends Controller
             'id' => $member->id,
             'name' => $member->name,
             'email' => $member->email,
-            'phone' => null,
+            'phone' => $member->phone,
             'role' => $member->role,
             'status' => $member->status ?: 'active',
             'last_active' => optional($member->updated_at)->diffForHumans(),
             'deleted_at' => $member->deleted_at ? $member->deleted_at->diffForHumans() : null,
+            'requested_by' => $member->relationLoaded('requestedBy') ? $member->requestedBy?->name : null,
+            'approval_note' => $member->approval_note,
+            'approval_requested_at' => $member->approval_requested_at,
+            'approval_decided_at' => $member->approval_decided_at,
             'permissions' => $member->permissions ?? self::ROLE_DEFAULTS[$member->role] ?? self::ROLE_DEFAULTS['viewer'],
         ];
     }

@@ -24,6 +24,35 @@ use Inertia\Inertia;
 class LeaseController extends Controller
 {
     use LogsAudit;
+
+    private function normalizeLeaseTiming(array $data): array
+    {
+        $possessionDate = $data['possession_date'] ?? $data['start_date'] ?? null;
+        $fitoutEnabled = (bool) ($data['fitout_enabled'] ?? false);
+        $fitoutToDate = $fitoutEnabled ? ($data['fitout_to_date'] ?? null) : null;
+
+        $data['possession_date'] = $possessionDate;
+        $data['fitout_enabled'] = $fitoutEnabled;
+        $data['fitout_to_date'] = $fitoutToDate;
+
+        if ($fitoutEnabled && $fitoutToDate) {
+            $data['rent_start_date'] = Carbon::parse($fitoutToDate)->addDay()->toDateString();
+            if ($possessionDate) {
+                $data['fitout_days'] = max(
+                    0,
+                    Carbon::parse($possessionDate)->startOfDay()->diffInDays(
+                        Carbon::parse($fitoutToDate)->startOfDay()
+                    ) + 1
+                );
+            }
+        } else {
+            $data['fitout_days'] = 0;
+            $data['rent_start_date'] = $data['rent_start_date'] ?? $possessionDate;
+        }
+
+        return $data;
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -141,6 +170,8 @@ class LeaseController extends Controller
                 abort_if((int) $tenant->property_id !== $effectivePropertyId, 403);
             }
         }
+
+        $validated = $this->normalizeLeaseTiming($validated);
 
         // Determine initial status — superuser acting in property view mode auto-approves
         if ($this->isSuperuserActing($request)) {
@@ -309,9 +340,12 @@ class LeaseController extends Controller
                 'monthly_rent'    => 'required|numeric|min:0',
                 'deposit'         => 'nullable|numeric|min:0',
                 'wht_rate'        => 'nullable|numeric|min:0|max:100',
+                'service_charge_rate' => 'nullable|numeric|min:0|max:100',
                 'vat_rate'        => 'nullable|numeric|min:0|max:100',
                 'terms'           => 'nullable|string',
             ]);
+
+            $editData = $this->normalizeLeaseTiming($editData);
 
             DB::transaction(function () use ($lease, $editData) {
                 $oldUnitId     = $lease->unit_id;

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
+import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
 
 // Sum of raw item amounts (net, VAT-exclusive)
 const invoiceItemsNet = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
@@ -179,8 +180,8 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
         currency,
         method: p.method || '—',
         status: derivedStatus,
-        date: p.paid_date || p.date || p.created_at || '—',
-        dueDate: invoice?.due_date || p.paid_date,
+        date: formatDisplayDate(p.paid_date || p.date || p.created_at),
+        dueDate: formatDisplayDate(invoice?.due_date || p.paid_date),
       };
     }).reverse();
   }, [invoices, payments, tenants, units]);
@@ -744,7 +745,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>{selectedInvoice.invoice_number} — {selectedInvoice.tenant_name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Unit {selectedInvoice.unit_ref || '—'} · {selectedInvoice.period || '—'}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Unit {selectedInvoice.unit_ref || '—'} · {formatDisplayDateRange(selectedInvoice.period)}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Net Payable</div>

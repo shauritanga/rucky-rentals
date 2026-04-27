@@ -21,7 +21,7 @@ const VIEW_META = {
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
 
-export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [], archivedManagers = [] }) {
+export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [], pendingTeamMembers = [], archivedManagers = [] }) {
   const [activeView, setActiveView] = useState(() => {
     const v = new URLSearchParams(window.location.search).get('view') || 'overview';
     return Object.keys(VIEW_META).includes(v) ? v : 'overview';
@@ -53,15 +53,17 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     twoFA: 'yes',
   });
 
-  const { data, setData, post, processing, reset } = useForm({
+  const { data, setData, post, processing, reset, errors } = useForm({
     name: '',
     code: '',
     address: '',
     city: 'Dar es Salaam',
     country: 'Tanzania',
+    bank_name: '',
+    bank_account: '',
+    bank_account_name: '',
+    swift_code: '',
     status: 'active',
-    unit_count: 0,
-    occupied_units: 0,
     // floor config
     basements: 0,
     has_ground_floor: false,
@@ -88,6 +90,10 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         reset();
         setData('city', 'Dar es Salaam');
         setData('country', 'Tanzania');
+        setData('bank_name', '');
+        setData('bank_account', '');
+        setData('bank_account_name', '');
+        setData('swift_code', '');
         setData('status', 'active');
         setData('basements', 0);
         setData('has_ground_floor', false);
@@ -149,7 +155,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       subtitle={meta.subtitle}
       actionLabel={meta.actionLabel}
       onAction={onAction}
-      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length, approvals: pendingLeases.length + pendingMaintenance.length }}
+      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length, approvals: pendingLeases.length + pendingMaintenance.length + pendingTeamMembers.length }}
     >
       <Head title={`Superuser - ${meta.title}`} />
 
@@ -176,21 +182,20 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
 
       {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} archivedManagers={archivedManagers} onOpenManagerModal={() => setShowManagerModal(true)} />}
       {activeView === 'roles' && <RolesPage settings={settings} />}
-      {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} />}
+      {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} pendingTeamMembers={pendingTeamMembers} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage settings={settings} />}
 
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
-        <div className="modal" style={{ width: 540 }}>
+        <div className="modal" style={{ width: 'min(640px, calc(100vw - 24px))', height: 'min(760px, 88dvh)', maxHeight: 'min(92vh, calc(100dvh - 20px))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-header"><div className="modal-title">Add New Property</div><button className="modal-close" onClick={() => setShowModal(false)}>✕</button></div>
-          <form onSubmit={submit}>
-            <div className="modal-body">
-              <div className="form-row"><div className="form-group"><label className="form-label">Property Name *</label><input className="form-input" value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="e.g. Ruky Heights" required /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Address *</label><input className="form-input" value={data.address} onChange={(e) => setData('address', e.target.value)} placeholder="Full street address" required /></div><div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={(e) => setData('city', e.target.value)} placeholder="Dar es Salaam" /></div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Total Units</label><input className="form-input" type="number" value={data.unit_count} onChange={(e) => setData('unit_count', e.target.value)} placeholder="0" min="0" /></div></div>
+          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <div className="modal-body" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+              <div className="form-row"><div className="form-group"><label className="form-label">Property Name *</label><input className="form-input" value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="e.g. Ruky Heights" required />{errors.name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.name}</div>}</div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Address *</label><input className="form-input" value={data.address} onChange={(e) => setData('address', e.target.value)} placeholder="Full street address" required />{errors.address && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.address}</div>}</div><div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={(e) => setData('city', e.target.value)} placeholder="Dar es Salaam" />{errors.city && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.city}</div>}</div></div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Upper Floors *</label><input className="form-input" type="text" inputMode="numeric" pattern="[0-9]*" value={upperFloorsRaw} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setUpperFloorsRaw(v); const n = parseInt(v, 10); if (!isNaN(n) && n >= 1) setData('upper_floors', n); }} onBlur={() => { const n = parseInt(upperFloorsRaw, 10); const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, 100); setData('upper_floors', clamped); setUpperFloorsRaw(String(clamped)); }} placeholder="e.g. 7" required /></div>
-                <div className="form-group"><label className="form-label">Basement Levels</label><input className="form-input" type="number" value={data.basements} onChange={(e) => setData('basements', Math.max(0, parseInt(e.target.value, 10) || 0))} placeholder="0" min="0" max="10" /></div>
+                <div className="form-group"><label className="form-label">Upper Floors *</label><input className="form-input" type="text" inputMode="numeric" pattern="[0-9]*" value={upperFloorsRaw} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setUpperFloorsRaw(v); const n = parseInt(v, 10); if (!isNaN(n) && n >= 1) setData('upper_floors', n); }} onBlur={() => { const n = parseInt(upperFloorsRaw, 10); const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, 100); setData('upper_floors', clamped); setUpperFloorsRaw(String(clamped)); }} placeholder="e.g. 7" required />{errors.upper_floors && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.upper_floors}</div>}</div>
+                <div className="form-group"><label className="form-label">Basement Levels</label><input className="form-input" type="number" value={data.basements} onChange={(e) => setData('basements', Math.max(0, parseInt(e.target.value, 10) || 0))} placeholder="0" min="0" max="10" /><div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>Number of underground floors, for example B1 or B1-B2.</div></div>
               </div>
               <div className="form-row" style={{ gap: 24 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
@@ -211,15 +216,28 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
                   </div>
                 );
               })()}
+              <div style={{ marginTop: 18, marginBottom: 8 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Invoice Payment Details</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                  These bank details are required because tenant invoices use the payment information saved on each property.
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Bank Name *</label><input className="form-input" value={data.bank_name} onChange={(e) => setData('bank_name', e.target.value)} placeholder="e.g. Diamond Trust Bank" required />{errors.bank_name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.bank_name}</div>}</div>
+                <div className="form-group"><label className="form-label">Account Number *</label><input className="form-input" value={data.bank_account} onChange={(e) => setData('bank_account', e.target.value)} placeholder="e.g. 03532012002" required />{errors.bank_account && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.bank_account}</div>}</div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Account Name *</label><input className="form-input" value={data.bank_account_name} onChange={(e) => setData('bank_account_name', e.target.value)} placeholder="e.g. Property Management Company" required />{errors.bank_account_name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.bank_account_name}</div>}</div>
+                <div className="form-group"><label className="form-label">Swift Code *</label><input className="form-input" value={data.swift_code} onChange={(e) => setData('swift_code', e.target.value)} placeholder="e.g. DTKETZTZ" required />{errors.swift_code && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.swift_code}</div>}</div>
+              </div>
               <div className="form-row"><div className="form-group"><label className="form-label">Status</label>
                 <select className="form-input form-select" value={data.status} onChange={(e) => setData('status', e.target.value)}>
                   <option value="active">Active</option>
-                  <option value="trial">Trial</option>
                   <option value="inactive">Inactive</option>
-                </select>
+                </select>{errors.status && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.status}</div>}
               </div></div>
             </div>
-            <div className="modal-footer">
+            <div className="modal-footer" style={{ flexShrink: 0 }}>
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)} disabled={processing}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>
                 {processing ? (

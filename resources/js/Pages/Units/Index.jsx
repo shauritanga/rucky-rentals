@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, useForm } from '@inertiajs/react';
 import { floorSortOrder } from '@/utils/floorConfig';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
@@ -337,8 +338,8 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                 <div className="drawer-section">
                   <div className="drawer-section-title">Lease</div>
                   <div className="drawer-kv-grid">
-                    <div className="drawer-kv"><div className="drawer-kv-label">Start</div><div className="drawer-kv-value">{selected.leases[0].start_date}</div></div>
-                    <div className="drawer-kv"><div className="drawer-kv-label">End</div><div className="drawer-kv-value">{selected.leases[0].end_date}</div></div>
+                    <div className="drawer-kv"><div className="drawer-kv-label">Start</div><div className="drawer-kv-value">{formatDisplayDate(selected.leases[0].start_date)}</div></div>
+                    <div className="drawer-kv"><div className="drawer-kv-label">End</div><div className="drawer-kv-value">{formatDisplayDate(selected.leases[0].end_date)}</div></div>
                     <div className="drawer-kv"><div className="drawer-kv-label">Annual Value</div><div className="drawer-kv-value">{money(selected.rent*12, unitCurrency(selected))}</div></div>
                     <div className="drawer-kv"><div className="drawer-kv-label">Status</div><div className={`drawer-kv-value ${selected.leases[0].status==='active'?'green':selected.leases[0].status==='overdue'?'red':'amber'}`}>{selected.leases[0].status}</div></div>
                   </div>

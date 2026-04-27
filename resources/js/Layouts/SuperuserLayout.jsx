@@ -104,6 +104,13 @@ function NotificationBell({ onNavigate }) {
                 </svg>
             );
         }
+        if (data?.type === 'team_approval_request') {
+            return (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--green)' }}>
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
+                </svg>
+            );
+        }
         return (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--amber)' }}>
                 <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
@@ -113,6 +120,7 @@ function NotificationBell({ onNavigate }) {
 
     const getTitle = (data) => {
         if (data?.type === 'lease_approval_request') return 'Lease Approval Request';
+        if (data?.type === 'team_approval_request') return 'Team Approval Request';
         if (data?.stage === 'submitted') return 'Maintenance Request';
         if (data?.stage === 'pending_manager') return 'Maintenance Pending Review';
         return 'New Request';
@@ -120,6 +128,7 @@ function NotificationBell({ onNavigate }) {
 
     const getSub = (data) => {
         if (data?.type === 'lease_approval_request') return [data.tenant, data.property].filter(Boolean).join(' · ');
+        if (data?.type === 'team_approval_request') return [data.name, data.property || data.role_label].filter(Boolean).join(' · ');
         if (data?.title) return [data.ticket_number, data.priority].filter(Boolean).join(' · ');
         return '';
     };

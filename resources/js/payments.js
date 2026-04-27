@@ -201,15 +201,15 @@ function extractPeriod(date) {
 }
 
 /**
- * Format date as "Mar 1, 2026"
+ * Format date as "dd/mm/yyyy"
  */
 function formatDate(dateString) {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
+  if (Number.isNaN(date.getTime())) return dateString;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 /**

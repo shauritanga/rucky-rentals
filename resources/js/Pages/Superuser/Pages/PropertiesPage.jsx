@@ -52,7 +52,7 @@ export default function PropertiesPage({
       </div>
 
       <div className="filters" style={{ marginBottom: 14 }}>
-        {[['all', 'All'], ['active', 'Active'], ['trial', 'Trial'], ['inactive', 'Inactive']].map(([key, label]) => (
+        {[['all', 'All'], ['active', 'Active'], ['inactive', 'Inactive']].map(([key, label]) => (
           <button type="button" key={key} className={`filter-pill ${status === key ? 'active' : ''}`} onClick={() => setStatus(key)}>{label}</button>
         ))}
       </div>

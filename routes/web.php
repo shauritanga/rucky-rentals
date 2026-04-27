@@ -28,6 +28,9 @@ use App\Http\Controllers\PropertySettingsController;
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
+    Route::get('/login/verify-otp', [AuthController::class, 'showVerifyOtp'])->name('login.otp.show');
+    Route::post('/login/verify-otp', [AuthController::class, 'verifyOtp'])->name('login.otp.verify');
+    Route::post('/login/resend-otp', [AuthController::class, 'resendOtp'])->name('login.otp.resend');
 });
 
 Route::middleware('auth')->group(function () {
@@ -55,6 +58,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('team/{user}/permissions', [TeamController::class, 'updatePermissions'])->name('team.permissions.update');
         Route::patch('team/{user}/status', [TeamController::class, 'toggleStatus'])->name('team.status.toggle');
         Route::patch('team/{userId}/restore', [TeamController::class, 'restore'])->name('team.restore');
+        Route::post('team/{user}/resubmit', [TeamController::class, 'resubmit'])->name('team.resubmit');
         Route::delete('team/{user}', [TeamController::class, 'destroy'])->name('team.destroy');
         Route::get('audit', [AuditTrailController::class, 'index'])->name('audit.index');
         Route::get('settings', [PropertySettingsController::class, 'show'])->name('settings.show');
@@ -89,6 +93,8 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/leases/{lease}/reject', [SuperuserController::class, 'rejectLease'])->name('superuser.leases.reject');
         Route::post('superuser/maintenance/{ticket}/approve', [SuperuserController::class, 'approveMaintenance'])->name('superuser.maintenance.approve');
         Route::post('superuser/maintenance/{ticket}/reject', [SuperuserController::class, 'rejectMaintenance'])->name('superuser.maintenance.reject');
+        Route::post('superuser/team/{user}/approve', [SuperuserController::class, 'approveTeamMember'])->name('superuser.team.approve');
+        Route::post('superuser/team/{user}/reject', [SuperuserController::class, 'rejectTeamMember'])->name('superuser.team.reject');
         Route::get('superuser/revenue', [SuperuserController::class, 'ownerRevenue'])->name('superuser.revenue');
         Route::post('superuser/revenue/post-fee', [SuperuserController::class, 'postManagementFee'])->name('superuser.revenue.post-fee');
         Route::get('superuser/notifications', [SuperuserController::class, 'getNotifications'])->name('superuser.notifications.index');

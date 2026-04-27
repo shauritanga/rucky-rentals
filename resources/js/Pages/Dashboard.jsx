@@ -1,6 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Head } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const STATUS_CLASS = { occupied: 'occupied', vacant: 'vacant', overdue: 'overdue', maintenance: 'maintenance' };
 const STATUS_LABEL = { occupied: 'Occupied', vacant: 'Vacant', overdue: 'Overdue', maintenance: 'Maintenance' };
@@ -196,7 +197,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                 </div>
                 <div>
                   <div className="pay-amount" style={{ color: p.status === 'paid' ? 'var(--green)' : 'var(--red)' }}>{p.status === 'paid' ? '+ ' : ''}{formatMoney(p.amount, p.currency)}</div>
-                  <div className="pay-date">{p.paid_date || 'Overdue'}</div>
+                  <div className="pay-date">{p.paid_date ? formatDisplayDate(p.paid_date) : 'Overdue'}</div>
                 </div>
               </div>
             ))}
@@ -214,7 +215,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                 <div className="maint-icon">{t.category === 'Plumbing' ? '🔧' : t.category === 'Electrical' ? '💡' : t.category === 'HVAC' ? '❄️' : t.category === 'Security' ? '🔒' : '🪛'}</div>
                 <div className="maint-info">
                   <div className="maint-title">{t.title}</div>
-                  <div className="maint-meta">Reported {t.reported_date} · {t.category}</div>
+                  <div className="maint-meta">Reported {formatDisplayDate(t.reported_date)} · {t.category}</div>
                 </div>
                 <span className={`priority ${t.priority}`}>{t.priority === 'med' ? 'Med' : t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}</span>
               </div>

@@ -120,6 +120,18 @@ class SuperuserController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        $pendingTeamMembers = User::with([
+                'property:id,name',
+                'requestedBy:id,name,email',
+            ])
+            ->whereIn('role', ['accountant', 'lease_manager', 'maintenance_staff', 'viewer'])
+            ->where('status', 'pending_approval')
+            ->orderBy('approval_requested_at')
+            ->get([
+                'id', 'name', 'email', 'phone', 'role', 'property_id', 'requested_by_user_id',
+                'status', 'approval_requested_at', 'approval_decided_at', 'approval_note', 'created_at',
+            ]);
+
         return Inertia::render('Superuser/Index', [
             'properties'         => $properties,
             'managers'           => $managers,
@@ -127,6 +139,7 @@ class SuperuserController extends Controller
             'settings'           => $settings,
             'pendingLeases'      => $pendingLeases,
             'pendingMaintenance' => $pendingMaintenance,
+            'pendingTeamMembers' => $pendingTeamMembers,
             'archivedManagers'   => $archivedManagers,
         ]);
     }
@@ -138,7 +151,11 @@ class SuperuserController extends Controller
             'address'          => 'nullable|string|max:255',
             'city'             => 'nullable|string|max:120',
             'country'          => 'nullable|string|max:120',
-            'status'           => 'required|in:active,trial,inactive',
+            'bank_name'        => 'required|string|max:120',
+            'bank_account'     => 'required|string|max:60',
+            'bank_account_name'=> 'required|string|max:120',
+            'swift_code'       => 'required|string|max:20',
+            'status'           => 'required|in:active,inactive',
             'manager_user_id'  => 'nullable|exists:users,id',
             // floor config fields
             'basements'        => 'nullable|integer|min:0|max:10',
@@ -520,6 +537,90 @@ class SuperuserController extends Controller
         return back()->with('success', 'Maintenance ticket rejected.');
     }
 
+    public function approveTeamMember(Request $request, User $user)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if(!in_array($user->role, ['accountant', 'lease_manager', 'maintenance_staff', 'viewer'], true), 404);
+        abort_if($user->status !== 'pending_approval', 422, 'User is not pending approval.');
+
+        $temporaryPassword = Str::password(12);
+        $propertyName = $user->property_id ? Property::where('id', $user->property_id)->value('name') : null;
+
+        $user->update([
+            'password' => Hash::make($temporaryPassword),
+            'status' => 'active',
+            'must_change_password' => true,
+            'approval_decided_at' => now(),
+            'approval_note' => trim($request->input('message', 'Approved by superuser.')) ?: 'Approved by superuser.',
+        ]);
+
+        $emailSent = true;
+        try {
+            Mail::to($user->email)->send(new \App\Mail\TeamInviteMail(
+                memberName: $user->name,
+                email: $user->email,
+                initialPassword: $temporaryPassword,
+                loginUrl: url('/login'),
+                roleLabel: $this->teamRoleLabel($user->role),
+                propertyName: $propertyName,
+            ));
+        } catch (\Throwable $e) {
+            $emailSent = false;
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: 'Team member approved',
+            resource: sprintf('%s (%s)', $user->name, $user->role),
+            propertyName: $propertyName,
+            category: 'team',
+            result: $emailSent ? 'success' : 'failed',
+            metadata: [
+                'member_id' => $user->id,
+                'welcome_email_sent' => $emailSent,
+            ],
+            propertyId: $user->property_id ? (int) $user->property_id : null,
+        );
+
+        return back()->with($emailSent ? 'success' : 'warning', $emailSent
+            ? 'Team member approved and welcome email sent.'
+            : 'Team member approved, but welcome email failed to send.');
+    }
+
+    public function rejectTeamMember(Request $request, User $user)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if(!in_array($user->role, ['accountant', 'lease_manager', 'maintenance_staff', 'viewer'], true), 404);
+        abort_if($user->status !== 'pending_approval', 422, 'User is not pending approval.');
+
+        $data = $request->validate([
+            'message' => 'required|string|min:5|max:1000',
+        ]);
+
+        $propertyName = $user->property_id ? Property::where('id', $user->property_id)->value('name') : null;
+
+        $user->update([
+            'status' => 'rejected',
+            'approval_decided_at' => now(),
+            'approval_note' => $data['message'],
+        ]);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Team member rejected',
+            resource: sprintf('%s (%s)', $user->name, $user->role),
+            propertyName: $propertyName,
+            category: 'team',
+            metadata: [
+                'member_id' => $user->id,
+                'reason' => $data['message'],
+            ],
+            propertyId: $user->property_id ? (int) $user->property_id : null,
+        );
+
+        return back()->with('success', 'Team member request rejected.');
+    }
+
     // ── Notifications ───────────────────────────────────────────────
 
     public function getNotifications(): \Illuminate\Http\JsonResponse
@@ -555,6 +656,17 @@ class SuperuserController extends Controller
         abort_if(Auth::user()->role !== 'superuser', 403);
         Auth::user()->notifications()->delete();
         return response()->json(['ok' => true]);
+    }
+
+    private function teamRoleLabel(string $role): string
+    {
+        return match ($role) {
+            'accountant' => 'Accountant',
+            'lease_manager' => 'Lease Assistant',
+            'maintenance_staff' => 'Maintenance Staff',
+            'viewer' => 'Viewer',
+            default => ucfirst(str_replace('_', ' ', $role)),
+        };
     }
 
     // ── Manager Delete / Restore ─────────────────────────────────────

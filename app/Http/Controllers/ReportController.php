@@ -18,6 +18,28 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
+    private function calculatePaymentWhtTotal(Payment $payment): float
+    {
+        $rentRate = (float) ($payment->invoice?->lease?->wht_rate ?? 0);
+        $serviceChargeRate = (float) ($payment->invoice?->lease?->service_charge_rate ?? 5);
+        $rentBase = (float) $payment->breakdown_rent;
+        $serviceChargeBase = (float) $payment->breakdown_service_charge;
+
+        if ($rentBase <= 0 && $serviceChargeBase <= 0) {
+            return 0.0;
+        }
+
+        $fx = ($payment->amount > 0 && !empty($payment->amount_in_base))
+            ? (float) $payment->amount_in_base / (float) $payment->amount
+            : (float) ($payment->exchange_rate ?? 1);
+
+        return round(
+            (($rentBase * $fx) * ($rentRate / 100)) +
+            (($serviceChargeBase * $fx) * ($serviceChargeRate / 100)),
+            2
+        );
+    }
+
     public function index(Request $request)
     {
         $propertyId = $this->resolvePropertyId($request);
@@ -105,23 +127,14 @@ class ReportController extends Controller
         // every paid payment in the period — regardless of wht_confirmed flag, which
         // is a receipt-workflow flag, not a reporting gate.
         $whtPayments = Payment::query()
-            ->with(['invoice.lease:id,wht_rate'])
+            ->with(['invoice.lease:id,wht_rate,service_charge_rate'])
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
             ->where('status', 'paid')
             ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
             ->whereNotNull('invoice_id')
             ->get();
 
-        $whtTotal = $whtPayments->sum(function ($p) {
-            $rate = (float) ($p->invoice?->lease?->wht_rate ?? 0);
-            if ($rate <= 0) return 0.0;
-            $base = (float) $p->breakdown_rent + (float) $p->breakdown_service_charge;
-            if ($base <= 0) return 0.0;
-            $fx   = ($p->amount > 0 && !empty($p->amount_in_base))
-                ? (float) $p->amount_in_base / (float) $p->amount
-                : (float) ($p->exchange_rate ?? 1);
-            return round($base * $fx * ($rate / 100), 2);
-        });
+        $whtTotal = $whtPayments->sum(fn($p) => $this->calculatePaymentWhtTotal($p));
 
         // --- VAT Total (period-scoped by PAYMENT date — VAT is collected when cash received) ---
         // Part A: electricity & generator VAT stored as item_type = 'electricity_vat'
@@ -583,20 +596,13 @@ class ReportController extends Controller
 
                     // WHT export
                     $exportWhtPayments = Payment::query()
-                        ->with(['invoice.lease:id,wht_rate'])
+                        ->with(['invoice.lease:id,wht_rate,service_charge_rate'])
                         ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
                         ->where('status', 'paid')
                         ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
                         ->whereNotNull('invoice_id')->get();
 
-                    $exportWht = $exportWhtPayments->sum(function ($p) {
-                        $rate = (float) ($p->invoice?->lease?->wht_rate ?? 0);
-                        if ($rate <= 0) return 0.0;
-                        $base = (float) $p->breakdown_rent + (float) $p->breakdown_service_charge;
-                        if ($base <= 0) return 0.0;
-                        $fx   = ($p->amount > 0 && !empty($p->amount_in_base)) ? (float) $p->amount_in_base / (float) $p->amount : (float) ($p->exchange_rate ?? 1);
-                        return round($base * $fx * ($rate / 100), 2);
-                    });
+                    $exportWht = $exportWhtPayments->sum(fn($p) => $this->calculatePaymentWhtTotal($p));
 
                     // Deposits export
                     $exportDeposits = Lease::query()

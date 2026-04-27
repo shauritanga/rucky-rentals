@@ -52,9 +52,9 @@
                                     <td width="50%" style="vertical-align:top;padding-left:12px;">
                                         <p style="margin:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#64748b;font-weight:700;">Invoice Details</p>
                                         <p style="margin:0 0 3px;font-size:13px;color:#334155;"><strong>Number:</strong> {{ $invoice->invoice_number }}</p>
-                                        <p style="margin:0 0 3px;font-size:13px;color:#334155;"><strong>Issue Date:</strong> {{ $invoice->issued_date }}</p>
+                                        <p style="margin:0 0 3px;font-size:13px;color:#334155;"><strong>Issue Date:</strong> {{ \Carbon\Carbon::parse($invoice->issued_date)->format('d/m/Y') }}</p>
                                         @if($invoice->due_date)
-                                        <p style="margin:0 0 3px;font-size:13px;color:#334155;"><strong>Due Date:</strong> {{ $invoice->due_date }}</p>
+                                        <p style="margin:0 0 3px;font-size:13px;color:#334155;"><strong>Due Date:</strong> {{ \Carbon\Carbon::parse($invoice->due_date)->format('d/m/Y') }}</p>
                                         @endif
                                         @if($invoice->period)
                                         <p style="margin:0;font-size:13px;color:#334155;"><strong>Period:</strong> {{ $invoice->period }}</p>

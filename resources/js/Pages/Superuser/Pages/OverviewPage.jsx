@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import { formatDisplayDateTime } from '@/utils/dateFormat';
 
 const statusClass = (status) => {
   if (status === 'active') return 'active';
@@ -31,9 +32,7 @@ function dotColor(log) {
 }
 
 function formatLogTime(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return formatDisplayDateTime(ts, '');
 }
 
 export default function OverviewPage({ properties = [], managers = [], auditLogs = [] }) {

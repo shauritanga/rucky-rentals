@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { formatDisplayDateTime } from '@/utils/dateFormat';
 
 const PAGE_SIZE = 10;
 
@@ -33,7 +34,7 @@ export default function AuditPage({ auditLogs = [] }) {
 
   const rows = useMemo(() => auditLogs.map((r) => ({
     id:       r.id,
-    ts:       r.created_at ? new Date(r.created_at).toLocaleString() : '—',
+    ts:       formatDisplayDateTime(r.created_at),
     user:     r.user_name   || 'System',
     action:   r.action      || '—',
     resource: r.resource    || '—',

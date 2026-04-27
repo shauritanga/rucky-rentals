@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 export default function ManagersPage({ managers = [], properties = [], archivedManagers = [], onOpenManagerModal }) {
     const [search, setSearch] = useState('');
@@ -200,7 +201,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                     </td>
                                     <td><span className={`role-tag ${String(m.role || '').toLowerCase()}`}>{m.role}</span></td>
                                     <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                                        {m.deleted_at ? new Date(m.deleted_at).toLocaleDateString() : '—'}
+                                        {formatDisplayDate(m.deleted_at)}
                                     </td>
                                     <td>
                                         <button

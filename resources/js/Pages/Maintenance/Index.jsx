@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const CAT_ICONS = {
   Plumbing: '🔧',
@@ -522,7 +523,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                       <td style={{ fontSize: 13 }}>{t.category}</td>
                       <td><span style={{ fontSize: 12, fontWeight: 600, color: pri.color }}>{pri.label}</span></td>
                       <td><span style={{ fontSize: 12, fontWeight: 600, padding: '2px 9px', borderRadius: 20, background: statusMeta.bg, color: statusMeta.color }}>{statusMeta.label}</span></td>
-                      <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{t.reported_date}</td>
+                      <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{formatDisplayDate(t.reported_date)}</td>
                       <td>{t.material_cost ? formatTzs(t.material_cost) : '—'}</td>
                       <td>{t.labour ? formatTzs(t.labour) : '—'}</td>
                       <td style={{ fontWeight: 700 }}>{t.total_cost ? formatTzs(t.total_cost) : '—'}</td>
@@ -568,8 +569,8 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-            <div className="card"><div className="card-header"><div className="card-title">Upcoming (30 days)</div></div><div style={{ padding: '0 8px 8px' }}>{upcomingSchedule.length ? upcomingSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; const taskCategory = normalizeCategory(task.category); return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[taskCategory] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No tasks due in 30 days</div>}</div></div>
-            <div className="card"><div className="card-header"><div className="card-title">Overdue</div></div><div style={{ padding: '0 8px 8px' }}>{overdueSchedule.length ? overdueSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—'; const taskCategory = normalizeCategory(task.category); return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[taskCategory] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--red)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No overdue tasks</div>}</div></div>
+            <div className="card"><div className="card-header"><div className="card-title">Upcoming (30 days)</div></div><div style={{ padding: '0 8px 8px' }}>{upcomingSchedule.length ? upcomingSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = formatDisplayDate(task.next_due); const taskCategory = normalizeCategory(task.category); return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[taskCategory] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--text-muted)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No tasks due in 30 days</div>}</div></div>
+            <div className="card"><div className="card-header"><div className="card-title">Overdue</div></div><div style={{ padding: '0 8px 8px' }}>{overdueSchedule.length ? overdueSchedule.map((task) => { const u = task.unit_ref || task.unit || '—'; const d = formatDisplayDate(task.next_due); const taskCategory = normalizeCategory(task.category); return <div key={task.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--bg-elevated)', marginBottom: 6 }}><div style={{ fontSize: 18 }}>{CAT_ICONS[taskCategory] || '🔧'}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{task.title}</div><div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u} · {task.assignee || 'Unassigned'}</div></div><div style={{ textAlign: 'right', fontSize: 12, color: 'var(--red)' }}>Due {d}</div></div>; }) : <div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No overdue tasks</div>}</div></div>
           </div>
           <div className="card">
             <div className="card-header"><div className="card-title">All Scheduled Tasks</div></div>
@@ -580,7 +581,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 const isCompleted = task.status === 'completed';
                 const FREQ = { weekly:'Weekly', monthly:'Monthly', quarterly:'Quarterly', biannual:'Every 6 months', annual:'Annual' };
                 const unitRef = task.unit_ref || task.unit || '—';
-                const nextDue = typeof task.next_due === 'string' ? task.next_due : task.next_due?.split('T')[0] || '—';
+                const nextDue = formatDisplayDate(task.next_due);
                 return <tr key={task.id}><td><div style={{fontWeight:600}}>{task.title}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{normalizeCategory(task.category)}</div></td><td>{unitRef}</td><td style={{fontSize:13}}>{FREQ[task.frequency] || task.frequency}</td><td style={{color:isOverdue?'var(--red)':'var(--text-secondary)',fontWeight:isOverdue?600:400}}>{nextDue}</td><td style={{fontSize:13}}>{task.assignee || '—'}</td><td><span style={{fontSize:12,fontWeight:600,color:isOverdue?'var(--red)':isCompleted?'var(--green)':'var(--accent)'}}>● {isOverdue?'Overdue':isCompleted?'Completed':'Upcoming'}</span></td><td style={{display:'flex',gap:6}}>{!isCompleted && <button className="btn-ghost" style={{fontSize:12,padding:'4px 8px'}} onClick={() => router.patch(`/scheduled-maintenance/${task.id}`, { status: 'completed' }, { onSuccess: () => setSubmitMessage('Task marked complete.') })}>Done</button>}<button className="btn-ghost" style={{fontSize:12,padding:'4px 8px',color:'var(--red)'}} onClick={() => router.delete(`/scheduled-maintenance/${task.id}`, {}, { onSuccess: () => setSubmitMessage('Task removed.') })}>Remove</button></td></tr>;
               })}</tbody>
             </table>
@@ -693,7 +694,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                   <div className="kv-grid">
                     <div className="kv"><div className="kv-label">Status</div><div className="kv-value" style={{ color: (STATUS_META[normalizeWorkflowStatus(selected)] || STATUS_META.open).color }}>{(STATUS_META[normalizeWorkflowStatus(selected)] || STATUS_META.open).label}</div></div>
                     <div className="kv"><div className="kv-label">Unit</div><div className="kv-value accent">{selected.unit_ref}</div></div>
-                    <div className="kv"><div className="kv-label">Reported</div><div className="kv-value" style={{ fontSize: '12.5px' }}>{selected.reported_date}</div></div>
+                    <div className="kv"><div className="kv-label">Reported</div><div className="kv-value" style={{ fontSize: '12.5px' }}>{formatDisplayDate(selected.reported_date)}</div></div>
                     <div className="kv"><div className="kv-label">Category</div><div className="kv-value" style={{ fontSize: 13 }}>{selected.category}</div></div>
                     <div className="kv"><div className="kv-label">Materials</div><div className="kv-value">{selected.material_cost ? formatTzs(selected.material_cost) : '—'}</div></div>
                     <div className="kv"><div className="kv-label">Labour</div><div className="kv-value">{selected.labour ? formatTzs(selected.labour) : '—'}</div></div>
@@ -749,7 +750,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                     <div style={{background:'var(--bg-elevated)',borderRadius:8,padding:'10px 12px'}}>
                       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
                         <span style={{fontSize:13,fontWeight:600}}>{selected.assignee || 'Staff'}</span>
-                        <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{selected.reported_date}</span>
+                        <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{formatDisplayDate(selected.reported_date)}</span>
                       </div>
                       <div style={{fontSize:12,color:'var(--text-muted)',textTransform:'capitalize'}}>{normalizeWorkflowStatus(selected).replaceAll('_', ' ')}</div>
                     </div>

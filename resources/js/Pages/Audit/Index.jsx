@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Head } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import { formatDisplayDateTime } from '@/utils/dateFormat';
 
 const PAGE_SIZE = 10;
 
@@ -183,7 +184,7 @@ export default function AuditIndex({ auditLogs = [] }) {
                 const fail = r.result === 'failed' || r.result === 'blocked';
                 return (
                   <tr key={r.id}>
-                    <td style={{fontSize:12,color:'var(--text-muted)',whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{r.ts}</td>
+                    <td style={{fontSize:12,color:'var(--text-muted)',whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{formatDisplayDateTime(r.ts)}</td>
                     <td>
                       <div style={{display:'flex',alignItems:'center',gap:8}}>
                         <div style={{width:26,height:26,borderRadius:'50%',background:'var(--accent-dim)',color:'var(--accent)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,flexShrink:0}}>{initials(r.user)}</div>

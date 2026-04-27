@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const fmt = (n) => Number(n).toLocaleString();
 const EXT_ICON = { pdf:'📕', word:'📘', img:'🖼️', other:'📁' };
@@ -145,7 +146,7 @@ export default function DocumentsIndex({ documents, units, tenants = [] }) {
                 </div>
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:10,borderTop:'1px solid var(--border-subtle)'}}>
                   <span className={`doc-tag ${resolveDocType(d)}`}>{TAG_LABELS[resolveDocType(d)] || resolveDocType(d)}</span>
-                  <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{d.created_at?.slice(0,10)}</span>
+                  <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{formatDisplayDate(d.created_at)}</span>
                 </div>
               </div>
             ))}
@@ -161,7 +162,7 @@ export default function DocumentsIndex({ documents, units, tenants = [] }) {
                     <td><span className={`doc-tag ${resolveDocType(d)}`}>{TAG_LABELS[resolveDocType(d)] || resolveDocType(d)}</span></td>
                     <td style={{color:'var(--text-secondary)',fontWeight:500}}>{d.unit_ref&&d.unit_ref!=='—'?d.unit_ref:'—'}</td>
                     <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{d.file_size}</td>
-                    <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{d.created_at?.slice(0,10)}</td>
+                    <td style={{color:'var(--text-muted)',fontSize:'12.5px'}}>{formatDisplayDate(d.created_at)}</td>
                     <td><button className="action-dots" onClick={e=>{e.stopPropagation();router.delete(`/documents/${d.id}`);}}>···</button></td>
                   </tr>
                 ))}
@@ -240,7 +241,7 @@ export default function DocumentsIndex({ documents, units, tenants = [] }) {
                   <div className="kv"><div className="kv-label">File Type</div><div className="kv-value">{selected.file_type?.toUpperCase()}</div></div>
                   <div className="kv"><div className="kv-label">File Size</div><div className="kv-value">{selected.file_size}</div></div>
                   <div className="kv"><div className="kv-label">Category</div><div className="kv-value accent">{TAG_LABELS[resolveDocType(selected)]||resolveDocType(selected)}</div></div>
-                  <div className="kv"><div className="kv-label">Date Added</div><div className="kv-value">{selected.created_at?.slice(0,10)}</div></div>
+                  <div className="kv"><div className="kv-label">Date Added</div><div className="kv-value">{formatDisplayDate(selected.created_at)}</div></div>
                   <div className="kv"><div className="kv-label">Uploaded By</div><div className="kv-value" style={{fontSize:12}}>{selected.uploaded_by}</div></div>
                   {selected.unit_ref && <div className="kv"><div className="kv-label">Linked Unit</div><div className="kv-value accent">{selected.unit_ref}</div></div>}
                 </div>

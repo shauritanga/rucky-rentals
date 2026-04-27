@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
+import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
 
 const fmt = (n) => Number(n).toLocaleString();
 const VAT_RATE = 0.18;
@@ -93,7 +94,7 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:16,marginBottom:28}}>
         <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>Billed To</div><div style={{fontSize:14,fontWeight:600,marginBottom:3}}>{inv.tenant_name}</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.6}}>{inv.tenant_email||'—'}<br/>Unit {inv.unit_ref}</div></div>
         <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>From</div><div style={{fontSize:14,fontWeight:600,marginBottom:3}}>Mwamba Properties Ltd</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.6}}>Dar es Salaam, Tanzania</div></div>
-        <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>Invoice Details</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.8}}><strong>Issue Date:</strong> {inv.issued_date}<br/><strong>Due Date:</strong> {inv.due_date||'—'}<br/><strong>Period:</strong> {inv.period||'—'}</div></div>
+        <div><div style={{fontSize:10,fontWeight:700,letterSpacing:'.8px',textTransform:'uppercase',color:'var(--text-muted)',marginBottom:6}}>Invoice Details</div><div style={{fontSize:'12.5px',color:'var(--text-secondary)',lineHeight:1.8}}><strong>Issue Date:</strong> {formatDisplayDate(inv.issued_date)}<br/><strong>Due Date:</strong> {formatDisplayDate(inv.due_date)}<br/><strong>Period:</strong> {formatDisplayDateRange(inv.period)}</div></div>
       </div>
       <div style={{height:1,background:'var(--border-subtle)',margin:'20px 0'}}></div>
       <table style={{width:'100%',borderCollapse:'collapse',marginBottom:20}}>
@@ -210,7 +211,11 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
         .find(inst => !inst.invoice_id);
 
       if (next) {
-        return { start: next.period_start, end: next.period_end, text: `${next.period_start} - ${next.period_end}` };
+        return {
+          start: next.period_start,
+          end: next.period_end,
+          text: `${formatDisplayDate(next.period_start)} - ${formatDisplayDate(next.period_end)}`,
+        };
       }
     }
 
@@ -245,7 +250,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
     const start = startDate.toISOString().slice(0, 10);
     const end = endDate.toISOString().slice(0, 10);
-    return { start, end, text: `${start} - ${end}` };
+    return { start, end, text: `${formatDisplayDate(start)} - ${formatDisplayDate(end)}` };
   };
 
   const buildLeaseInvoiceItems = (lease) => {
@@ -475,8 +480,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <td><span style={{fontSize:'11.5px',fontWeight:600,padding:'3px 9px',borderRadius:20,background:inv.type==='proforma'?'var(--amber-dim)':'var(--accent-dim)',color:inv.type==='proforma'?'var(--amber)':'var(--accent)'}}>{inv.type==='proforma'?'Proforma':'Tax Invoice'}</span></td>
                 <td style={{fontWeight:500}}>{inv.tenant_name}</td>
                 <td style={{fontWeight:600,color:'var(--text-secondary)'}}>{inv.unit_ref}</td>
-                <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{inv.issued_date}</td>
-                <td style={{fontSize:'12.5px',color:inv.status==='overdue'?'var(--red)':'var(--text-secondary)'}}>{inv.due_date||'—'}</td>
+                <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{formatDisplayDate(inv.issued_date)}</td>
+                <td style={{fontSize:'12.5px',color:inv.status==='overdue'?'var(--red)':'var(--text-secondary)'}}>{formatDisplayDate(inv.due_date)}</td>
                 <td style={{fontWeight:700}}>{formatMoney(total(inv), resolveInvoiceCurrency(inv, leases))}</td>
                 <td><span className={`badge ${inv.status}`}>{invoiceStatusLabel(inv.status)}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(inv)}}>···</button></td>

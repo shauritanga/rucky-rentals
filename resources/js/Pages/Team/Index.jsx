@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Head, router, useForm } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const RESOURCES = [
   { key:'units', label:'Units', icon:'🏢', actions:['read','update'], desc:'View and edit unit records' },
@@ -36,6 +37,13 @@ const ROLE_COLORS = {
   lease_manager: { bg:'var(--accent-dim)', color:'var(--accent)' },
   maintenance_staff: { bg:'var(--red-dim)', color:'var(--red)' },
   viewer: { bg:'var(--bg-elevated)', color:'var(--text-muted)' },
+};
+
+const STATUS_META = {
+  active: { label: 'Active', color: 'var(--green)' },
+  suspended: { label: 'Suspended', color: 'var(--red)' },
+  pending_approval: { label: 'Pending Approval', color: 'var(--amber)' },
+  rejected: { label: 'Rejected', color: 'var(--red)' },
 };
 
 function initials(name) {
@@ -121,7 +129,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
   const [restoreSubmittingId, setRestoreSubmittingId] = useState(null);
 
   const { data, setData, post, processing, reset } = useForm({
-    name: '', email: '', phone: '', role: '', password: '', permissions: {},
+    name: '', email: '', phone: '', role: '', permissions: {},
   });
 
   const counts = useMemo(() => {
@@ -258,6 +266,14 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
     });
   };
 
+  const resubmitMember = (member) => {
+    router.post(`/team/${member.id}/resubmit`, {}, {
+      onSuccess: () => {
+        router.reload({ only: ['teamMembers'] });
+      },
+    });
+  };
+
   return (
     <AppLayout title="Team" subtitle="Staff and access control">
       <Head title="Team" />
@@ -278,7 +294,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
           className={`team-tab ${viewTab==='active'?'active':''}`}
           onClick={() => setViewTab('active')}
         >
-          Active Team <span className="team-tab-count">{team.length}</span>
+          Team Members <span className="team-tab-count">{team.length}</span>
         </button>
         <button
           className={`team-tab ${viewTab==='archived'?'active':''}`}
@@ -318,7 +334,11 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
               const activeResources = RESOURCES.filter((resource) => accessTag(m.permissions, resource));
               const topResources = activeResources.slice(0, 4);
               const moreCount = Math.max(0, activeResources.length - 4);
-              const isActive = (m.status || 'active') === 'active';
+              const statusKey = m.status || 'active';
+              const isActive = statusKey === 'active';
+              const isPending = statusKey === 'pending_approval';
+              const isRejected = statusKey === 'rejected';
+              const statusInfo = STATUS_META[statusKey] || STATUS_META.active;
               const granted = grantedActionCount(m.permissions || {});
               return (
                 <tr key={m.id}>
@@ -328,6 +348,8 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                       <div>
                         <div style={{fontWeight:600,fontSize:13.5}}>{m.name}</div>
                         <div style={{fontSize:12,color:'var(--text-muted)'}}>{m.email}</div>
+                        {m.requested_by && <div style={{fontSize:11.5,color:'var(--text-muted)'}}>Requested by {m.requested_by}</div>}
+                        {isRejected && m.approval_note && <div style={{fontSize:11.5,color:'var(--red)'}}>Rejected: {m.approval_note}</div>}
                       </div>
                     </div>
                   </td>
@@ -345,16 +367,30 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                   <td>
                     <div style={{fontSize:12.5,color:'var(--text-muted)',textAlign:'center'}}>{granted} actions</div>
                   </td>
-                  <td><span style={{fontSize:12,fontWeight:600,color:isActive ? 'var(--green)' : 'var(--red)'}}>{isActive ? '● Active' : '● Suspended'}</span></td>
+                  <td>
+                    <div style={{fontSize:12,fontWeight:600,color:statusInfo.color}}>● {statusInfo.label}</div>
+                    {(isPending || isRejected) && (
+                      <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>
+                        {formatDisplayDate(isPending ? m.approval_requested_at : m.approval_decided_at)}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
                       <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => openPerms(m)}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                         Permissions
                       </button>
-                      <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => toggleStatus(m)}>
-                        {isActive ? 'Suspend' : 'Activate'}
-                      </button>
+                      {!isPending && !isRejected && (
+                        <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => toggleStatus(m)}>
+                          {isActive ? 'Suspend' : 'Activate'}
+                        </button>
+                      )}
+                      {isRejected && (
+                        <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => resubmitMember(m)}>
+                          Resubmit
+                        </button>
+                      )}
                       <button className="btn-danger" style={{fontSize:12,padding:'5px 10px'}} onClick={() => openDeleteDialog(m)}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                       </button>
@@ -528,14 +564,15 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                 <div className="form-group"><label className="form-label">Role *</label>
                   <select className="form-input form-select" value={data.role} onChange={(e) => onRoleChange(e.target.value)} required>
                     <option value="">Select role…</option>
+                    <option value="accountant">Accountant</option>
                     <option value="lease_manager">Lease Assistant</option>
                     <option value="maintenance_staff">Maintenance Staff</option>
                     <option value="viewer">Viewer (Read-Only)</option>
                   </select>
                 </div>
               </div>
-              <div className="form-row">
-                <div className="form-group"><label className="form-label">Temporary Password *</label><input className="form-input" value={data.password} onChange={(e) => setData('password', e.target.value)} placeholder="They must change on first login" required /></div>
+              <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14}}>
+                Submitting this form sends a superuser approval request. The staff member will receive their welcome email and temporary password only after approval.
               </div>
 
               <div style={{borderTop:'1px solid var(--border-subtle)',paddingTop:18,marginTop:6}}>
@@ -589,7 +626,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={processing}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/><circle cx="8.5" cy="7" r="4"/></svg>
-                Add Staff Member
+                Submit for Approval
               </button>
             </div>
           </form>

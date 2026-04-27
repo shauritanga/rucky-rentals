@@ -289,9 +289,10 @@ class AccountingService
             $reference = 'PAY-' . $payment->id;
 
             try {
-                // Determine credit account and WHT rate based on invoice link
+                // Determine credit account and WHT rates based on invoice link
                 $creditAccountCode = '4000'; // Default: Revenue (cash-basis)
-                $whtRate = 0.0;
+                $rentWhtRate = 0.0;
+                $serviceChargeWhtRate = 0.0;
 
                 $linkedInvoice = null;
                 if ($payment->invoice_id) {
@@ -299,7 +300,8 @@ class AccountingService
                     $invoice = $linkedInvoice;
                     if ($invoice && $invoice->type === 'invoice') {
                         $creditAccountCode = '1100'; // Receivable (accrual-aware)
-                        $whtRate = (float) ($invoice->lease->wht_rate ?? 0);
+                        $rentWhtRate = (float) ($invoice->lease->wht_rate ?? 0);
+                        $serviceChargeWhtRate = (float) ($invoice->lease->service_charge_rate ?? 5);
                     }
                 }
 
@@ -336,11 +338,12 @@ class AccountingService
 
                 // Build GL lines, splitting for WHT if applicable
                 $whtAmount = 0.0;
-                if ($whtRate > 0 && $creditAccountCode === '1100' && $linkedInvoice) {
+                if (($rentWhtRate > 0 || $serviceChargeWhtRate > 0) && $creditAccountCode === '1100' && $linkedInvoice) {
                     $whtAmount = $this->calculateWhtAmountFromInvoice(
                         amountToPost: $amountToPost,
                         paymentAmount: (float) $payment->amount,
-                        whtRate: $whtRate,
+                        rentWhtRate: $rentWhtRate,
+                        serviceChargeWhtRate: $serviceChargeWhtRate,
                         invoice: $linkedInvoice
                     );
                 }
@@ -405,7 +408,8 @@ class AccountingService
                         'amount_in_base' => $amountToPost,
                         'invoice_id'     => $payment->invoice_id,
                         'credit_account' => $creditAccountCode,
-                        'wht_rate'       => $whtRate,
+                        'rent_wht_rate'  => $rentWhtRate,
+                        'service_charge_wht_rate' => $serviceChargeWhtRate,
                         'wht_amount'     => $whtAmount,
                         'cash_basis'     => $payment->invoice_id ? false : true,
                     ],
@@ -440,11 +444,12 @@ class AccountingService
     private function calculateWhtAmountFromInvoice(
         float $amountToPost,
         float $paymentAmount,
-        float $whtRate,
+        float $rentWhtRate,
+        float $serviceChargeWhtRate,
         Invoice $invoice
     ): float
     {
-        if ($amountToPost <= 0 || $paymentAmount <= 0 || $whtRate <= 0) {
+        if ($amountToPost <= 0 || $paymentAmount <= 0 || ($rentWhtRate <= 0 && $serviceChargeWhtRate <= 0)) {
             return 0.0;
         }
 
@@ -458,17 +463,15 @@ class AccountingService
             return 0.0;
         }
 
-        $eligibleGross = (float) $items
-            ->filter(fn($item) => $this->isWhtEligibleItem($item))
+        $rentGross = (float) $items
+            ->filter(fn($item) => $this->resolveWhtItemType($item) === 'rent')
             ->sum('total');
+        $serviceChargeGross = (float) $items
+            ->filter(fn($item) => $this->resolveWhtItemType($item) === 'service_charge')
+            ->sum('total');
+        $eligibleGross = $rentGross + $serviceChargeGross;
 
         if ($eligibleGross <= 0) {
-            return 0.0;
-        }
-
-        // Items are VAT-exclusive, so eligibleGross is already the net WHT base.
-        $eligibleNet = round($eligibleGross, 2);
-        if ($eligibleNet <= 0) {
             return 0.0;
         }
 
@@ -478,26 +481,39 @@ class AccountingService
         // Cap at full-invoice coverage, then convert the eligible source base to TZS.
         $paymentCoverageRatio = min(1, $paymentAmount / $invoiceGross);
         $sourceToBaseRatio = $amountToPost / $paymentAmount;
-        $whtBase = round($eligibleNet * $paymentCoverageRatio * $sourceToBaseRatio, 2);
-        $whtAmount = round($whtBase * ($whtRate / 100), 2);
+        $rentBase = round($rentGross * $paymentCoverageRatio * $sourceToBaseRatio, 2);
+        $serviceChargeBase = round($serviceChargeGross * $paymentCoverageRatio * $sourceToBaseRatio, 2);
+        $whtAmount = round(
+            ($rentBase * ($rentWhtRate / 100)) +
+            ($serviceChargeBase * ($serviceChargeWhtRate / 100)),
+            2
+        );
 
         return min($whtAmount, round($amountToPost, 2));
     }
 
     private function isWhtEligibleItem($item): bool
     {
+        return $this->resolveWhtItemType($item) !== null;
+    }
+
+    private function resolveWhtItemType($item): ?string
+    {
         $itemType = strtolower((string) ($item->item_type ?? 'other'));
         if ($itemType === 'rent' || $itemType === 'service_charge') {
-            return true;
+            return $itemType;
         }
 
         $description = (string) ($item->description ?? '');
         if ($description === '') {
-            return false;
+            return null;
         }
 
-        return stripos($description, 'service charge') !== false
-            || preg_match('/\brent\b/i', $description) === 1;
+        if (stripos($description, 'service charge') !== false) {
+            return 'service_charge';
+        }
+
+        return preg_match('/\brent\b/i', $description) === 1 ? 'rent' : null;
     }
 
     /**
