@@ -33,11 +33,13 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         $this->assertDatabaseHas('units', [
             'property_id' => $propertyA->id,
             'unit_number' => 'A-101',
+            'status' => 'vacant',
         ]);
 
         $this->assertDatabaseHas('units', [
             'property_id' => $propertyB->id,
             'unit_number' => 'A-101',
+            'status' => 'vacant',
         ]);
     }
 
@@ -144,7 +146,6 @@ class UnitPropertyScopedUniquenessTest extends TestCase
             'rate_per_sqm' => 100,
             'service_charge_per_sqm' => 0,
             'currency' => 'TZS',
-            'status' => 'vacant',
             'electricity_type' => 'direct',
             'notes' => null,
         ];

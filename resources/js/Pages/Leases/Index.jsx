@@ -14,13 +14,22 @@ const DURATION_OPTIONS = Array.from({ length: 15 }, (_, i) => {
   const years = i + 1;
   return { months: years * 12, label: `${years} Year${years > 1 ? 's' : ''} (${years * 12} months)` };
 });
+const LEASE_VAT_RATE = 18;
 
 function addMonthsISO(startDate, months) {
   if (!startDate) return '';
   const d = new Date(`${startDate}T00:00:00`);
   if (Number.isNaN(d.getTime())) return '';
   d.setMonth(d.getMonth() + Number(months || 0));
-  return d.toISOString().slice(0, 10);
+  return toLocalIsoDate(d);
+}
+
+function toLocalIsoDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function resolveCurrency(currency) {
@@ -147,8 +156,8 @@ function buildPaymentSchedule(lease, isPending) {
 
     rows.push({
       installNum: index,
-      dueDate: fmtDateLong(periodStart.toISOString().slice(0, 10)),
-      period: `${fmtDateShort(periodStart.toISOString().slice(0, 10))} - ${fmtDateShort(periodEnd.toISOString().slice(0, 10))}`,
+      dueDate: fmtDateLong(toLocalIsoDate(periodStart)),
+      period: `${fmtDateShort(toLocalIsoDate(periodStart))} - ${fmtDateShort(toLocalIsoDate(periodEnd))}`,
       amount: monthlyRent * monthsInPeriod,
       status,
     });
@@ -174,13 +183,12 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const [rentStartDate, setRentStartDate] = useState('2026-04-01');
   const [fitoutEnabled, setFitoutEnabled] = useState(false);
   const [fitoutToDate, setFitoutToDate] = useState('');
-  const [rentWhtRate, setRentWhtRate] = useState(10);
-  const [serviceChargeWhtRate, setServiceChargeWhtRate] = useState(5);
+  const [rentWhtRate, setRentWhtRate] = useState('10');
+  const [serviceChargeWhtRate, setServiceChargeWhtRate] = useState('5');
   const [editingLeaseId, setEditingLeaseId] = useState(null);
   const [editingFitout, setEditingFitout] = useState(false);
   const [fitoutEditEnabled, setFitoutEditEnabled] = useState(false);
   const [fitoutEditToDate, setFitoutEditToDate] = useState('');
-  const [vatRate, setVatRate] = useState(18);
 
   const depositRentMonths = Number(settings.deposit_rent_months ?? 1);
   const depositScMonths   = Number(settings.deposit_service_charge_months ?? 1);
@@ -189,7 +197,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     tenant_id:'', unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     possession_date:'2026-04-01', rent_start_date:'2026-04-01', fitout_enabled:false, fitout_to_date:'', fitout_days:0,
-    wht_rate:10, service_charge_rate:5, vat_rate:18,
+    wht_rate:10, service_charge_rate:5, vat_rate:LEASE_VAT_RATE,
   });
 
   useEffect(() => {
@@ -203,7 +211,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const fitoutEnd = new Date(`${fitoutToDate}T00:00:00`);
     if (Number.isNaN(fitoutEnd.getTime())) return;
     fitoutEnd.setDate(fitoutEnd.getDate() + 1);
-    setRentStartDate(fitoutEnd.toISOString().slice(0, 10));
+    setRentStartDate(toLocalIsoDate(fitoutEnd));
   }, [possessionDate, fitoutEnabled, fitoutToDate]);
 
   useEffect(() => {
@@ -222,7 +230,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const duration = Number(data.duration_months) || 0;
     const serviceCharge = units.find(u => String(u.id) === String(data.unit_id))?.service_charge ?? 0;
     const subtotal = rent + serviceCharge;
-    const vat = Math.round(subtotal * (Number(vatRate || 0) / 100));
+    const vat = Math.round(subtotal * (LEASE_VAT_RATE / 100));
     const gross = subtotal + vat;
     const rentWht = Math.round(rent * (Number(rentWhtRate || 0) / 100));
     const serviceChargeWht = Math.round(serviceCharge * (Number(serviceChargeWhtRate || 0) / 100));
@@ -238,7 +246,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       ? Math.max(0, Math.round((new Date(`${fitoutToDate}T00:00:00`) - new Date(`${possessionDate}T00:00:00`)) / 86400000) + 1)
       : 0;
     const fitoutExtraSC = fitoutDays > 0 ? Math.round(serviceCharge * fitoutDays / 30) : 0;
-    const fitoutExtraVAT = fitoutDays > 0 ? Math.round(fitoutExtraSC * (Number(vatRate || 0) / 100)) : 0;
+    const fitoutExtraVAT = fitoutDays > 0 ? Math.round(fitoutExtraSC * (LEASE_VAT_RATE / 100)) : 0;
 
     return {
       rent,
@@ -260,7 +268,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       fitoutExtraVAT,
       period: `${fmtDateShort(rentStartDate)} -> ${fmtDateShort(data.end_date)} (${duration} months)`,
     };
-  }, [data.monthly_rent, data.payment_cycle, data.duration_months, data.deposit, data.end_date, data.unit_id, rentStartDate, vatRate, rentWhtRate, serviceChargeWhtRate, fitoutEnabled, possessionDate, fitoutToDate, units, depositRentMonths, depositScMonths]);
+  }, [data.monthly_rent, data.payment_cycle, data.duration_months, data.deposit, data.end_date, data.unit_id, rentStartDate, rentWhtRate, serviceChargeWhtRate, fitoutEnabled, possessionDate, fitoutToDate, units, depositRentMonths, depositScMonths]);
 
   const filtered = leases.filter(l => {
     const matchFilter = filter === 'all' || l.status === filter;
@@ -328,9 +336,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     setRentStartDate('2026-04-01');
     setFitoutEnabled(false);
     setFitoutToDate('');
-    setRentWhtRate(10);
-    setServiceChargeWhtRate(5);
-    setVatRate(18);
+    setRentWhtRate('10');
+    setServiceChargeWhtRate('5');
     setData('start_date', '2026-04-01');
     setData('duration_months', 12);
     setData('payment_cycle', 3);
@@ -347,9 +354,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     reset();
     setEditingLeaseId(lease.id);
     setTenantSearch(lease.tenant?.name || '');
-    setRentWhtRate(Number(lease.wht_rate ?? 10));
-    setServiceChargeWhtRate(Number(lease.service_charge_rate ?? 5));
-    setVatRate(Number(lease.vat_rate ?? 18));
+    setRentWhtRate(String(lease.wht_rate ?? 10));
+    setServiceChargeWhtRate(String(lease.service_charge_rate ?? 5));
     setPossessionDate(lease.possession_date || lease.start_date || '2026-04-01');
     setRentStartDate(lease.rent_start_date || lease.start_date || '2026-04-01');
     setFitoutEnabled(!!lease.fitout_enabled);
@@ -366,7 +372,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       deposit: lease.deposit ?? '',
       wht_rate: lease.wht_rate ?? 10,
       service_charge_rate: lease.service_charge_rate ?? 5,
-      vat_rate: lease.vat_rate ?? 18,
+      vat_rate: lease.vat_rate ?? LEASE_VAT_RATE,
       terms: lease.terms ?? '',
       possession_date: lease.possession_date || lease.start_date || '',
       rent_start_date: lease.rent_start_date || lease.start_date || '',
@@ -410,7 +416,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       ? (() => {
           const d = new Date(`${fitoutEditToDate}T00:00:00`);
           d.setDate(d.getDate() + 1);
-          return d.toISOString().slice(0, 10);
+          return toLocalIsoDate(d);
         })()
       : (selected?.possession_date || '');
     router.patch(`/leases/${selected.id}`, {
@@ -446,9 +452,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         fitout_days: summary.fitoutDays || 0,
         monthly_rent: data.monthly_rent,
         deposit: data.deposit,
-        wht_rate: Number(rentWhtRate || 0),
-        service_charge_rate: Number(serviceChargeWhtRate || 0),
-        vat_rate: Number(vatRate || 0),
+        wht_rate: Number(rentWhtRate === '' ? 0 : rentWhtRate),
+        service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
+        vat_rate: LEASE_VAT_RATE,
         terms: data.terms,
       }, { onSuccess: closeModal });
       return;
@@ -461,9 +467,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       fitout_to_date: fitoutEnabled ? fitoutToDate : null,
       fitout_days: summary.fitoutDays || 0,
       tenant_mode: 'existing',
-      wht_rate: Number(rentWhtRate || 0),
-      service_charge_rate: Number(serviceChargeWhtRate || 0),
-      vat_rate: Number(vatRate || 0),
+      wht_rate: Number(rentWhtRate === '' ? 0 : rentWhtRate),
+      service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
+      vat_rate: LEASE_VAT_RATE,
     }, { onSuccess: closeModal });
   };
 
@@ -907,7 +913,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                       if (next && possessionDate) {
                         const d = new Date(`${possessionDate}T00:00:00`);
                         d.setDate(d.getDate() + 14);
-                        setFitoutToDate(d.toISOString().slice(0, 10));
+                        setFitoutToDate(toLocalIsoDate(d));
                       }
                       if (!next) {
                         setFitoutToDate('');
@@ -949,16 +955,12 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
               <div className="form-row">
                 <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Monthly Rent (${selectedUnitCurrency}) *`} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><input className="form-input" type="number" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
-              </div>
-
-              <div className="form-row">
                 <div className="form-group"><label className="form-label">{`Security Deposit (${selectedUnitCurrency})`}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
-                <div className="form-group"><label className="form-label">Rent WHT (%)</label><input className="form-input" type="number" min="0" max="100" value={rentWhtRate} onChange={e=>setRentWhtRate(Number(e.target.value || 0))} /></div>
-                <div className="form-group"><label className="form-label">Service Charge WHT (%)</label><input className="form-input" type="number" min="0" max="100" value={serviceChargeWhtRate} onChange={e=>setServiceChargeWhtRate(Number(e.target.value || 0))} /></div>
               </div>
 
               <div className="form-row">
-                <div className="form-group"><label className="form-label">VAT Rate (%)</label><input className="form-input" type="number" min="0" max="100" value={vatRate} onChange={e=>setVatRate(Number(e.target.value || 0))} /></div>
+                <div className="form-group"><label className="form-label">Rent WHT (%)</label><input className="form-input" type="number" inputMode="decimal" min="0" max="100" value={rentWhtRate} onChange={e=>setRentWhtRate(e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Service Charge WHT (%)</label><input className="form-input" type="number" inputMode="decimal" min="0" max="100" value={serviceChargeWhtRate} onChange={e=>setServiceChargeWhtRate(e.target.value)} /></div>
               </div>
 
               {summary.rent > 0 && (
@@ -966,7 +968,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className="nl-summary-row"><span>Monthly Rent</span><strong>{formatMoney(summary.rent, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>Service Charge (unit flat rate)</span><strong>{formatMoney(summary.serviceCharge, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{formatMoney(summary.subtotal, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>VAT ({Math.round(vatRate)}%)</span><strong>{formatMoney(summary.vat, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>VAT (18%)</span><strong>{formatMoney(summary.vat, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{formatMoney(summary.gross, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(rentWhtRate)}% rent + {Math.round(serviceChargeWhtRate)}% service charge, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${formatMoney(summary.wht, selectedUnitCurrency)})`}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{formatMoney(summary.net, selectedUnitCurrency)}</strong></div>

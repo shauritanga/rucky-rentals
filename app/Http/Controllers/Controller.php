@@ -56,7 +56,7 @@ abstract class Controller
             return null;
         }
 
-        $query = Unit::query()->where('unit_number', $unitRef);
+        $query = Unit::query()->approved()->where('unit_number', $unitRef);
 
         if ($this->shouldScopeToProperty($request)) {
             $propertyId = $this->effectivePropertyId($request);

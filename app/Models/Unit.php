@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class Unit extends Model
 {
     protected $fillable = [
         'property_id',
+        'requested_by_user_id',
         'unit_number',
         'floor',
         'type',
@@ -22,6 +24,10 @@ class Unit extends Model
         'service_charge',
         'electricity_type',
         'notes',
+        'approval_status',
+        'approval_requested_at',
+        'approval_decided_at',
+        'approval_note',
     ];
 
     protected $casts = [
@@ -31,7 +37,14 @@ class Unit extends Model
         'rent'                   => 'float',
         'deposit'                => 'float',
         'service_charge'         => 'float',
+        'approval_requested_at'  => 'datetime',
+        'approval_decided_at'    => 'datetime',
     ];
+
+    public function scopeApproved(Builder $query): Builder
+    {
+        return $query->where('approval_status', 'approved');
+    }
 
     public function leases()
     {
@@ -41,6 +54,10 @@ class Unit extends Model
     {
         return $this->belongsTo(Property::class);
     }
+    public function requestedBy()
+    {
+        return $this->belongsTo(User::class, 'requested_by_user_id');
+    }
     public function payments()
     {
         return $this->hasMany(Payment::class);
@@ -48,6 +65,13 @@ class Unit extends Model
     public function meterReadings()
     {
         return $this->hasMany(MeterReading::class);
+    }
+    public function latestMeterReading()
+    {
+        return $this->hasOne(MeterReading::class)->ofMany([
+            'reading_date' => 'max',
+            'id' => 'max',
+        ]);
     }
     public function electricitySales()
     {

@@ -7,11 +7,14 @@ use App\Models\Tenant;
 use App\Models\Lease;
 use App\Models\Property;
 use App\Models\SystemSetting;
+use App\Models\User;
+use App\Notifications\UnitApprovalRequestNotification;
 use App\Support\FloorConfig;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 
 class UnitController extends Controller
@@ -47,7 +50,10 @@ class UnitController extends Controller
         }
 
         $unitsQuery = Unit::query()
-            ->with(['leases' => fn($q) => $q->with('tenant')->whereIn('status', ['active', 'expiring', 'overdue'])->latest()]);
+            ->with([
+                'leases' => fn($q) => $q->with('tenant')->whereIn('status', ['active', 'expiring', 'overdue'])->latest(),
+                'requestedBy:id,name,email',
+            ]);
 
         $this->scopeUnitsForUser($unitsQuery, $request);
 
@@ -93,7 +99,6 @@ class UnitController extends Controller
             'rate_per_sqm'           => 'required|numeric|min:0',
             'service_charge_per_sqm' => 'nullable|numeric|min:0',
             'currency'               => 'required|in:TZS,USD',
-            'status'                 => 'required|in:occupied,vacant,overdue,maintenance',
             'electricity_type'       => 'nullable|in:direct,submeter',
             'notes'                  => 'nullable|string',
         ]);
@@ -105,6 +110,7 @@ class UnitController extends Controller
         $data['service_charge_per_sqm'] = (float) ($data['service_charge_per_sqm'] ?? 0);
         $data['service_charge']         = round($data['size_sqm'] * $data['service_charge_per_sqm'], 2);
         $data['electricity_type']       = $data['electricity_type'] ?? 'direct';
+        $data['status']                 = 'vacant';
         $rentMonths                     = (float) SystemSetting::get('deposit_rent_months', 1);
         $scMonths                       = (float) SystemSetting::get('deposit_service_charge_months', 1);
         $data['deposit']                = round(($data['rent'] * $rentMonths) + ($data['service_charge'] * $scMonths), 2);
@@ -112,6 +118,15 @@ class UnitController extends Controller
         if ($this->shouldScopeToProperty($request)) {
             $data['property_id'] = $effectivePropertyId;
         }
+
+        $actor = $request->user();
+        $isPendingApproval = !$this->isSuperuserActing($request) && !$actor?->isSuperuser();
+
+        $data['requested_by_user_id'] = $actor?->id;
+        $data['approval_status'] = $isPendingApproval ? 'pending_approval' : 'approved';
+        $data['approval_requested_at'] = $isPendingApproval ? now() : null;
+        $data['approval_decided_at'] = $isPendingApproval ? null : now();
+        $data['approval_note'] = null;
 
         $unit = Unit::create($data);
 
@@ -122,12 +137,27 @@ class UnitController extends Controller
 
         $this->logAudit(
             request: $request,
-            action: 'Unit created',
+            action: $isPendingApproval ? 'Unit approval requested' : 'Unit created',
             resource: $unit->unit_number,
             propertyName: $propertyName,
             category: 'settings',
+            metadata: [
+                'approval_status' => $unit->approval_status,
+                'requested_by' => $actor?->name,
+            ],
             propertyId: $unit->property_id ? (int) $unit->property_id : null,
         );
+
+        if ($isPendingApproval) {
+            $superusers = User::query()->where('role', 'superuser')->get();
+            Notification::send($superusers, new UnitApprovalRequestNotification(
+                unit: $unit->fresh('property'),
+                submittedBy: $actor?->name ?? 'System',
+                propertyName: $propertyName,
+            ));
+
+            return back()->with('success', 'Unit submitted for superuser approval.');
+        }
 
         return back()->with('success', 'Unit created.');
     }
@@ -226,6 +256,46 @@ class UnitController extends Controller
         );
 
         return back()->with('success', 'Unit deleted.');
+    }
+
+    public function resubmit(Request $request, Unit $unit)
+    {
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $unit->property_id !== $effectiveId, 403);
+        }
+
+        abort_if($unit->approval_status !== 'rejected', 422, 'Only rejected units can be resubmitted.');
+        abort_if((int) ($request->user()?->id ?? 0) !== (int) ($unit->requested_by_user_id ?? 0), 403, 'Only the original requester can resubmit this unit.');
+
+        $actor = $request->user();
+        $propertyName = $unit->property_id ? Property::where('id', $unit->property_id)->value('name') : null;
+
+        $unit->update([
+            'approval_status' => 'pending_approval',
+            'approval_requested_at' => now(),
+            'approval_decided_at' => null,
+            'approval_note' => null,
+            'requested_by_user_id' => $actor?->id ?? $unit->requested_by_user_id,
+        ]);
+
+        $superusers = User::query()->where('role', 'superuser')->get();
+        Notification::send($superusers, new UnitApprovalRequestNotification(
+            unit: $unit->fresh('property'),
+            submittedBy: $actor?->name ?? 'System',
+            propertyName: $propertyName,
+        ));
+
+        $this->logAudit(
+            request: $request,
+            action: 'Unit approval resubmitted',
+            resource: $unit->unit_number,
+            propertyName: $propertyName,
+            category: 'settings',
+            propertyId: $unit->property_id ? (int) $unit->property_id : null,
+        );
+
+        return back()->with('success', 'Unit resubmitted for superuser approval.');
     }
 
     private function scopeUnitsForUser($query, Request $request): void

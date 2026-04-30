@@ -100,6 +100,7 @@ class ElectricityController extends Controller
 
         $unitsQ = Unit::with([
             'leases' => fn ($query) => $query->where('status', 'active')->with('tenant'),
+            'latestMeterReading',
         ])
             ->whereIn('status', ['occupied', 'overdue'])
             ->orderBy('unit_number');
@@ -552,6 +553,12 @@ class ElectricityController extends Controller
             'tenant_name' => $lease?->tenant?->name,
             'tenant_email' => $lease?->tenant?->email,
             'lease_id' => $lease?->id,
+            'latest_reading' => $unit->latestMeterReading ? [
+                'id' => $unit->latestMeterReading->id,
+                'reading_date' => optional($unit->latestMeterReading->reading_date)->toDateString(),
+                'prev_reading' => (float) $unit->latestMeterReading->prev_reading,
+                'curr_reading' => (float) $unit->latestMeterReading->curr_reading,
+            ] : null,
         ];
     }
 

@@ -41,7 +41,7 @@ class PaymentController extends Controller
         $paymentsQuery = Payment::with(['tenant', 'unit'])->orderByDesc('created_at');
         $invoicesQuery = Invoice::with(['items', 'lease:id,vat_rate,wht_rate'])->orderByDesc('created_at');
         $tenantsQuery  = Tenant::query()->orderBy('name');
-        $unitsQuery    = Unit::query()->orderBy('unit_number');
+        $unitsQuery    = Unit::query()->approved()->orderBy('unit_number');
 
         $this->scopeByUserProperty($paymentsQuery, $request, 'property_id');
         $this->scopeByUserProperty($invoicesQuery, $request, 'property_id');
@@ -83,7 +83,7 @@ class PaymentController extends Controller
                 'required',
                 Rule::exists('units', 'id')->when(
                     $effectivePropertyId,
-                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
+                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId)->where('approval_status', 'approved'))
                 ),
             ],
             'month'     => 'required|string',

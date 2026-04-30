@@ -44,6 +44,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/superuser/profile', [ProfileController::class, 'superuser'])->name('superuser.profile');
 
         Route::resource('units', UnitController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::post('units/{unit}/resubmit', [UnitController::class, 'resubmit'])->name('units.resubmit');
         Route::resource('tenants', TenantController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('leases', LeaseController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('payments', PaymentController::class)->only(['index', 'store', 'update', 'destroy']);
@@ -52,6 +53,7 @@ Route::middleware('auth')->group(function () {
         Route::resource('documents', DocumentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('invoices', InvoiceController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send'])->name('invoices.send');
+        Route::post('invoices/{invoice}/resubmit', [InvoiceController::class, 'resubmit'])->name('invoices.resubmit');
         Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
         Route::get('team', [TeamController::class, 'index'])->name('team.index');
         Route::post('team', [TeamController::class, 'store'])->name('team.store');
@@ -95,6 +97,10 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/maintenance/{ticket}/reject', [SuperuserController::class, 'rejectMaintenance'])->name('superuser.maintenance.reject');
         Route::post('superuser/team/{user}/approve', [SuperuserController::class, 'approveTeamMember'])->name('superuser.team.approve');
         Route::post('superuser/team/{user}/reject', [SuperuserController::class, 'rejectTeamMember'])->name('superuser.team.reject');
+        Route::post('superuser/units/{unit}/approve', [SuperuserController::class, 'approveUnit'])->name('superuser.units.approve');
+        Route::post('superuser/units/{unit}/reject', [SuperuserController::class, 'rejectUnit'])->name('superuser.units.reject');
+        Route::post('superuser/invoices/{invoice}/approve', [SuperuserController::class, 'approveInvoice'])->name('superuser.invoices.approve');
+        Route::post('superuser/invoices/{invoice}/reject', [SuperuserController::class, 'rejectInvoice'])->name('superuser.invoices.reject');
         Route::get('superuser/revenue', [SuperuserController::class, 'ownerRevenue'])->name('superuser.revenue');
         Route::post('superuser/revenue/post-fee', [SuperuserController::class, 'postManagementFee'])->name('superuser.revenue.post-fee');
         Route::get('superuser/notifications', [SuperuserController::class, 'getNotifications'])->name('superuser.notifications.index');

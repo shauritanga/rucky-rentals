@@ -21,7 +21,7 @@ const VIEW_META = {
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
 
-export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [], pendingTeamMembers = [], archivedManagers = [] }) {
+export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [], archivedManagers = [] }) {
   const [activeView, setActiveView] = useState(() => {
     const v = new URLSearchParams(window.location.search).get('view') || 'overview';
     return Object.keys(VIEW_META).includes(v) ? v : 'overview';
@@ -155,7 +155,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       subtitle={meta.subtitle}
       actionLabel={meta.actionLabel}
       onAction={onAction}
-      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length, approvals: pendingLeases.length + pendingMaintenance.length + pendingTeamMembers.length }}
+      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length, approvals: pendingLeases.length + pendingMaintenance.length + pendingTeamMembers.length + pendingUnits.length + pendingInvoices.length }}
     >
       <Head title={`Superuser - ${meta.title}`} />
 
@@ -182,7 +182,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
 
       {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} archivedManagers={archivedManagers} onOpenManagerModal={() => setShowManagerModal(true)} />}
       {activeView === 'roles' && <RolesPage settings={settings} />}
-      {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} pendingTeamMembers={pendingTeamMembers} />}
+      {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} pendingTeamMembers={pendingTeamMembers} pendingUnits={pendingUnits} pendingInvoices={pendingInvoices} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage settings={settings} />}
 

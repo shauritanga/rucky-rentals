@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import useIdleLogout from '@/hooks/useIdleLogout';
 import echo from '@/echo';
 
 /* ─── Notification Bell ──────────────────────────────────────────── */
@@ -30,9 +31,18 @@ function NotificationBell({ onNavigate }) {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const fetchNotifications = async () => {
+    const fetchNotifications = async ({ passive = false } = {}) => {
         try {
-            const res = await fetch('/superuser/notifications', { headers: { 'Accept': 'application/json' } });
+            const res = await fetch('/superuser/notifications', {
+                headers: {
+                    'Accept': 'application/json',
+                    ...(passive ? { 'X-Session-Activity': 'passive' } : {}),
+                },
+            });
+            if (res.status === 401) {
+                window.location.assign('/login');
+                return;
+            }
             const json = await res.json();
             setItems(json.notifications ?? []);
             setLocalUnread(json.unread_count ?? 0);
@@ -45,16 +55,16 @@ function NotificationBell({ onNavigate }) {
         if (!userId) return;
 
         // Initial fetch on mount
-        fetchNotifications();
+        fetchNotifications({ passive: true });
 
         // 30-second polling fallback (works even without Reverb running)
-        const interval = setInterval(fetchNotifications, 30_000);
+        const interval = setInterval(() => fetchNotifications({ passive: true }), 30_000);
 
         // Listen for pushed notifications on the user's private channel
         if (echo) {
             const channel = echo.private(`App.Models.User.${userId}`);
             channel.notification(() => {
-                fetchNotifications();
+                fetchNotifications({ passive: true });
             });
         }
 
@@ -111,6 +121,13 @@ function NotificationBell({ onNavigate }) {
                 </svg>
             );
         }
+        if (data?.type === 'unit_approval_request') {
+            return (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--accent)' }}>
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+            );
+        }
         return (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--amber)' }}>
                 <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
@@ -121,6 +138,7 @@ function NotificationBell({ onNavigate }) {
     const getTitle = (data) => {
         if (data?.type === 'lease_approval_request') return 'Lease Approval Request';
         if (data?.type === 'team_approval_request') return 'Team Approval Request';
+        if (data?.type === 'unit_approval_request') return 'Unit Approval Request';
         if (data?.stage === 'submitted') return 'Maintenance Request';
         if (data?.stage === 'pending_manager') return 'Maintenance Pending Review';
         return 'New Request';
@@ -129,6 +147,7 @@ function NotificationBell({ onNavigate }) {
     const getSub = (data) => {
         if (data?.type === 'lease_approval_request') return [data.tenant, data.property].filter(Boolean).join(' · ');
         if (data?.type === 'team_approval_request') return [data.name, data.property || data.role_label].filter(Boolean).join(' · ');
+        if (data?.type === 'unit_approval_request') return [data.unit_number, data.property || data.unit_type].filter(Boolean).join(' · ');
         if (data?.title) return [data.ticket_number, data.priority].filter(Boolean).join(' · ');
         return '';
     };
@@ -427,6 +446,7 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
   }, [measureNav, collapsed]);
 
   const user = props?.auth?.user;
+  useIdleLogout(user, props?.auth?.session_timeout_minutes ?? 15);
   const displayName = user?.name || 'Super Admin';
   const roleLabel = user?.role
     ? (user.role === 'lease_manager'

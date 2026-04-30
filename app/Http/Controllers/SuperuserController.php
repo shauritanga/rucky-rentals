@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Services\AccountingService;
 use App\Models\ExchangeRate;
 use App\Models\FuelLog;
+use App\Models\Invoice;
 use App\Models\Payment;
 use App\Support\AccountingAutoPoster;
 use App\Support\FloorConfig;
@@ -14,10 +15,12 @@ use App\Models\Lease;
 use App\Models\MaintenanceRecord;
 use App\Models\Property;
 use App\Models\SystemSetting;
+use App\Models\Unit;
 use App\Models\User;
 use App\Notifications\LeaseDecisionNotification;
 use App\Notifications\MaintenanceApprovalNotification;
 use App\Notifications\MaintenanceDecisionNotification;
+use App\Notifications\UnitDecisionNotification;
 use App\Traits\LogsAudit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -35,8 +38,8 @@ class SuperuserController extends Controller
     {
         $properties = Property::with('manager:id,name,email')
             ->withCount([
-                'units as unit_count_live',
-                'units as occupied_units_live' => fn($q) => $q->whereIn('units.status', ['occupied', 'overdue']),
+                'units as unit_count_live' => fn($q) => $q->where('approval_status', 'approved'),
+                'units as occupied_units_live' => fn($q) => $q->where('approval_status', 'approved')->whereIn('units.status', ['occupied', 'overdue']),
             ])
             ->withSum(
                 ['leases as revenue_tzs' => fn($q) => $q
@@ -100,10 +103,11 @@ class SuperuserController extends Controller
         $settings = SystemSetting::pluck('value', 'key');
 
         $pendingLeases = Lease::with([
-                'tenant:id,name,email,phone',
-                'unit:id,unit_number,floor,property_id',
+                'tenant:id,name,email,phone,initials,color,text_color',
+                'unit:id,unit_number,floor,property_id,type,size_sqm,rate_per_sqm,service_charge_per_sqm,currency,rent,deposit,service_charge,electricity_type',
                 'unit.property:id,name,manager_user_id',
                 'unit.property.manager:id,name,email',
+                'installments' => fn($q) => $q->orderBy('sequence'),
             ])
             ->whereIn('status', ['pending_accountant', 'pending_pm'])
             ->orderBy('created_at')
@@ -132,6 +136,34 @@ class SuperuserController extends Controller
                 'status', 'approval_requested_at', 'approval_decided_at', 'approval_note', 'created_at',
             ]);
 
+        $pendingUnits = Unit::with([
+                'property:id,name',
+                'requestedBy:id,name,email',
+            ])
+                ->where('approval_status', 'pending_approval')
+                ->orderBy('approval_requested_at')
+                ->get([
+                    'id', 'property_id', 'requested_by_user_id', 'unit_number', 'floor', 'type',
+                    'size_sqm', 'rate_per_sqm', 'service_charge_per_sqm', 'currency', 'rent',
+                    'status', 'deposit', 'service_charge', 'electricity_type', 'notes',
+                    'approval_status', 'approval_requested_at', 'approval_decided_at', 'approval_note', 'created_at',
+                ]);
+
+        $pendingInvoices = Invoice::with([
+                'items',
+                'property:id,name',
+                'requestedBy:id,name,email',
+                'lease:id,lease_number,tenant_id,unit_id,monthly_rent,currency,payment_cycle,vat_rate,rent_start_date,start_date,end_date',
+                'lease.tenant:id,name,email,phone',
+                'lease.unit:id,unit_number,property_id,service_charge',
+                'lease.unit.property:id,name',
+            ])
+                ->where('type', 'proforma')
+                ->whereIn('approval_status', ['pending_approval', 'rejected'])
+                ->whereNull('sent_to_tenant_at')
+                ->orderBy('approval_requested_at')
+                ->get();
+
         return Inertia::render('Superuser/Index', [
             'properties'         => $properties,
             'managers'           => $managers,
@@ -140,6 +172,8 @@ class SuperuserController extends Controller
             'pendingLeases'      => $pendingLeases,
             'pendingMaintenance' => $pendingMaintenance,
             'pendingTeamMembers' => $pendingTeamMembers,
+            'pendingUnits'       => $pendingUnits,
+            'pendingInvoices'    => $pendingInvoices,
             'archivedManagers'   => $archivedManagers,
         ]);
     }
@@ -619,6 +653,136 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Team member request rejected.');
+    }
+
+    public function approveUnit(Request $request, Unit $unit)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($unit->approval_status !== 'pending_approval', 422, 'Unit is not pending approval.');
+
+        $message = trim($request->input('message', 'Approved by superuser.')) ?: 'Approved by superuser.';
+        $actor = Auth::user()->name;
+
+        $unit->update([
+            'approval_status' => 'approved',
+            'approval_decided_at' => now(),
+            'approval_note' => $message,
+        ]);
+
+        $creator = $unit->requestedBy;
+        if ($creator) {
+            $creator->notify(new UnitDecisionNotification($unit->fresh('property'), 'approved', $message, $actor));
+        }
+
+        $propertyName = $unit->property?->name ?? Property::where('id', $unit->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Unit approved',
+            resource: $unit->unit_number,
+            propertyName: $propertyName,
+            category: 'settings',
+            metadata: ['message' => $message],
+            propertyId: $unit->property_id ? (int) $unit->property_id : null,
+        );
+
+        return back()->with('success', 'Unit approved.');
+    }
+
+    public function rejectUnit(Request $request, Unit $unit)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($unit->approval_status !== 'pending_approval', 422, 'Unit is not pending approval.');
+
+        $data = $request->validate([
+            'message' => 'required|string|min:5|max:1000',
+        ]);
+
+        $actor = Auth::user()->name;
+        $unit->update([
+            'approval_status' => 'rejected',
+            'approval_decided_at' => now(),
+            'approval_note' => $data['message'],
+        ]);
+
+        $creator = $unit->requestedBy;
+        if ($creator) {
+            $creator->notify(new UnitDecisionNotification($unit->fresh('property'), 'rejected', $data['message'], $actor));
+        }
+
+        $propertyName = $unit->property?->name ?? Property::where('id', $unit->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Unit rejected',
+            resource: $unit->unit_number,
+            propertyName: $propertyName,
+            category: 'settings',
+            metadata: ['reason' => $data['message']],
+            propertyId: $unit->property_id ? (int) $unit->property_id : null,
+        );
+
+        return back()->with('success', 'Unit request rejected.');
+    }
+
+    public function approveInvoice(Request $request, Invoice $invoice)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($invoice->type !== 'proforma', 422, 'Only proforma invoices can be approved.');
+        abort_if($invoice->sent_to_tenant_at !== null, 422, 'This proforma has already been sent.');
+        abort_if(!in_array($invoice->approval_status, ['pending_approval', 'rejected'], true), 422, 'Invoice is not pending approval.');
+
+        $message = trim($request->input('message', 'Approved by superuser.')) ?: 'Approved by superuser.';
+
+        $invoice->update([
+            'approval_status' => 'approved',
+            'approval_decided_at' => now(),
+            'approval_decided_by' => Auth::id(),
+            'approval_note' => $message,
+        ]);
+
+        $propertyName = $invoice->property?->name ?? Property::where('id', $invoice->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Invoice approved',
+            resource: $invoice->invoice_number,
+            propertyName: $propertyName,
+            category: 'invoice',
+            metadata: ['message' => $message],
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
+        return back()->with('success', 'Proforma invoice approved.');
+    }
+
+    public function rejectInvoice(Request $request, Invoice $invoice)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($invoice->type !== 'proforma', 422, 'Only proforma invoices can be rejected.');
+        abort_if($invoice->sent_to_tenant_at !== null, 422, 'This proforma has already been sent.');
+        abort_if($invoice->approval_status !== 'pending_approval', 422, 'Invoice is not pending approval.');
+
+        $data = $request->validate([
+            'message' => 'required|string|min:5|max:1000',
+        ]);
+
+        $invoice->update([
+            'approval_status' => 'rejected',
+            'approval_decided_at' => now(),
+            'approval_decided_by' => Auth::id(),
+            'approval_note' => $data['message'],
+        ]);
+
+        $propertyName = $invoice->property?->name ?? Property::where('id', $invoice->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Invoice rejected',
+            resource: $invoice->invoice_number,
+            propertyName: $propertyName,
+            category: 'invoice',
+            metadata: ['reason' => $data['message']],
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
+        return back()->with('success', 'Proforma invoice rejected.');
     }
 
     // ── Notifications ───────────────────────────────────────────────

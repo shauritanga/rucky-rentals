@@ -72,11 +72,11 @@ class ReportController extends Controller
         $noi     = (float) $revenue - (float) $maintenanceCost;
         $prevNoi = (float) $prevRevenue - (float) $prevMaintenanceCost;
 
-        $totalUnits = Unit::query()
+        $totalUnits = Unit::query()->approved()
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
             ->count();
 
-        $occupiedUnits = Unit::query()
+        $occupiedUnits = Unit::query()->approved()
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
             ->whereIn('status', ['occupied', 'overdue'])
             ->count();
@@ -564,8 +564,8 @@ class ReportController extends Controller
                         ->whereBetween('reported_date', [$start->toDateString(), $end->toDateString()])
                         ->sum('cost');
 
-                    $totalUnits    = Unit::query()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->count();
-                    $occupiedUnits = Unit::query()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->whereIn('status', ['occupied', 'overdue'])->count();
+                    $totalUnits    = Unit::query()->approved()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->count();
+                    $occupiedUnits = Unit::query()->approved()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->whereIn('status', ['occupied', 'overdue'])->count();
 
                     // VAT export
                     $exportVatElec = DB::table('invoice_items')

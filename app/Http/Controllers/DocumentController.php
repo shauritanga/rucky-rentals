@@ -31,7 +31,7 @@ class DocumentController extends Controller
         }
 
         $documentsQuery = Document::with(['unit', 'tenant'])->orderByDesc('created_at');
-        $unitsQuery = Unit::orderBy('unit_number');
+        $unitsQuery = Unit::approved()->orderBy('unit_number');
         $tenantsQuery = Tenant::orderBy('name');
 
         // Scope documents to property when in property-view mode (via unit's property_id)

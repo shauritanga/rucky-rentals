@@ -133,6 +133,40 @@ class ElectricityModuleTest extends TestCase
         $this->assertSame(0, Invoice::count());
     }
 
+    public function test_unit_exposes_latest_saved_meter_reading(): void
+    {
+        ['user' => $user, 'unit' => $unit, 'property' => $property] = $this->createLeaseContext('direct');
+
+        MeterReading::create([
+            'property_id' => $property->id,
+            'unit_id' => $unit->id,
+            'month' => '2026-04',
+            'prev_reading' => 100,
+            'curr_reading' => 180,
+            'gen_kwh' => 80,
+            'reading_date' => '2026-04-01',
+            'recorded_by' => $user->name,
+        ]);
+
+        MeterReading::create([
+            'property_id' => $property->id,
+            'unit_id' => $unit->id,
+            'month' => '2026-04',
+            'prev_reading' => 180,
+            'curr_reading' => 245,
+            'gen_kwh' => 65,
+            'reading_date' => '2026-04-15',
+            'recorded_by' => $user->name,
+        ]);
+
+        $latestReading = $unit->fresh('latestMeterReading')->latestMeterReading;
+
+        $this->assertNotNull($latestReading);
+        $this->assertSame('2026-04-15', $latestReading->reading_date);
+        $this->assertEquals(180.0, $latestReading->prev_reading);
+        $this->assertEquals(245.0, $latestReading->curr_reading);
+    }
+
     public function test_submeter_sale_creates_draft_invoice(): void
     {
         ['user' => $user, 'unit' => $unit] = $this->createLeaseContext('submeter');
@@ -212,6 +246,7 @@ class ElectricityModuleTest extends TestCase
             'role' => 'manager',
             'status' => 'active',
             'property_id' => $property->id,
+            'must_change_password' => false,
         ]);
 
         $tenant = Tenant::create([

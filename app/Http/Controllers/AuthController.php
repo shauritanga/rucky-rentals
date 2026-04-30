@@ -7,10 +7,12 @@ use App\Models\AuditLog;
 use App\Models\LoginOtp;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Http\Middleware\EnforceSessionTimeout;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -67,6 +69,15 @@ class AuthController extends Controller
             try {
                 $challenge = $this->issueOtpChallenge($request, $user);
             } catch (\Throwable $e) {
+                Log::error('Failed to send login OTP email.', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'mailer' => config('mail.default'),
+                    'from_address' => config('mail.from.address'),
+                    'from_name' => config('mail.from.name'),
+                    'error' => $e->getMessage(),
+                ]);
+
                 AuditLog::create([
                     'user_id'     => $user->id,
                     'user_name'   => $user->name,
@@ -280,6 +291,15 @@ class AuthController extends Controller
         try {
             $replacement = $this->issueOtpChallenge($request, $user, $challenge->resend_count + 1);
         } catch (\Throwable $e) {
+            Log::error('Failed to resend login OTP email.', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'mailer' => config('mail.default'),
+                'from_address' => config('mail.from.address'),
+                'from_name' => config('mail.from.name'),
+                'error' => $e->getMessage(),
+            ]);
+
             AuditLog::create([
                 'user_id'     => $user->id,
                 'user_name'   => $user->name,
@@ -369,6 +389,7 @@ class AuthController extends Controller
         Auth::login($user, $remember);
         $request->session()->regenerate();
         $request->session()->forget(self::PENDING_LOGIN_SESSION_KEY);
+        $request->session()->put(EnforceSessionTimeout::lastActivitySessionKey(), now()->timestamp);
 
         AuditLog::create([
             'user_id'     => $user->id,

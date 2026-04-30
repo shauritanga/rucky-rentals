@@ -35,7 +35,7 @@ class MaintenanceController extends Controller
         }
 
         $tickets = MaintenanceRecord::with(['unit', 'documents'])->orderByDesc('reported_date');
-        $units   = Unit::query()->orderBy('unit_number');
+        $units   = Unit::query()->approved()->orderBy('unit_number');
 
         $this->scopeByUserProperty($tickets, $request);
         $this->scopeUnitsByUserProperty($units, $request);
@@ -100,7 +100,7 @@ class MaintenanceController extends Controller
 
         abort_if(empty($propertyId), 422, 'No property context found. Please select a property first.');
 
-        $unit = Unit::where('unit_number', $data['unit_ref'])
+        $unit = Unit::approved()->where('unit_number', $data['unit_ref'])
             ->where('property_id', $propertyId)
             ->first();
 

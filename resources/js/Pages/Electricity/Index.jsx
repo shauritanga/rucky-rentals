@@ -124,6 +124,7 @@ export default function Electricity({
     const flashError = flash.error ?? null;
     const flashSuccess = flash.success ?? null;
     const floorSelectOptions = ['All floors', ...floorOptions.filter((label) => label !== 'All floors')];
+    const selectedDirectUnit = directUnits.find((unit) => String(unit.id) === String(readingForm.unit_id));
 
     const setActiveTab = (nextTab) => {
         setTab(nextTab);
@@ -142,6 +143,42 @@ export default function Electricity({
 
         window.history.replaceState(window.history.state, '', `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
     };
+
+    useEffect(() => {
+        if (!readingForm.unit_id) {
+            return;
+        }
+
+        const selectedUnitId = Number(readingForm.unit_id);
+        const existingReading = directReadings.find((reading) =>
+            Number(reading.unit_id) === selectedUnitId && reading.reading_date === readingForm.reading_date
+        );
+
+        if (existingReading) {
+            const nextPrev = String(existingReading.prev_reading ?? '');
+            const nextCurr = String(existingReading.curr_reading ?? '');
+
+            setReadingForm((form) => (
+                form.prev_reading === nextPrev && form.curr_reading === nextCurr
+                    ? form
+                    : { ...form, prev_reading: nextPrev, curr_reading: nextCurr }
+            ));
+
+            return;
+        }
+
+        const latestReading = selectedDirectUnit?.latest_reading ?? null;
+        const nextPrev = latestReading ? String(latestReading.curr_reading ?? '') : '';
+        const nextCurr = latestReading?.reading_date === readingForm.reading_date
+            ? String(latestReading.curr_reading ?? '')
+            : '';
+
+        setReadingForm((form) => (
+            form.prev_reading === nextPrev && form.curr_reading === nextCurr
+                ? form
+                : { ...form, prev_reading: nextPrev, curr_reading: nextCurr }
+        ));
+    }, [readingForm.unit_id, readingForm.reading_date, directReadings, selectedDirectUnit]);
 
     const post = (url, payload, onSuccess) => {
         router.post(url, payload, {

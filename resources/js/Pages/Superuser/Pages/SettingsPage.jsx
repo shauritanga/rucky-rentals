@@ -41,7 +41,7 @@ export default function SettingsPage({ settings = {} }) {
   const [security, setSecurity] = useState({
     require_2fa:         settings.require_2fa         === '1',
     allow_sso:           settings.allow_sso           === '1',
-    session_timeout:     settings.session_timeout     ?? '30',
+    session_timeout:     settings.session_timeout     ?? '15',
     audit_logging:       settings.audit_logging       === '1',
     failed_login_alerts: settings.failed_login_alerts === '1',
   });
@@ -225,6 +225,7 @@ export default function SettingsPage({ settings = {} }) {
             <div className="perm-row">
               <div><div className="perm-label">Session Timeout</div><div className="perm-sub">Auto-logout after inactivity</div></div>
               <select className="form-input form-select" style={{ width: 130, padding: '5px 28px 5px 10px', fontSize: 12.5 }} value={security.session_timeout} onChange={e => setSecurity(p => ({ ...p, session_timeout: e.target.value }))}>
+                <option value="15">15 minutes</option>
                 <option value="30">30 minutes</option>
                 <option value="60">1 hour</option>
                 <option value="240">4 hours</option>

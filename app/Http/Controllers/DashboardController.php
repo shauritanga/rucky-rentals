@@ -32,7 +32,7 @@ class DashboardController extends Controller
             return Inertia::render('Dashboard', MockRentalData::dashboard());
         }
 
-        $unitsBaseQuery = Unit::query();
+        $unitsBaseQuery = Unit::query()->approved();
         if ($this->shouldScopeToProperty($request)) {
             $propertyId = $this->effectivePropertyId($request);
             if ($propertyId === null) {

@@ -15,7 +15,7 @@ class UpdateLastSeen
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user()) {
+        if ($request->user() && !EnforceSessionTimeout::isPassiveRequest($request)) {
             $request->user()->timestamps = false;
             $request->user()->update(['last_seen_at' => now()]);
             $request->user()->timestamps = true;

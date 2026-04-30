@@ -59,6 +59,29 @@ const invoiceStatusLabel = (status = '') => {
   return labels[status] || String(status || '').replace('_', ' ');
 };
 
+const approvalStatusLabel = (status = '') => {
+  const labels = {
+    draft: 'Draft',
+    pending_approval: 'Pending Approval',
+    approved: 'Approved',
+    rejected: 'Rejected',
+  };
+
+  return labels[status] || String(status || '').replace('_', ' ');
+};
+
+const invoiceWorkflowLabel = (invoice) => {
+  if (invoice?.type === 'proforma') {
+    if (invoice?.sent_to_tenant_at) return 'Sent';
+    return approvalStatusLabel(invoice?.approval_status || 'pending_approval');
+  }
+
+  return invoiceStatusLabel(invoice?.status);
+};
+
+const canEditProforma = (invoice) => invoice?.type === 'proforma' && !invoice?.sent_to_tenant_at;
+const canSendProforma = (invoice) => invoice?.type === 'proforma' && invoice?.approval_status === 'approved' && !invoice?.sent_to_tenant_at && !!invoice?.tenant_email;
+
 function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
   const fitoutBadge = (description = '') => {
     const text = String(description || '').toLowerCase();
@@ -141,10 +164,11 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const [sort, setSort] = useState('date-desc');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState(null);
   const [invType, setInvType] = useState('proforma');
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
 
-  const { data, setData, post, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
+  const { data, setData, post, patch, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
 
   const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
 
@@ -321,10 +345,36 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   }, [flashData.success, flashData.warning, flashData.error]);
 
   const openInvoiceModal = () => {
+    setEditingInvoice(null);
     setInvType('proforma');
     reset();
     setData('issued_date', '2026-03-19');
     setItems([{ description: '', sub_description: '', quantity: 1, unit_price: 0 }]);
+    setShowModal(true);
+  };
+
+  const openEditInvoiceModal = (invoice) => {
+    setEditingInvoice(invoice);
+    setInvType(invoice.type || 'proforma');
+    setData({
+      type: invoice.type || 'proforma',
+      lease_id: invoice.lease_id ? String(invoice.lease_id) : '',
+      tenant_name: invoice.tenant_name || '',
+      tenant_email: invoice.tenant_email || '',
+      unit_ref: invoice.unit_ref || '',
+      issued_date: invoice.issued_date || '',
+      due_date: invoice.due_date || '',
+      period: invoice.period || '',
+      notes: invoice.notes || '',
+      items: [],
+    });
+    setItems((invoice.items || []).map((item) => ({
+      description: item.description || '',
+      sub_description: item.sub_description || '',
+      quantity: Number(item.quantity || 1),
+      unit_price: Number(item.unit_price || 0),
+      item_type: item.item_type || '',
+    })));
     setShowModal(true);
   };
 
@@ -398,11 +448,12 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       };
     });
 
-    post('/invoices', {
+    const options = {
       preserveScroll: true,
       onSuccess: () => {
         reset();
         setItems([{description:'',sub_description:'',quantity:1,unit_price:0}]);
+        setEditingInvoice(null);
         setShowModal(false);
       },
       onError: (errs) => {
@@ -410,7 +461,14 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
         setToast({ msg: first || 'Failed to create invoice. Please check the form.', type: 'error' });
         window.setTimeout(() => setToast({ msg: '', type: '' }), 5000);
       },
-    });
+    };
+
+    if (editingInvoice) {
+      patch(`/invoices/${editingInvoice.id}`, options);
+      return;
+    }
+
+    post('/invoices', options);
   };
 
   const addItem = () => setItems([...items, {description:'',sub_description:'',quantity:1,unit_price:0}]);
@@ -483,7 +541,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{formatDisplayDate(inv.issued_date)}</td>
                 <td style={{fontSize:'12.5px',color:inv.status==='overdue'?'var(--red)':'var(--text-secondary)'}}>{formatDisplayDate(inv.due_date)}</td>
                 <td style={{fontWeight:700}}>{formatMoney(total(inv), resolveInvoiceCurrency(inv, leases))}</td>
-                <td><span className={`badge ${inv.status}`}>{invoiceStatusLabel(inv.status)}</span></td>
+                <td><span className={`badge ${inv.type === 'proforma' ? (inv.approval_status || 'proforma') : inv.status}`}>{invoiceWorkflowLabel(inv)}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(inv)}}>···</button></td>
               </tr>
             ))}
@@ -503,15 +561,27 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               </div>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:24,scrollbarWidth:'thin',scrollbarColor:'var(--border) transparent'}}>
+              {selected.type === 'proforma' && (
+                <div style={{marginBottom:12,fontSize:12.5,color:'var(--text-secondary)',display:'flex',gap:10,flexWrap:'wrap'}}>
+                  <span><strong>Approval:</strong> {approvalStatusLabel(selected.approval_status || 'pending_approval')}</span>
+                  <span><strong>Sent:</strong> {selected.sent_to_tenant_at ? formatDisplayDate(selected.sent_to_tenant_at) : 'Not sent'}</span>
+                </div>
+              )}
               <InvoiceDoc inv={selected} currency={resolveInvoiceCurrency(selected, leases)} lease={leases.find((l) => Number(l.id) === Number(selected?.lease_id))} />
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:8,flexShrink:0,background:'var(--bg-surface)'}}>
               {(selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
-              {selected.status==='proforma' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(s=>s?{...s,status:'unpaid',type:'invoice'}:null)})}>Convert to Invoice</button>}
+              {selected.status==='proforma' && selected.approval_status === 'approved' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(s=>s?{...s,status:'unpaid',type:'invoice'}:null)})}>Convert to Invoice</button>}
               {selected.status==='paid' && <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>window.location.href=`/invoices/${selected.id}/pdf`}>Save PDF</button>}
-              {selected.type === 'proforma' && selected.tenant_email
+              {canEditProforma(selected) && <button className="btn-secondary" onClick={()=>openEditInvoiceModal(selected)}>Edit</button>}
+              {selected.type === 'proforma' && selected.approval_status === 'rejected' && !selected.sent_to_tenant_at && (
+                <button className="btn-secondary" onClick={()=>router.post(`/invoices/${selected.id}/resubmit`,{},{preserveScroll:true})}>Resubmit</button>
+              )}
+              {canSendProforma(selected)
                 ? <button className="btn-secondary" onClick={()=>router.post(`/invoices/${selected.id}/send`,{},{preserveScroll:true,onSuccess:()=>setSelected(null)})}>Email Proforma</button>
-                : <button className="btn-secondary" disabled title={selected.type==='invoice'?'Tax invoice — proforma was emailed at issue time':'No tenant email on file'} style={{opacity:.5,cursor:'not-allowed'}}>Email</button>
+                : selected.type === 'proforma'
+                  ? <button className="btn-secondary" disabled title={selected.sent_to_tenant_at ? 'Already sent to tenant' : selected.approval_status !== 'approved' ? 'Awaiting superuser approval' : 'No tenant email on file'} style={{opacity:.5,cursor:'not-allowed'}}>Email</button>
+                  : <button className="btn-secondary" disabled title="Tax invoice" style={{opacity:.5,cursor:'not-allowed'}}>Email</button>
               }
             </div>
           </>}
@@ -521,7 +591,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       {/* New Invoice Modal */}
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
         <div className="modal" style={{width:520,maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
-          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">New Proforma Invoice</div><button className="modal-close" onClick={()=>setShowModal(false)}>✕</button></div>
+          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">{editingInvoice ? `Edit ${editingInvoice.invoice_number}` : 'New Proforma Invoice'}</div><button className="modal-close" onClick={()=>{setShowModal(false);setEditingInvoice(null);}}>✕</button></div>
           <form onSubmit={(e)=>submit(e, 'send')} style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
             <div className="modal-body" style={{overflowY:'auto',flex:1}}>
 
@@ -572,9 +642,9 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               <div className="form-row"><div className="form-group"><label className="form-label">Notes / Payment Instructions</label><textarea className="form-input" value={data.notes} onChange={e=>setData('notes',e.target.value)} rows={2} style={{resize:'vertical'}} placeholder="Bank details, reference number, payment instructions..." /></div></div>
             </div>
             <div className="modal-footer" style={{flexShrink:0}}>
-              <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>
+              <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingInvoice(null);}}>Cancel</button>
               <button type="button" className="btn-secondary" onClick={(e)=>submit(e, 'draft')} disabled={processing}>Save as Draft</button>
-              <button type="submit" className="btn-primary" disabled={processing}>Issue Invoice</button>
+              <button type="submit" className="btn-primary" disabled={processing}>{editingInvoice ? 'Save Changes' : 'Submit for Approval'}</button>
             </div>
           </form>
         </div>

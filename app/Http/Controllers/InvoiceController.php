@@ -108,6 +108,10 @@ class InvoiceController extends Controller
             ? 'draft'
             : ($data['type'] === 'proforma' ? 'proforma' : 'unpaid');
 
+        $approvalStatus = $data['type'] === 'proforma'
+            ? (($status === 'draft') ? 'draft' : 'pending_approval')
+            : 'approved';
+
         $propertyId = null;
         if (!empty($data['lease_id'])) {
             $lease = Lease::findOrFail($data['lease_id']);
@@ -123,14 +127,19 @@ class InvoiceController extends Controller
 
         $createdInvoiceId = null;
 
-        DB::transaction(function () use ($data, $propertyId, $status, &$createdInvoiceId) {
+        DB::transaction(function () use ($request, $data, $propertyId, $status, $approvalStatus, &$createdInvoiceId) {
             $prefix = $data['type'] === 'proforma' ? 'PF' : 'INV';
 
             $invoice = Invoice::create([
                 ...$data,
                 'property_id'    => $propertyId,
+                'requested_by_user_id' => $request->user()?->id,
                 'invoice_number' => $this->invoiceNumberService->generateNumber($prefix),
                 'status'         => $status,
+                'approval_status' => $approvalStatus,
+                'approval_requested_at' => $approvalStatus === 'pending_approval' ? now() : null,
+                'approval_decided_at' => $approvalStatus === 'approved' ? now() : null,
+                'approval_decided_by' => $approvalStatus === 'approved' ? $request->user()?->id : null,
             ]);
             $createdInvoiceId = $invoice->id;
 
@@ -191,16 +200,6 @@ class InvoiceController extends Controller
 
         $createdInvoice = Invoice::with('items')->find($createdInvoiceId);
 
-        // Send proforma email automatically on creation
-        if ($createdInvoice?->type === 'proforma' && !empty($createdInvoice->tenant_email)) {
-            try {
-                Mail::to($createdInvoice->tenant_email)
-                    ->send(new ProformaInvoiceMail($createdInvoice, $createdInvoice->items));
-            } catch (\Exception $e) {
-                \Log::warning('Proforma invoice email failed for invoice #' . $createdInvoiceId . ': ' . $e->getMessage());
-            }
-        }
-
         $propertyName = Property::where('id', $propertyId)->value('name');
         $this->logAudit(
             request: $request,
@@ -212,7 +211,9 @@ class InvoiceController extends Controller
         );
 
         return back()
-            ->with('success', 'Invoice created.')
+            ->with('success', $createdInvoice?->type === 'proforma'
+                ? 'Proforma invoice submitted for superuser approval.'
+                : 'Invoice created.')
             ->with('created_invoice_id', $createdInvoiceId);
     }
 
@@ -221,6 +222,10 @@ class InvoiceController extends Controller
         if ($this->shouldScopeToProperty($request)) {
             $effectiveId = $this->effectivePropertyId($request);
             abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
+        }
+
+        if ($request->has('items') || $request->has('tenant_name') || $request->has('issued_date') || $request->has('notes')) {
+            return $this->updateEditableProforma($request, $invoice);
         }
 
         $data = $request->validate([
@@ -254,6 +259,38 @@ class InvoiceController extends Controller
         );
 
         return back()->with('success', 'Invoice updated.');
+    }
+
+    public function resubmit(Request $request, Invoice $invoice): \Illuminate\Http\RedirectResponse
+    {
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
+        }
+
+        abort_if($invoice->type !== 'proforma', 422, 'Only proforma invoices can be resubmitted.');
+        abort_if($invoice->sent_to_tenant_at !== null, 422, 'Sent proforma invoices cannot be resubmitted.');
+        abort_if(!in_array($invoice->approval_status, ['draft', 'rejected', 'approved', 'pending_approval'], true), 422, 'Invoice cannot be resubmitted.');
+
+        $invoice->update([
+            'approval_status' => 'pending_approval',
+            'approval_requested_at' => now(),
+            'approval_decided_at' => null,
+            'approval_decided_by' => null,
+            'approval_note' => null,
+        ]);
+
+        $propertyName = Property::where('id', $invoice->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Invoice resubmitted',
+            resource: $invoice->invoice_number,
+            propertyName: $propertyName,
+            category: 'invoice',
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
+        return back()->with('success', 'Proforma invoice resubmitted for approval.');
     }
 
     public function destroy(Invoice $invoice)
@@ -404,10 +441,23 @@ class InvoiceController extends Controller
     /**
      * Re-send a proforma invoice email on demand (from the Email button in the drawer).
      */
-    public function send(Invoice $invoice): \Illuminate\Http\RedirectResponse
+    public function send(Request $request, Invoice $invoice): \Illuminate\Http\RedirectResponse
     {
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
+        }
+
         if ($invoice->type !== 'proforma') {
             return back()->with('error', 'Only proforma invoices can be re-sent this way.');
+        }
+
+        if ($invoice->approval_status !== 'approved') {
+            return back()->with('error', 'This proforma must be approved by a superuser before it can be sent.');
+        }
+
+        if ($invoice->sent_to_tenant_at !== null) {
+            return back()->with('error', 'This proforma has already been sent to the tenant.');
         }
 
         if (empty($invoice->tenant_email)) {
@@ -417,10 +467,118 @@ class InvoiceController extends Controller
         try {
             $invoice->load('items');
             Mail::to($invoice->tenant_email)->send(new ProformaInvoiceMail($invoice, $invoice->items));
+            $invoice->update([
+                'sent_to_tenant_at' => now(),
+                'sent_to_tenant_by' => $request->user()?->id,
+            ]);
             return back()->with('success', 'Proforma invoice emailed to ' . $invoice->tenant_email . '.');
         } catch (\Exception $e) {
             \Log::warning('Proforma re-send failed for invoice #' . $invoice->id . ': ' . $e->getMessage());
             return back()->with('error', 'Email could not be sent. Please try again.');
         }
+    }
+
+    private function updateEditableProforma(Request $request, Invoice $invoice): \Illuminate\Http\RedirectResponse
+    {
+        abort_if($invoice->type !== 'proforma', 422, 'Only proforma invoices can be edited this way.');
+        abort_if(!$invoice->isEditable(), 422, 'This proforma can no longer be edited.');
+
+        $effectivePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
+
+        $data = $request->validate([
+            'lease_id'     => [
+                'nullable',
+                Rule::exists('leases', 'id')->when(
+                    true,
+                    fn($rule) => $rule->where(function ($q) use ($effectivePropertyId) {
+                        $q->where('status', 'active');
+
+                        if ($effectivePropertyId) {
+                            $q->where('property_id', $effectivePropertyId);
+                        }
+                    })
+                ),
+            ],
+            'tenant_name'  => 'required|string',
+            'tenant_email' => 'nullable|email',
+            'unit_ref'     => 'required|string',
+            'issued_date'  => 'required|date',
+            'due_date'     => 'nullable|date',
+            'period'       => 'nullable|string',
+            'notes'        => 'nullable|string',
+            'status'       => 'nullable|in:draft',
+            'items'        => 'required|array|min:1',
+            'items.*.description' => 'required|string',
+            'items.*.quantity'    => 'required|integer|min:1',
+            'items.*.unit_price'  => 'required|numeric',
+            'items.*.item_type'   => 'nullable|string',
+            'items.*.sub_description' => 'nullable|string',
+        ]);
+
+        $propertyId = $invoice->property_id;
+        if (!empty($data['lease_id'])) {
+            $lease = Lease::findOrFail($data['lease_id']);
+            $propertyId = $lease->property_id;
+        }
+
+        if ($effectivePropertyId !== null) {
+            abort_if((int) $propertyId !== $effectivePropertyId, 403);
+        }
+
+        $approvalStatus = ($data['status'] ?? null) === 'draft' ? 'draft' : 'pending_approval';
+
+        DB::transaction(function () use ($invoice, $data, $propertyId, $approvalStatus) {
+            $invoice->update([
+                'property_id' => $propertyId,
+                'lease_id' => $data['lease_id'] ?? null,
+                'tenant_name' => $data['tenant_name'],
+                'tenant_email' => $data['tenant_email'] ?? null,
+                'unit_ref' => $data['unit_ref'],
+                'issued_date' => $data['issued_date'],
+                'due_date' => $data['due_date'] ?? null,
+                'period' => $data['period'] ?? null,
+                'status' => ($data['status'] ?? null) === 'draft' ? 'draft' : 'proforma',
+                'notes' => $data['notes'] ?? null,
+                'approval_status' => $approvalStatus,
+                'approval_requested_at' => $approvalStatus === 'pending_approval' ? now() : null,
+                'approval_decided_at' => null,
+                'approval_decided_by' => null,
+                'approval_note' => null,
+            ]);
+
+            $invoice->items()->delete();
+
+            foreach ($data['items'] as $item) {
+                $lineTotal = (float) $item['quantity'] * (float) $item['unit_price'];
+                $itemType = $item['item_type']
+                    ?? (stripos($item['description'] ?? '', 'service charge') !== false ? 'service_charge' : 'rent');
+
+                InvoiceItem::create([
+                    'invoice_id'      => $invoice->id,
+                    'description'     => $item['description'],
+                    'item_type'       => $itemType,
+                    'sub_description' => $item['sub_description'] ?? null,
+                    'quantity'        => $item['quantity'],
+                    'unit_price'      => $item['unit_price'],
+                    'total'           => $lineTotal,
+                ]);
+            }
+
+            $invoice->load('items');
+        });
+
+        $propertyName = Property::where('id', $invoice->property_id)->value('name');
+        $this->logAudit(
+            request: $request,
+            action: 'Invoice edited',
+            resource: $invoice->invoice_number,
+            propertyName: $propertyName,
+            category: 'invoice',
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
+        return back()->with('success', $approvalStatus === 'draft'
+            ? 'Draft invoice updated.'
+            : 'Proforma invoice updated and resubmitted for approval.');
     }
 }

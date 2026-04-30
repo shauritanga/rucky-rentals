@@ -72,7 +72,7 @@ class LeaseController extends Controller
             'installments' => fn($q) => $q->orderBy('sequence'),
         ])->orderByDesc('created_at');
         $tenantsQuery = Tenant::query()->orderBy('name');
-        $unitsQuery = Unit::query()->orderBy('floor')->orderBy('unit_number');
+        $unitsQuery = Unit::query()->approved()->orderBy('floor')->orderBy('unit_number');
 
         $this->scopeByUserProperty($leasesQuery, $request, 'property_id');
         $this->scopeByUserProperty($tenantsQuery, $request, 'property_id');
@@ -129,7 +129,7 @@ class LeaseController extends Controller
             'terms'           => 'nullable|string',
         ]);
 
-        $unit = Unit::findOrFail($validated['unit_id']);
+        $unit = Unit::approved()->findOrFail($validated['unit_id']);
         $propertyId = $unit->property_id;
         abort_if(empty($propertyId), 422, 'Selected unit is not linked to any property.');
 

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { floorSortOrder } from '@/utils/floorConfig';
 import { formatDisplayDate } from '@/utils/dateFormat';
 
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
+const APPROVAL_BADGE = {
+  approved: { label:'Approved', color:'var(--green)', bg:'rgba(34,197,94,0.12)' },
+  pending_approval: { label:'Pending Approval', color:'var(--amber)', bg:'rgba(245,158,11,0.14)' },
+  rejected: { label:'Rejected', color:'var(--red)', bg:'rgba(239,68,68,0.12)' },
+};
 const fmt = (n) => Number(n).toLocaleString();
 const SQM_PER_SQFT = 0.09290304;
 const COMMERCIAL_UNIT_TYPES = [
@@ -54,6 +59,7 @@ function UnitCard({ unit, onClick }) {
   const tenant = lease?.tenant;
   const currency = unitCurrency(unit);
   const sizeSqm = unitSizeSqm(unit);
+  const approval = APPROVAL_BADGE[unit.approval_status] ?? APPROVAL_BADGE.approved;
   return (
     <div className={`unit-card ${unit.status}`} onClick={() => onClick(unit)}>
       <div className="unit-card-head">
@@ -61,7 +67,14 @@ function UnitCard({ unit, onClick }) {
           <div className="unit-card-id">{unit.unit_number}</div>
           <div className="unit-card-type">{unit.type} · {sizeSqm.toFixed(1)} m²</div>
         </div>
-        <span className={`badge ${STATUS_CLASS[unit.status]}`}>{STATUS_LABEL[unit.status]}</span>
+        <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end'}}>
+          <span className={`badge ${STATUS_CLASS[unit.status]}`}>{STATUS_LABEL[unit.status]}</span>
+          {unit.approval_status !== 'approved' && (
+            <span style={{display:'inline-block',padding:'2px 9px',borderRadius:20,fontSize:11,fontWeight:700,background:approval.bg,color:approval.color}}>
+              {approval.label}
+            </span>
+          )}
+        </div>
       </div>
       <div style={{marginBottom:12}}>
         {tenant
@@ -78,6 +91,8 @@ function UnitCard({ unit, onClick }) {
 }
 
 export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = true, settings = {} }) {
+  const { props } = usePage();
+  const user = props?.auth?.user;
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
@@ -100,7 +115,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
 
   // ── Create form ──────────────────────────────────────────────────────────
   const { data, setData, post, processing, reset, errors } = useForm({
-    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', notes:''
+    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', electricity_type:'direct', notes:''
   });
 
   // ── Edit form ─────────────────────────────────────────────────────────────
@@ -213,6 +228,14 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
     });
   };
 
+  const handleResubmit = () => {
+    if (!selected) return;
+    router.post(`/units/${selected.id}/resubmit`, {}, {
+      preserveScroll: true,
+      onSuccess: () => setSelected(null),
+    });
+  };
+
   const unitHistory = (unit) => {
     const tenant = unit?.leases?.[0]?.tenant;
     const rentLabel = money(unit?.rent || 0, unitCurrency(unit));
@@ -282,7 +305,16 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                             <td><div style={{fontWeight:700}}>{u.unit_number}</div></td>
                             <td style={{color:'var(--text-secondary)'}}>{u.type}</td>
                             <td>{t?<div className="tenant-cell"><div className="t-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div>{t.name}</div>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
-                            <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
+                            <td>
+                              <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-start'}}>
+                                <span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span>
+                                {u.approval_status !== 'approved' && (
+                                  <span style={{display:'inline-block',padding:'2px 9px',borderRadius:20,fontSize:11,fontWeight:700,background:APPROVAL_BADGE[u.approval_status]?.bg,color:APPROVAL_BADGE[u.approval_status]?.color}}>
+                                    {APPROVAL_BADGE[u.approval_status]?.label ?? u.approval_status}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td style={{fontWeight:600}}>{money(u.rent, unitCurrency(u))}</td>
                             <td style={{color:'var(--text-muted)'}}>{unitSizeSqm(u).toFixed(1)} m²</td>
                           </tr>
@@ -311,6 +343,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               <div className="drawer-section">
                 <div className="drawer-section-title">Unit Details</div>
                 <div className="drawer-kv-grid">
+                  <div className="drawer-kv"><div className="drawer-kv-label">Approval</div><div className="drawer-kv-value" style={{color: APPROVAL_BADGE[selected.approval_status]?.color ?? 'var(--green)'}}>{APPROVAL_BADGE[selected.approval_status]?.label ?? selected.approval_status}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Status</div><div className={`drawer-kv-value ${selected.status==='occupied'?'green':selected.status==='overdue'?'red':selected.status==='maintenance'?'accent':'amber'}`}>{STATUS_LABEL[selected.status]}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Monthly Rent</div><div className="drawer-kv-value">{money(selected.rent, unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Size</div><div className="drawer-kv-value">{unitSizeSqm(selected).toFixed(1)} m²</div></div>
@@ -319,8 +352,17 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                   <div className="drawer-kv"><div className="drawer-kv-label">Security Deposit</div><div className="drawer-kv-value">{money(selected.deposit, unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Service Charge / mo</div><div className="drawer-kv-value">{money(selected.service_charge ?? 0, unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Electricity</div><div className="drawer-kv-value">{selected.electricity_type === 'submeter' ? 'Submeter' : 'Direct (Own Meter)'}</div></div>
+                  {selected.requested_by && <div className="drawer-kv"><div className="drawer-kv-label">Requested By</div><div className="drawer-kv-value">{selected.requested_by.name}</div></div>}
                 </div>
               </div>
+              {selected.approval_note && (
+                <div className="drawer-section">
+                  <div className="drawer-section-title">{selected.approval_status === 'rejected' ? 'Rejection Reason' : 'Approval Note'}</div>
+                  <div style={{background:'var(--bg-elevated)',borderRadius:9,padding:'13px 14px',fontSize:13,color:selected.approval_status === 'rejected' ? 'var(--red)' : 'var(--text-secondary)',lineHeight:1.65}}>
+                    {selected.approval_note}
+                  </div>
+                </div>
+              )}
               {selected.leases?.[0]?.tenant && (
                 <div className="drawer-section">
                   <div className="drawer-section-title">Current Tenant</div>
@@ -367,6 +409,11 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Edit Unit
               </button>
+              {selected.approval_status === 'rejected' && user?.role === 'manager' && (
+                <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={handleResubmit}>
+                  Resubmit
+                </button>
+              )}
               <button
                 className="btn-danger"
                 onClick={() => setShowDeleteConfirm(true)}
@@ -610,7 +657,6 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Computed Security Deposit</label><input className="form-input" type="text" value={computedDeposit > 0 ? money(computedDeposit.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>
-                <div className="form-group"><label className="form-label">Status</label><select className="form-input form-select" value={data.status} onChange={e=>setData('status',e.target.value)}>{['vacant','occupied','maintenance'].map(s=><option key={s}>{s}</option>)}</select></div>
               </div>
             </div>
             <div className="modal-footer">

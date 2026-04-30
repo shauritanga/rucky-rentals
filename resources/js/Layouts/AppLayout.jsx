@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
+import useIdleLogout from '@/hooks/useIdleLogout';
 import echo from '@/echo';
 
 /* ─── Notification Bell (all non-superuser roles) ────────────────── */
@@ -30,9 +31,18 @@ function NotificationBell() {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const fetchNotifications = useCallback(async () => {
+    const fetchNotifications = useCallback(async ({ passive = false } = {}) => {
         try {
-            const res = await fetch('/notifications', { headers: { 'Accept': 'application/json' } });
+            const res = await fetch('/notifications', {
+                headers: {
+                    'Accept': 'application/json',
+                    ...(passive ? { 'X-Session-Activity': 'passive' } : {}),
+                },
+            });
+            if (res.status === 401) {
+                window.location.assign('/login');
+                return;
+            }
             const json = await res.json();
             setItems(json.notifications ?? []);
             setLocalUnread(json.unread_count ?? 0);
@@ -44,15 +54,15 @@ function NotificationBell() {
         const userId = props.auth?.user?.id;
         if (!userId) return;
 
-        fetchNotifications();
+        fetchNotifications({ passive: true });
 
         // 30-second polling fallback (works even without Reverb)
-        const interval = setInterval(fetchNotifications, 30_000);
+        const interval = setInterval(() => fetchNotifications({ passive: true }), 30_000);
 
         // Real-time via Reverb WebSocket
         if (echo) {
             const channel = echo.private(`App.Models.User.${userId}`);
-            channel.notification(() => { fetchNotifications(); });
+            channel.notification(() => { fetchNotifications({ passive: true }); });
         }
 
         return () => {
@@ -85,6 +95,13 @@ function NotificationBell() {
                 </svg>
             );
         }
+        if (data?.type === 'unit_decision') {
+            return (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: data.decision === 'approved' ? 'var(--green, #22c55e)' : 'var(--amber, #f59e0b)' }}>
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+            );
+        }
         return (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--amber, #f59e0b)' }}>
                 <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
@@ -96,11 +113,13 @@ function NotificationBell() {
         if (data?.stage === 'approved') return 'Maintenance Approved';
         if (data?.stage === 'rejected') return 'Maintenance Rejected';
         if (data?.type === 'lease_decision') return data.decision === 'approved' ? 'Lease Approved' : 'Lease Rejected';
+        if (data?.type === 'unit_decision') return data.decision === 'approved' ? 'Unit Approved' : 'Unit Rejected';
         return 'Notification';
     };
 
     const getSub = (data) => {
         if (data?.ticket_number) return [data.ticket_number, data.title].filter(Boolean).join(' · ');
+        if (data?.type === 'unit_decision') return [data.unit_number, data.message || data.property].filter(Boolean).join(' · ');
         if (data?.unit_ref) return data.unit_ref;
         return '';
     };
@@ -382,6 +401,7 @@ export default function AppLayout({ children, title, subtitle }) {
   }, [measureNav, collapsed]);
 
   const user = props?.auth?.user;
+  useIdleLogout(user, props?.auth?.session_timeout_minutes ?? 15);
   const viewingProperty = props?.viewing_property ?? null;
   const isManagerContext = user?.role === 'manager' || viewingProperty !== null;
   const visibleNav = NAV.filter(item => !item.managerOnly || isManagerContext);

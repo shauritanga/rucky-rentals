@@ -51,6 +51,7 @@ class HandleInertiaRequests extends Middleware
                     'avatar_url'           => $request->user()->avatar
                                                 ? Storage::url($request->user()->avatar)
                                                 : null,
+                    'session_timeout_minutes' => EnforceSessionTimeout::timeoutMinutesFromSettings(),
                 ] : null,
             ],
             'flash' => [
