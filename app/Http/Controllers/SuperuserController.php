@@ -79,7 +79,7 @@ class SuperuserController extends Controller
         $onlineThreshold = now()->subMinutes(5);
         $managers = User::query()
             ->with('property:id,name')
-            ->whereIn('role', ['manager', 'accountant', 'viewer', 'superuser'])
+            ->whereIn('role', ['manager', 'accountant', 'maintenance_staff', 'viewer', 'superuser'])
             ->orderBy('name')
             ->get(['id', 'name', 'email', 'role', 'property_id', 'last_seen_at'])
             ->map(function ($m) use ($onlineThreshold) {
@@ -91,7 +91,7 @@ class SuperuserController extends Controller
             });
 
         $archivedManagers = User::onlyTrashed()
-            ->whereIn('role', ['manager', 'accountant', 'viewer'])
+            ->whereIn('role', ['manager', 'accountant', 'maintenance_staff', 'viewer'])
             ->orderByDesc('deleted_at')
             ->get(['id', 'name', 'email', 'role', 'property_id', 'deleted_at']);
 
@@ -290,7 +290,7 @@ class SuperuserController extends Controller
             'name' => 'required|string|max:120',
             'email' => 'required|email|max:120|unique:users,email',
             'phone' => 'nullable|string|max:30',
-            'role' => 'required|in:manager,accountant,viewer',
+            'role' => 'required|in:manager,accountant,maintenance_staff,viewer',
             'property_id' => 'nullable|exists:properties,id',
             'twoFA' => 'nullable|in:yes,no',
         ]);
@@ -302,7 +302,7 @@ class SuperuserController extends Controller
             'email' => $data['email'],
             'password' => Hash::make($initialPassword),
             'role' => $data['role'],
-            'property_id' => $data['property_id'] ?? null,
+            'property_id' => $data['role'] === 'maintenance_staff' ? null : ($data['property_id'] ?? null),
             'must_change_password' => $data['role'] === 'manager',
         ]);
 
@@ -317,8 +317,10 @@ class SuperuserController extends Controller
             }
 
             $property->update(['manager_user_id' => $user->id]);
-        } elseif (!empty($data['property_id'])) {
+        } elseif ($data['role'] !== 'maintenance_staff' && !empty($data['property_id'])) {
             $assignedPropertyName = Property::where('id', $data['property_id'])->value('name');
+        } elseif ($data['role'] === 'maintenance_staff') {
+            $assignedPropertyName = 'All Properties';
         }
 
         $this->logAudit(
@@ -327,7 +329,7 @@ class SuperuserController extends Controller
             resource: sprintf('%s (%s)', $user->name, $user->role),
             propertyName: $assignedPropertyName ?? 'All',
             category: 'user',
-            propertyId: !empty($data['property_id']) ? (int) $data['property_id'] : null,
+            propertyId: $data['role'] !== 'maintenance_staff' && !empty($data['property_id']) ? (int) $data['property_id'] : null,
         );
 
         $emailWarning = null;
@@ -872,7 +874,7 @@ class SuperuserController extends Controller
     public function restoreManager(Request $request, int $id): \Illuminate\Http\RedirectResponse
     {
         $user = User::onlyTrashed()
-            ->whereIn('role', ['manager', 'accountant', 'viewer'])
+            ->whereIn('role', ['manager', 'accountant', 'maintenance_staff', 'viewer'])
             ->findOrFail($id);
 
         $user->restore();

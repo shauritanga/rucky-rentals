@@ -108,9 +108,11 @@ function safeNotes(value) {
   return [];
 }
 
-export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], approvalCount = 0 }) {
+export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], approvalCount = 0, properties = [], selectedPropertyId = null, maintenanceStaff = [] }) {
   const { props } = usePage();
   const user = props?.auth?.user;
+  const isGlobalMaintenanceStaff = user?.role === 'maintenance_staff' && !user?.property_id;
+  const selectedPropertyValue = selectedPropertyId ? String(selectedPropertyId) : '';
   const [tab, setTab] = useState('requests');
   const [filter, setFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('');
@@ -198,6 +200,20 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
     });
     return map;
   }, [units]);
+
+  const assigneeOptions = useMemo(() => {
+    const names = maintenanceStaff.map((staff) => staff.name).filter(Boolean);
+    return Array.from(new Set([...names, 'In-house']));
+  }, [maintenanceStaff]);
+
+  const changePropertyFilter = (propertyId) => {
+    setRequestsPage(1);
+    setSelected(null);
+    router.get('/maintenance', propertyId ? { property_id: propertyId } : {}, {
+      preserveScroll: true,
+      preserveState: false,
+    });
+  };
 
   const counts = useMemo(() => {
     const next = { all: normalizedTickets.length, submitted: 0, pending_manager: 0, approved: 0, in_progress: 0, resolved: 0 };
@@ -325,6 +341,11 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
     e.preventDefault();
     setSubmitError('');
 
+    if (isGlobalMaintenanceStaff && !selectedPropertyValue) {
+      setSubmitError('Select a property before creating a maintenance request.');
+      return;
+    }
+
     const formData = new FormData();
     formData.append('title', data.title);
     formData.append('description', data.description || '');
@@ -332,6 +353,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
     formData.append('category', data.category || 'General');
     formData.append('priority', data.priority);
     formData.append('assignee', data.assignee || '');
+    if (isGlobalMaintenanceStaff) formData.append('property_id', selectedPropertyValue);
     if (data.labour) formData.append('cost', data.labour);
 
     // Append materials as indexed array
@@ -415,6 +437,26 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
   return (
     <AppLayout title="Maintenance" subtitle={`— ${openRequests} open`}>
       <Head title="Maintenance" />
+
+      {isGlobalMaintenanceStaff && (
+        <div className="toolbar" style={{ marginBottom: 18, justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Property</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Filter maintenance work by property.</div>
+          </div>
+          <select
+            className="form-input form-select"
+            value={selectedPropertyValue}
+            onChange={(e) => changePropertyFilter(e.target.value)}
+            style={{ width: 220 }}
+          >
+            <option value="">All Properties</option>
+            {properties.map((property) => (
+              <option key={property.id} value={property.id}>{property.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="stats-grid" style={{ marginBottom: 20 }}>
         <div className="stat-card">
@@ -804,13 +846,21 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 <div style={{ background: 'var(--red-dim, #fef2f2)', color: 'var(--red)', border: '1px solid var(--red)', borderRadius: 8, padding: '8px 12px', fontSize: 13, marginBottom: 12 }}>{submitError}</div>
               )}
               <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Request Details</div>
+              {isGlobalMaintenanceStaff && (
+                <div className="form-group">
+                  <label className="form-label">Property *</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center', color: selectedPropertyValue ? 'var(--text-primary)' : 'var(--red)' }}>
+                    {selectedPropertyValue ? properties.find((property) => String(property.id) === selectedPropertyValue)?.name : 'Select a property from the page toolbar first'}
+                  </div>
+                </div>
+              )}
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Unit *</label><select className="form-input form-select" value={data.unit_ref} onChange={(e) => setData('unit_ref', e.target.value)} required><option value="">Select unit…</option><option value="Common">Common Area</option>{units.map((u) => <option key={u.id || u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">Unit *</label><select className="form-input form-select" value={data.unit_ref} onChange={(e) => setData('unit_ref', e.target.value)} required disabled={isGlobalMaintenanceStaff && !selectedPropertyValue}><option value="">{isGlobalMaintenanceStaff && !selectedPropertyValue ? 'Select property first…' : 'Select unit…'}</option><option value="Common">Common Area</option>{units.map((u) => <option key={u.id || u.unit_number} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
                 <div className="form-group"><label className="form-label">Category *</label><select className="form-input form-select" value={data.category} onChange={(e) => setData('category', e.target.value)} required><option value="">Select…</option>{CATEGORY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}</select></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Priority *</label><select className="form-input form-select" value={data.priority} onChange={(e) => setData('priority', e.target.value)}><option value="low">Low — can wait</option><option value="med">Medium — within a week</option><option value="high">High — within 48 hours</option><option value="critical">Critical — immediate</option></select></div>
-                <div className="form-group"><label className="form-label">Assign To</label><input className="form-input" type="text" list="assignee-hints" value={data.assignee} onChange={(e) => setData('assignee', e.target.value)} placeholder="Type name or select…" /><datalist id="assignee-hints">{['Peter Ng.', 'JK Electric', 'Cool Air Ltd', 'In-house', 'SecurePro'].map((a) => <option key={a} value={a} />)}</datalist></div>
+                <div className="form-group"><label className="form-label">Assign To</label><input className="form-input" type="text" list="assignee-hints" value={data.assignee} onChange={(e) => setData('assignee', e.target.value)} placeholder="Type name or select…" /><datalist id="assignee-hints">{assigneeOptions.map((a) => <option key={a} value={a} />)}</datalist></div>
               </div>
               <div className="form-group"><label className="form-label">Title *</label><input className="form-input" type="text" value={data.title} onChange={(e) => setData('title', e.target.value)} placeholder="e.g. Broken water pipe in bathroom" required /></div>
               <div className="form-group"><label className="form-label">Description & Observations</label><textarea className="form-input" value={data.description} onChange={(e) => setData('description', e.target.value)} rows={3} style={{ resize: 'vertical' }} placeholder="Describe the issue, when it started, any safety concerns…" /></div>
@@ -826,12 +876,24 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 </div>
                 {materials.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>No materials added yet</div>}
                 {materials.map((row) => (
-                  <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 120px 32px', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                    <input className="form-input" type="text" placeholder="Material name" style={{ fontSize: '12.5px' }} value={row.name} onChange={(e) => updateMaterialRow(row.id, 'name', e.target.value)} />
-                    <input className="form-input" type="text" placeholder="Unit" style={{ fontSize: '12.5px' }} value={row.unit} onChange={(e) => updateMaterialRow(row.id, 'unit', e.target.value)} />
-                    <input className="form-input" type="number" placeholder="Qty" min="1" style={{ fontSize: '12.5px' }} value={row.qty} onChange={(e) => updateMaterialRow(row.id, 'qty', Number(e.target.value || 0))} />
-                    <input className="form-input" type="number" placeholder="Price/unit" style={{ fontSize: '12.5px' }} value={row.unit_price} onChange={(e) => updateMaterialRow(row.id, 'unit_price', Number(e.target.value || 0))} />
-                    <button type="button" onClick={() => removeMaterialRow(row.id)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}>×</button>
+                  <div key={row.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(80px, .45fr) minmax(80px, .45fr) minmax(120px, .6fr) 32px', gap: 8, alignItems: 'end', marginBottom: 10 }}>
+                    <div>
+                      <label className="form-label">Material Name</label>
+                      <input className="form-input" type="text" placeholder="e.g. PVC pipe" style={{ fontSize: '12.5px' }} value={row.name} onChange={(e) => updateMaterialRow(row.id, 'name', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="form-label">Unit</label>
+                      <input className="form-input" type="text" placeholder="pc, m, kg" style={{ fontSize: '12.5px' }} value={row.unit} onChange={(e) => updateMaterialRow(row.id, 'unit', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="form-label">Quantity</label>
+                      <input className="form-input" type="number" placeholder="Qty" min="1" style={{ fontSize: '12.5px' }} value={row.qty} onChange={(e) => updateMaterialRow(row.id, 'qty', Number(e.target.value || 0))} />
+                    </div>
+                    <div>
+                      <label className="form-label">Price / Unit</label>
+                      <input className="form-input" type="number" placeholder="0" style={{ fontSize: '12.5px' }} value={row.unit_price} onChange={(e) => updateMaterialRow(row.id, 'unit_price', Number(e.target.value || 0))} />
+                    </div>
+                    <button type="button" aria-label="Remove material" title="Remove material" onClick={() => removeMaterialRow(row.id)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 18, lineHeight: 1, height: 38 }}>×</button>
                   </div>
                 ))}
               </div>
@@ -896,7 +958,15 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
           <div className="modal-body">
             <div className="form-row">
               <div className="form-group"><label className="form-label">Task Title *</label><input className="form-input" type="text" placeholder="e.g. Quarterly AC service" value={scheduleForm.title} onChange={(e) => setScheduleForm((s) => ({ ...s, title: e.target.value }))} /></div>
-              <div className="form-group"><label className="form-label">Unit / Area</label><select className="form-input form-select" value={scheduleForm.unit_ref} onChange={(e) => setScheduleForm((s) => ({ ...s, unit_ref: e.target.value }))}><option value="">Common / All</option>{units.map((u) => <option key={u.id} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
+              {isGlobalMaintenanceStaff && (
+                <div className="form-group">
+                  <label className="form-label">Property *</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center', color: selectedPropertyValue ? 'var(--text-primary)' : 'var(--red)' }}>
+                    {selectedPropertyValue ? properties.find((property) => String(property.id) === selectedPropertyValue)?.name : 'Select a property from the page toolbar first'}
+                  </div>
+                </div>
+              )}
+              <div className="form-group"><label className="form-label">Unit / Area</label><select className="form-input form-select" value={scheduleForm.unit_ref} onChange={(e) => setScheduleForm((s) => ({ ...s, unit_ref: e.target.value }))} disabled={isGlobalMaintenanceStaff && !selectedPropertyValue}><option value="">{isGlobalMaintenanceStaff && !selectedPropertyValue ? 'Select property first…' : 'Common / All'}</option>{units.map((u) => <option key={u.id} value={u.unit_number}>{u.unit_number}</option>)}</select></div>
             </div>
             <div className="form-row">
               <div className="form-group"><label className="form-label">Category</label><select className="form-input form-select" value={scheduleForm.category} onChange={(e) => setScheduleForm((s) => ({ ...s, category: e.target.value }))}>{CATEGORY_OPTIONS.map((c) => <option key={c}>{c}</option>)}</select></div>
@@ -904,7 +974,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
             </div>
             <div className="form-row">
               <div className="form-group"><label className="form-label">Next Due Date *</label><input className="form-input" type="date" value={scheduleForm.next_due} onChange={(e) => setScheduleForm((s) => ({ ...s, next_due: e.target.value }))} /></div>
-              <div className="form-group"><label className="form-label">Assign To</label><input className="form-input" type="text" placeholder="Unassigned" value={scheduleForm.assignee} onChange={(e) => setScheduleForm((s) => ({ ...s, assignee: e.target.value }))} /></div>
+              <div className="form-group"><label className="form-label">Assign To</label><input className="form-input" type="text" list="schedule-assignee-hints" placeholder="Unassigned" value={scheduleForm.assignee} onChange={(e) => setScheduleForm((s) => ({ ...s, assignee: e.target.value }))} /><datalist id="schedule-assignee-hints">{assigneeOptions.map((a) => <option key={a} value={a} />)}</datalist></div>
             </div>
             <div className="form-group"><label className="form-label">Notes</label><textarea className="form-input" rows={2} style={{ resize: 'vertical' }} value={scheduleForm.notes} onChange={(e) => setScheduleForm((s) => ({ ...s, notes: e.target.value }))} /></div>
           </div>
@@ -912,6 +982,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
             <button className="btn-ghost" onClick={() => setShowScheduleModal(false)}>Cancel</button>
             <button className="btn-primary" disabled={scheduleSubmitting} onClick={() => {
               if (!scheduleForm.title.trim() || !scheduleForm.next_due) return;
+              if (isGlobalMaintenanceStaff && !selectedPropertyValue) return;
               setScheduleSubmitting(true);
               router.post('/scheduled-maintenance', {
                 title: scheduleForm.title.trim(),
@@ -921,6 +992,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 next_due: scheduleForm.next_due,
                 assignee: scheduleForm.assignee.trim() || null,
                 notes: scheduleForm.notes.trim() || null,
+                ...(isGlobalMaintenanceStaff ? { property_id: selectedPropertyValue } : {}),
               }, {
                 onSuccess: () => {
                   setScheduleForm({ title: '', unit_ref: '', category: 'General', frequency: 'monthly', next_due: '', assignee: '', notes: '' });

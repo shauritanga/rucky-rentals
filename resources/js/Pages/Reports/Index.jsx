@@ -85,15 +85,17 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
 
   const exportType = activeTab === 'ar_aging' ? 'ar_aging' : activeTab === 'leases' ? 'leases' : activeTab === 'tenants' ? 'tenants' : 'overview';
 
-  const revenueDelta     = deltaMeta(kpis.revenue, kpis.prevRevenue);
-  const maintenanceDelta = deltaMeta(kpis.maintenanceCost, kpis.prevMaintenanceCost, true);
-  const noiDelta         = deltaMeta(kpis.noi, kpis.prevNoi);
+  const totalExpenses     = kpis.totalExpenses ?? kpis.maintenanceCost;
+  const prevTotalExpenses = kpis.prevTotalExpenses ?? kpis.prevMaintenanceCost;
+  const revenueDelta      = deltaMeta(kpis.revenue, kpis.prevRevenue);
+  const expenseDelta      = deltaMeta(totalExpenses, prevTotalExpenses, true);
+  const noiDelta          = deltaMeta(kpis.noi, kpis.prevNoi);
 
   const KPI_CARDS = [
-    { title: `${period.label} Revenue`, value: fmtMoney(kpis.revenue),        delta: `${revenueDelta.trend === 'up' ? '↑' : revenueDelta.trend === 'down' ? '↓' : '→'} ${revenueDelta.delta}`,         trend: revenueDelta.trend === 'flat' ? 'up' : revenueDelta.trend,         tone: 'green' },
-    { title: 'Avg Occupancy',           value: fmtPct(kpis.occupancyRate),     delta: `${kpis.occupiedUnits ?? 0} of ${kpis.totalUnits ?? 0} units`,                                                      trend: 'up',                                                               tone: 'blue'  },
-    { title: 'Maintenance Cost',        value: fmtMoney(kpis.maintenanceCost), delta: `${maintenanceDelta.trend === 'up' ? '↑' : maintenanceDelta.trend === 'down' ? '↓' : '→'} ${maintenanceDelta.delta}`, trend: maintenanceDelta.trend === 'flat' ? 'down' : maintenanceDelta.trend, tone: 'amber' },
-    { title: 'Net Operating Income',    value: fmtMoney(kpis.noi),             delta: `${noiDelta.trend === 'up' ? '↑' : noiDelta.trend === 'down' ? '↓' : '→'} ${noiDelta.delta}`,                       trend: noiDelta.trend === 'flat' ? 'up' : noiDelta.trend,                 tone: 'green' },
+    { title: 'Gross Revenue',  value: fmtMoney(kpis.revenue),    delta: `${revenueDelta.trend === 'up' ? '↑' : revenueDelta.trend === 'down' ? '↓' : '→'} ${revenueDelta.delta}`, trend: revenueDelta.trend === 'flat' ? 'up' : revenueDelta.trend, tone: 'green' },
+    { title: 'Avg Occupancy',  value: fmtPct(kpis.occupancyRate), delta: `${kpis.occupiedUnits ?? 0} of ${kpis.totalUnits ?? 0} units`,                                      trend: 'up',                                                       tone: 'blue'  },
+    { title: 'Total Expenses', value: fmtMoney(totalExpenses),    delta: `${expenseDelta.trend === 'up' ? '↑' : expenseDelta.trend === 'down' ? '↓' : '→'} ${expenseDelta.delta}`, trend: expenseDelta.trend === 'flat' ? 'down' : expenseDelta.trend, tone: 'amber' },
+    { title: 'Net Revenue',    value: fmtMoney(kpis.noi),         delta: `${noiDelta.trend === 'up' ? '↑' : noiDelta.trend === 'down' ? '↓' : '→'} ${noiDelta.delta}`,           trend: noiDelta.trend === 'flat' ? 'up' : noiDelta.trend,         tone: 'green' },
   ];
 
   const MONTHLY_REVENUE   = report.monthlyRevenue   ?? [];
@@ -310,7 +312,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
               <div className="card-header"><div className="card-title">Expense Breakdown</div></div>
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {EXPENSE_BREAKDOWN.length === 0 && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No resolved maintenance expenses in this period</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No expenses in this period</div>
                 )}
                 {EXPENSE_BREAKDOWN.map((row) => (
                   <div key={row.label} style={{ display: 'grid', gridTemplateColumns: '130px 1fr 80px', alignItems: 'center', gap: 10 }}>

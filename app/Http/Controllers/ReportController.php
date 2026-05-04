@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExchangeRate;
+use App\Models\FuelLog;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lease;
@@ -18,6 +19,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
+    private const EXPENSE_COLORS = ['var(--amber)', 'var(--accent)', 'var(--green)', 'var(--red)', 'var(--text-muted)'];
+
     private function calculatePaymentWhtTotal(Payment $payment): float
     {
         $rentRate = (float) ($payment->invoice?->lease?->wht_rate ?? 0);
@@ -40,6 +43,81 @@ class ReportController extends Controller
         );
     }
 
+    private function expenseRowsForRange(?int $propertyId, Carbon $start, Carbon $end)
+    {
+        $glRows = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', function ($join) {
+                $join->on('accounts.code', '=', 'journal_lines.account_code')
+                    ->on('accounts.property_id', '=', 'journal_entries.property_id');
+            })
+            ->selectRaw("COALESCE(accounts.name, journal_lines.account_name, journal_lines.account_code) as label")
+            ->selectRaw('SUM(COALESCE(journal_lines.debit, 0) - COALESCE(journal_lines.credit, 0)) as total')
+            ->where('journal_entries.status', 'posted')
+            ->where('accounts.type', 'expense')
+            ->whereBetween('journal_entries.entry_date', [$start->toDateString(), $end->toDateString()])
+            ->when($propertyId !== null, fn($q) => $q->where('journal_entries.property_id', $propertyId))
+            ->groupByRaw('COALESCE(accounts.name, journal_lines.account_name, journal_lines.account_code)')
+            ->havingRaw('SUM(COALESCE(journal_lines.debit, 0) - COALESCE(journal_lines.credit, 0)) > 0')
+            ->orderByDesc('total')
+            ->get();
+
+        if ($glRows->isNotEmpty()) {
+            return $glRows;
+        }
+
+        $maintenanceRows = MaintenanceRecord::query()
+            ->selectRaw("COALESCE(category, 'Maintenance') as label")
+            ->selectRaw('SUM(COALESCE(cost_in_base, cost, 0)) as total')
+            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+            ->where('status', 'resolved')
+            ->whereBetween('reported_date', [$start->toDateString(), $end->toDateString()])
+            ->where(function ($q) {
+                $q->whereNotNull('cost_in_base')->orWhereNotNull('cost');
+            })
+            ->groupByRaw("COALESCE(category, 'Maintenance')")
+            ->havingRaw('SUM(COALESCE(cost_in_base, cost, 0)) > 0')
+            ->get();
+
+        $fuelTotal = (float) FuelLog::query()
+            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
+            ->whereBetween('log_date', [$start->toDateString(), $end->toDateString()])
+            ->sum('total_cost');
+
+        if ($fuelTotal > 0) {
+            $maintenanceRows->push((object) [
+                'label' => 'Fuel',
+                'total' => $fuelTotal,
+            ]);
+        }
+
+        return $maintenanceRows->sortByDesc('total')->values();
+    }
+
+    private function expenseTotalForRange(?int $propertyId, Carbon $start, Carbon $end): float
+    {
+        return round((float) $this->expenseRowsForRange($propertyId, $start, $end)->sum('total'), 2);
+    }
+
+    private function expenseBreakdownForRange(?int $propertyId, Carbon $start, Carbon $end): array
+    {
+        $expenseRows = $this->expenseRowsForRange($propertyId, $start, $end)
+            ->sortByDesc('total')
+            ->take(5)
+            ->values();
+
+        $maxExpense = max(1, (float) ($expenseRows->max('total') ?? 0));
+
+        return $expenseRows->map(function ($row, $index) use ($maxExpense) {
+            return [
+                'label' => $row->label,
+                'value' => (float) $row->total,
+                'width' => round(((float) $row->total / $maxExpense) * 100),
+                'color' => self::EXPENSE_COLORS[$index % count(self::EXPENSE_COLORS)],
+            ];
+        })->all();
+    }
+
     public function index(Request $request)
     {
         $propertyId = $this->resolvePropertyId($request);
@@ -57,20 +135,11 @@ class ReportController extends Controller
 
         $prevRevenue = round((float) $prevRevenueRows->sum('value'), 2);
 
-        $maintenanceCost = MaintenanceRecord::query()
-            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'resolved')
-            ->whereBetween('reported_date', [$start->toDateString(), $end->toDateString()])
-            ->sum('cost');
+        $totalExpenses     = $this->expenseTotalForRange($propertyId, $start, $end);
+        $prevTotalExpenses = $this->expenseTotalForRange($propertyId, $prevStart, $prevEnd);
 
-        $prevMaintenanceCost = MaintenanceRecord::query()
-            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'resolved')
-            ->whereBetween('reported_date', [$prevStart->toDateString(), $prevEnd->toDateString()])
-            ->sum('cost');
-
-        $noi     = (float) $revenue - (float) $maintenanceCost;
-        $prevNoi = (float) $prevRevenue - (float) $prevMaintenanceCost;
+        $noi     = (float) $revenue - (float) $totalExpenses;
+        $prevNoi = (float) $prevRevenue - (float) $prevTotalExpenses;
 
         $totalUnits = Unit::query()->approved()
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
@@ -230,27 +299,7 @@ class ReportController extends Controller
         ], array_values($periodMonths));
 
         // --- Expense Breakdown ---
-        $expenseColors   = ['var(--amber)', 'var(--accent)', 'var(--green)', 'var(--red)', 'var(--text-muted)'];
-        $expenseRows     = MaintenanceRecord::query()
-            ->selectRaw('category, SUM(cost) as total')
-            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'resolved')
-            ->whereBetween('reported_date', [$start->toDateString(), $end->toDateString()])
-            ->whereNotNull('cost')
-            ->groupBy('category')
-            ->orderByDesc('total')
-            ->limit(5)
-            ->get();
-
-        $maxExpense       = max(1, (float) ($expenseRows->max('total') ?? 0));
-        $expenseBreakdown = $expenseRows->values()->map(function ($row, $index) use ($expenseColors, $maxExpense) {
-            return [
-                'label' => $row->category,
-                'value' => (float) $row->total,
-                'width' => round(((float) $row->total / $maxExpense) * 100),
-                'color' => $expenseColors[$index % count($expenseColors)],
-            ];
-        })->all();
+        $expenseBreakdown = $this->expenseBreakdownForRange($propertyId, $start, $end);
 
         // --- Top Units ---
         $topUnitRows = $revenueRows
@@ -397,8 +446,10 @@ class ReportController extends Controller
                     'occupancyRate'       => (float) $occupancyRate,
                     'occupiedUnits'       => (int) $occupiedUnits,
                     'totalUnits'          => (int) $totalUnits,
-                    'maintenanceCost'     => (float) $maintenanceCost,
-                    'prevMaintenanceCost' => (float) $prevMaintenanceCost,
+                    'totalExpenses'       => (float) $totalExpenses,
+                    'prevTotalExpenses'   => (float) $prevTotalExpenses,
+                    'maintenanceCost'     => (float) $totalExpenses,
+                    'prevMaintenanceCost' => (float) $prevTotalExpenses,
                     'noi'                 => (float) $noi,
                     'prevNoi'             => (float) $prevNoi,
                     'collectionRate'      => (float) $collectionRate,
@@ -558,11 +609,7 @@ class ReportController extends Controller
                         ->get()
                         ->sum(fn ($payment) => $this->paymentNetRevenueSummary($payment)['value']);
 
-                    $maintenanceCost = MaintenanceRecord::query()
-                        ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-                        ->where('status', 'resolved')
-                        ->whereBetween('reported_date', [$start->toDateString(), $end->toDateString()])
-                        ->sum('cost');
+                    $totalExpenses = $this->expenseTotalForRange($propertyId, $start, $end);
 
                     $totalUnits    = Unit::query()->approved()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->count();
                     $occupiedUnits = Unit::query()->approved()->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))->whereIn('status', ['occupied', 'overdue'])->count();
@@ -616,9 +663,9 @@ class ReportController extends Controller
                             return round($amount * ExchangeRate::getLiveRate($currency, 'TZS'), 2);
                         });
 
-                    fputcsv($out, ['Revenue',                  number_format((float) $revenue, 2)]);
-                    fputcsv($out, ['Maintenance Cost',         number_format((float) $maintenanceCost, 2)]);
-                    fputcsv($out, ['NOI',                      number_format((float) $revenue - (float) $maintenanceCost, 2)]);
+                    fputcsv($out, ['Gross Revenue',            number_format((float) $revenue, 2)]);
+                    fputcsv($out, ['Total Expenses',           number_format((float) $totalExpenses, 2)]);
+                    fputcsv($out, ['Net Revenue',              number_format((float) $revenue - (float) $totalExpenses, 2)]);
                     fputcsv($out, ['Total Units',              $totalUnits]);
                     fputcsv($out, ['Occupied Units',           $occupiedUnits]);
                     fputcsv($out, ['Occupancy Rate',           round($totalUnits > 0 ? ($occupiedUnits / $totalUnits) * 100 : 0, 1) . '%']);

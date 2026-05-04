@@ -90,11 +90,31 @@ class ElectricityController extends Controller
         return Schema::hasTable('electricity_sales');
     }
 
+    private function monthSqlExpression(string $column): string
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return "strftime('%Y-%m', {$column})";
+        }
+
+        return "TO_CHAR({$column}, 'YYYY-MM')";
+    }
+
+    private function runtimeSecondsSqlExpression(): string
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return "SUM(CASE WHEN end_time IS NOT NULL THEN strftime('%s', end_time) - strftime('%s', start_time) ELSE 0 END)";
+        }
+
+        return 'SUM(CASE WHEN end_time IS NOT NULL THEN EXTRACT(EPOCH FROM (end_time::time - start_time::time)) ELSE 0 END)';
+    }
+
     public function index(Request $request)
     {
-        $currentMonth = now()->format('Y-m');
-        $monthStart = now()->startOfMonth()->toDateString();
-        $monthEnd = now()->endOfMonth()->toDateString();
+        $today = now();
+        $currentMonth = $today->format('Y-m');
+        $quarterStart = $today->copy()->startOfQuarter()->toDateString();
+        $quarterEnd = $today->copy()->endOfQuarter()->toDateString();
+        $quarterLabel = 'Q' . $today->quarter . ' ' . $today->year;
         $generatorSettings = $this->generatorSettings($request);
         $submeterSettings = $this->submeterSettings($request);
 
@@ -111,7 +131,7 @@ class ElectricityController extends Controller
             'unit.leases' => fn ($query) => $query->where('status', 'active')->with('tenant'),
             'invoice.items',
         ])
-            ->whereBetween('reading_date', [$monthStart, $monthEnd])
+            ->whereBetween('reading_date', [$quarterStart, $quarterEnd])
             ->whereHas('unit', fn ($query) => $query->where('electricity_type', 'direct'))
             ->orderBy('reading_date')
             ->orderBy('unit_id');
@@ -135,7 +155,8 @@ class ElectricityController extends Controller
         $this->scopeForUser($outagesQ, $request);
         $this->scopeForUser($fuelLogsQ, $request);
 
-        $directReadings = $directReadingsQ->get()->map(fn (MeterReading $reading) => $this->transformDirectReading($reading, $generatorSettings))->values();
+        $directReadingModels = $directReadingsQ->get();
+        $directReadings = $directReadingModels->map(fn (MeterReading $reading) => $this->transformDirectReading($reading, $generatorSettings))->values();
         $submeterSales = $submeterModuleReady
             ? $salesQ->limit(50)->get()->map(fn (ElectricitySale $sale) => $this->transformSubmeterSale($sale))->values()
             : collect();
@@ -144,25 +165,31 @@ class ElectricityController extends Controller
             ->where('electricity_type', 'direct')
             ->map(fn (Unit $unit) => $this->transformUnit($unit))
             ->values();
+        $readDirectUnitIds = $directReadingModels->pluck('unit_id')->unique()->values();
+        $missingDirectUnits = $directUnits
+            ->reject(fn (array $unit) => $readDirectUnitIds->contains($unit['id']))
+            ->values();
         $submeterUnits = $units
             ->where('electricity_type', 'submeter')
             ->map(fn (Unit $unit) => $this->transformUnit($unit))
             ->values();
 
+        $outageMonthExpr = $this->monthSqlExpression('outage_date');
+        $fuelMonthExpr = $this->monthSqlExpression('log_date');
+        $runtimeSecondsExpr = $this->runtimeSecondsSqlExpression();
+
         $runtimeOutageQ = Outage::where('generator_activated', true)
-            ->selectRaw("TO_CHAR(outage_date, 'YYYY-MM') as month,
+            ->selectRaw("{$outageMonthExpr} as month,
                          COUNT(*) as outage_count,
-                         SUM(CASE WHEN end_time IS NOT NULL
-                             THEN EXTRACT(EPOCH FROM (end_time::time - start_time::time))
-                             ELSE 0 END) as runtime_seconds,
+                         {$runtimeSecondsExpr} as runtime_seconds,
                          SUM(COALESCE(fuel_used, 0)) as fuel_used")
-            ->groupByRaw("TO_CHAR(outage_date, 'YYYY-MM')")
+            ->groupByRaw($outageMonthExpr)
             ->orderByDesc('month')
             ->limit(6);
         $this->scopeForUser($runtimeOutageQ, $request);
 
-        $fuelCostQ = FuelLog::selectRaw("TO_CHAR(log_date, 'YYYY-MM') as month, SUM(total_cost) as fuel_cost")
-            ->groupByRaw("TO_CHAR(log_date, 'YYYY-MM')");
+        $fuelCostQ = FuelLog::selectRaw("{$fuelMonthExpr} as month, SUM(total_cost) as fuel_cost")
+            ->groupByRaw($fuelMonthExpr);
         $this->scopeForUser($fuelCostQ, $request);
 
         $genKwhQ = MeterReading::whereHas('unit', fn ($query) => $query->where('electricity_type', 'direct'))
@@ -188,6 +215,14 @@ class ElectricityController extends Controller
 
         return Inertia::render('Electricity/Index', [
             'currentMonth' => $currentMonth,
+            'directReadingPrompt' => [
+                'label' => $quarterLabel,
+                'start_date' => $quarterStart,
+                'end_date' => $quarterEnd,
+                'total_units' => $directUnits->count(),
+                'read_units' => $readDirectUnitIds->count(),
+                'missing_units' => $missingDirectUnits,
+            ],
             'directReadings' => $directReadings,
             'submeterSales' => $submeterSales,
             'directUnits' => $directUnits,
@@ -234,7 +269,7 @@ class ElectricityController extends Controller
             ->whereDate('reading_date', $readingDate)
             ->first();
 
-        if ($existing?->invoice && $existing->invoice->status !== 'draft') {
+        if ($existing?->invoice && ! in_array($existing->invoice->status, ['draft', 'proforma'], true)) {
             throw ValidationException::withMessages([
                 'direct_reading' => 'This reading already has an issued invoice and cannot be edited.',
             ]);

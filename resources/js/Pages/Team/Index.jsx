@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { formatDisplayDate } from '@/utils/dateFormat';
 
@@ -95,6 +95,8 @@ function accessTag(permissions = {}, resource) {
 }
 
 export default function TeamIndex({ teamMembers = [], archivedMembers = [], roleDefaults = {} }) {
+  const { props } = usePage();
+  const user = props?.auth?.user;
   const normalizedRoleDefaults = useMemo(() => {
     return Object.fromEntries(
       Object.entries(roleDefaults || {}).map(([role, defaults]) => [role, normalizePermissions(defaults)]),
@@ -338,6 +340,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
               const isActive = statusKey === 'active';
               const isPending = statusKey === 'pending_approval';
               const isRejected = statusKey === 'rejected';
+              const isReadOnlyGlobalStaff = user?.role === 'manager' && m.global_access;
               const statusInfo = STATUS_META[statusKey] || STATUS_META.active;
               const granted = grantedActionCount(m.permissions || {});
               return (
@@ -348,6 +351,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                       <div>
                         <div style={{fontWeight:600,fontSize:13.5}}>{m.name}</div>
                         <div style={{fontSize:12,color:'var(--text-muted)'}}>{m.email}</div>
+                        {m.global_access && <div style={{fontSize:11.5,color:'var(--accent)'}}>All properties</div>}
                         {m.requested_by && <div style={{fontSize:11.5,color:'var(--text-muted)'}}>Requested by {m.requested_by}</div>}
                         {isRejected && m.approval_note && <div style={{fontSize:11.5,color:'var(--red)'}}>Rejected: {m.approval_note}</div>}
                       </div>
@@ -377,23 +381,27 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                   </td>
                   <td>
                     <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
-                      <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => openPerms(m)}>
+                      <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} disabled={isReadOnlyGlobalStaff} title={isReadOnlyGlobalStaff ? 'Global maintenance staff are managed by superuser' : undefined} onClick={() => openPerms(m)}>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                         Permissions
                       </button>
-                      {!isPending && !isRejected && (
+                      {!isReadOnlyGlobalStaff && !isPending && !isRejected && (
                         <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => toggleStatus(m)}>
                           {isActive ? 'Suspend' : 'Activate'}
                         </button>
                       )}
-                      {isRejected && (
+                      {!isReadOnlyGlobalStaff && isRejected && (
                         <button className="btn-secondary" style={{fontSize:12,padding:'5px 10px'}} onClick={() => resubmitMember(m)}>
                           Resubmit
                         </button>
                       )}
-                      <button className="btn-danger" style={{fontSize:12,padding:'5px 10px'}} onClick={() => openDeleteDialog(m)}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-                      </button>
+                      {isReadOnlyGlobalStaff ? (
+                        <span style={{fontSize:12,color:'var(--text-muted)',alignSelf:'center'}}>View only</span>
+                      ) : (
+                        <button className="btn-danger" style={{fontSize:12,padding:'5px 10px'}} onClick={() => openDeleteDialog(m)}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -566,7 +574,6 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                     <option value="">Select role…</option>
                     <option value="accountant">Accountant</option>
                     <option value="lease_manager">Lease Assistant</option>
-                    <option value="maintenance_staff">Maintenance Staff</option>
                     <option value="viewer">Viewer (Read-Only)</option>
                   </select>
                 </div>

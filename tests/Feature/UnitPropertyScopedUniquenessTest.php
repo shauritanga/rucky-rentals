@@ -43,6 +43,27 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         ]);
     }
 
+    public function test_unit_creation_accepts_apartment_warehouse_and_other_types(): void
+    {
+        $property = $this->createProperty('Type Tower', 'TYP');
+        $manager = $this->createManager($property);
+
+        foreach (['Apartment', 'Warehouse', 'Other'] as $index => $type) {
+            $unitNumber = 'A-10' . ($index + 1);
+
+            $response = $this->actingAs($manager)->post('/units', $this->unitPayload($unitNumber, $type));
+
+            $response->assertRedirect();
+
+            $this->assertDatabaseHas('units', [
+                'property_id' => $property->id,
+                'unit_number' => $unitNumber,
+                'type' => $type,
+                'status' => 'vacant',
+            ]);
+        }
+    }
+
     public function test_same_unit_number_still_must_be_unique_within_one_property(): void
     {
         $property = $this->createProperty('Gamma Tower', 'GAM');
@@ -136,12 +157,12 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         ]);
     }
 
-    private function unitPayload(string $unitNumber): array
+    private function unitPayload(string $unitNumber, string $type = 'Office Suite'): array
     {
         return [
             'unit_number' => $unitNumber,
             'floor' => '1',
-            'type' => 'Office Suite',
+            'type' => $type,
             'size_sqm' => 10,
             'rate_per_sqm' => 100,
             'service_charge_per_sqm' => 0,

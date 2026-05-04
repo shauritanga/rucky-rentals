@@ -47,6 +47,7 @@ class HandleInertiaRequests extends Middleware
                     'phone'                => $request->user()->phone,
                     'bio'                  => $request->user()->bio,
                     'role'                 => $request->user()->role,
+                    'property_id'          => $request->user()->property_id,
                     'must_change_password' => (bool) $request->user()->must_change_password,
                     'avatar_url'           => $request->user()->avatar
                                                 ? Storage::url($request->user()->avatar)

@@ -483,7 +483,7 @@ export default function TenantsIndex({ tenants }) {
                 <>
                   <div className="form-row">
                     <div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={data.name} onChange={e=>setData('name',e.target.value)} required /></div>
-                    <div className="form-group"><label className="form-label">National ID / Passport</label><input className="form-input" value={data.national_id} onChange={e=>setData('national_id',e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">National ID / Passport *</label><input className="form-input" value={data.national_id} onChange={e=>setData('national_id',e.target.value)} required /></div>
                   </div>
                 </>
               )}
@@ -508,10 +508,15 @@ export default function TenantsIndex({ tenants }) {
 
               {/* NOK — individuals only */}
               {data.tenant_type === 'individual' && (
-                <div className="form-row">
-                  <div className="form-group"><label className="form-label">Next of Kin</label><input className="form-input" value={data.nok_name} onChange={e=>setData('nok_name',e.target.value)} /></div>
-                  <div className="form-group"><label className="form-label">Next of Kin Phone</label><input className="form-input" value={data.nok_phone} onChange={e=>setData('nok_phone',e.target.value)} /></div>
-                </div>
+                <>
+                  <div className="form-row">
+                    <div className="form-group"><label className="form-label">Next of Kin *</label><input className="form-input" value={data.nok_name} onChange={e=>setData('nok_name',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">Next of Kin Phone *</label><input className="form-input" value={data.nok_phone} onChange={e=>setData('nok_phone',e.target.value)} required /></div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group" style={{gridColumn:'1 / -1'}}><label className="form-label">Next of Kin Relation *</label><input className="form-input" value={data.nok_relation} onChange={e=>setData('nok_relation',e.target.value)} placeholder="e.g. Spouse, parent, sibling" required /></div>
+                  </div>
+                </>
               )}
 
               {/* Notes */}

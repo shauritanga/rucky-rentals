@@ -168,7 +168,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const [invType, setInvType] = useState('proforma');
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
 
-  const { data, setData, post, patch, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'2026-03-19', due_date:'', period:'', notes:'', items:[] });
+  const { data, setData, post, patch, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'', due_date:'', period:'', notes:'', items:[] });
 
   const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
 
@@ -348,7 +348,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     setEditingInvoice(null);
     setInvType('proforma');
     reset();
-    setData('issued_date', '2026-03-19');
     setItems([{ description: '', sub_description: '', quantity: 1, unit_price: 0 }]);
     setShowModal(true);
   };

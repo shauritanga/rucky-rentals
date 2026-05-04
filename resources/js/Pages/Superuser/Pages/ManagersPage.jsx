@@ -75,6 +75,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                         <option value="">All Roles</option>
                         <option value="manager">Manager</option>
                         <option value="accountant">Accountant</option>
+                        <option value="maintenance_staff">Maintenance Staff</option>
                         <option value="viewer">Viewer</option>
                     </select>
                     <button type="button" className="btn-primary" onClick={onOpenManagerModal}>
@@ -139,7 +140,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                     </td>
                                     <td><span className={`role-tag ${String(manager.role || '').toLowerCase()}`}>{manager.role || 'manager'}</span></td>
                                     <td>
-                                        {manager.role === 'superuser'
+                                        {manager.role === 'superuser' || manager.role === 'maintenance_staff'
                                             ? <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>All Properties</span>
                                             : manager.assignedProperties.length > 0
                                                 ? manager.assignedProperties.map((p) => p.name).join(', ')

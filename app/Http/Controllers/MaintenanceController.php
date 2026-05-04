@@ -24,6 +24,10 @@ class MaintenanceController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+        $isGlobalMaintenanceStaff = $user?->role === 'maintenance_staff' && empty($user->property_id);
+        $selectedPropertyId = $isGlobalMaintenanceStaff && $request->filled('property_id')
+            ? (int) $request->query('property_id')
+            : null;
 
         if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Maintenance/Index', [
@@ -31,26 +35,53 @@ class MaintenanceController extends Controller
                 'units'          => MockRentalData::units(),
                 'scheduledTasks' => [],
                 'approvalCount'  => 0,
+                'properties'     => [],
+                'selectedPropertyId' => null,
+                'maintenanceStaff' => [],
             ]);
         }
 
         $tickets = MaintenanceRecord::with(['unit', 'documents'])->orderByDesc('reported_date');
         $units   = Unit::query()->approved()->orderBy('unit_number');
 
-        $this->scopeByUserProperty($tickets, $request);
-        $this->scopeUnitsByUserProperty($units, $request);
+        if ($isGlobalMaintenanceStaff && $selectedPropertyId) {
+            $tickets->where('property_id', $selectedPropertyId);
+            $units->where('property_id', $selectedPropertyId);
+        } else {
+            $this->scopeByUserProperty($tickets, $request);
+            $this->scopeUnitsByUserProperty($units, $request);
+        }
 
         $tickets = $tickets->get();
         $units   = $units->get();
 
         $scheduledTasks = ScheduledMaintenance::query()
-            ->when($this->shouldScopeToProperty($request), function ($q) use ($request) {
+            ->when($isGlobalMaintenanceStaff && $selectedPropertyId, function ($q) use ($selectedPropertyId) {
+                $q->where('property_id', $selectedPropertyId);
+            })
+            ->when(! $isGlobalMaintenanceStaff && $this->shouldScopeToProperty($request), function ($q) use ($request) {
                 $pid = $this->effectivePropertyId($request);
                 if ($pid) $q->where('property_id', $pid);
                 else $q->whereRaw('1 = 0');
             })
             ->orderBy('next_due')
             ->get();
+
+        $properties = $isGlobalMaintenanceStaff
+            ? Property::query()->where('status', 'active')->orderBy('name')->get(['id', 'name'])
+            : collect();
+
+        $maintenanceStaff = User::query()
+            ->where('role', 'maintenance_staff')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email'])
+            ->map(fn (User $staff) => [
+                'id' => $staff->id,
+                'name' => $staff->name,
+                'email' => $staff->email,
+            ])
+            ->values();
 
         // Approval count — for superuser in view mode, show pending tickets for that property
         $approvalCount = 0;
@@ -69,7 +100,15 @@ class MaintenanceController extends Controller
                 ->count();
         }
 
-        return Inertia::render('Maintenance/Index', compact('tickets', 'units', 'scheduledTasks', 'approvalCount'));
+        return Inertia::render('Maintenance/Index', [
+            'tickets' => $tickets,
+            'units' => $units,
+            'scheduledTasks' => $scheduledTasks,
+            'approvalCount' => $approvalCount,
+            'properties' => $properties,
+            'selectedPropertyId' => $selectedPropertyId,
+            'maintenanceStaff' => $maintenanceStaff,
+        ]);
     }
 
     public function store(Request $request)
@@ -89,14 +128,16 @@ class MaintenanceController extends Controller
             'materials.*.unit'   => 'nullable|string|max:50',
             'materials.*.qty'    => 'required|numeric|min:0',
             'materials.*.unit_price' => 'required|numeric|min:0',
+            'property_id'         => 'nullable|exists:properties,id',
             'images'             => 'nullable|array',
             'images.*'           => 'file|image|max:5120',
         ]);
 
         // Property always comes from the authenticated user's context — not inferred from the unit.
         // The unit lookup is only used to capture unit_id for reference.
-        $propertyId = $this->effectivePropertyId($request)
-            ?? $request->user()?->property_id;
+        $propertyId = $user?->role === 'maintenance_staff' && empty($user->property_id)
+            ? ($data['property_id'] ?? null)
+            : ($this->effectivePropertyId($request) ?? $request->user()?->property_id);
 
         abort_if(empty($propertyId), 422, 'No property context found. Please select a property first.');
 

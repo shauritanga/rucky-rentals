@@ -21,7 +21,8 @@ class UnitController extends Controller
 {
     use LogsAudit;
     private const SQM_PER_SQFT = 0.09290304;
-    private const COMMERCIAL_UNIT_TYPES = [
+    private const UNIT_TYPES = [
+        'Apartment',
         'Office Suite',
         'Retail Shop',
         'Showroom',
@@ -30,6 +31,7 @@ class UnitController extends Controller
         'Clinic',
         'Salon',
         'Store',
+        'Other',
     ];
 
     public function index(Request $request)
@@ -94,7 +96,7 @@ class UnitController extends Controller
         $data = $request->validate([
             'unit_number'            => ['required', 'string', $unitNumberUniqueRule],
             'floor'                  => $floorRule,
-            'type'                   => ['required', 'string', Rule::in(self::COMMERCIAL_UNIT_TYPES)],
+            'type'                   => ['required', 'string', Rule::in(self::UNIT_TYPES)],
             'size_sqm'               => 'required|numeric|min:0.1',
             'rate_per_sqm'           => 'required|numeric|min:0',
             'service_charge_per_sqm' => 'nullable|numeric|min:0',

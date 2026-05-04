@@ -11,12 +11,16 @@ const invoiceItemsNet = (inv) => (inv.items || []).reduce((sum, item) => sum + N
 const invoiceTotal = (inv) => {
   const net = invoiceItemsNet(inv);
   const vatRate = Number(inv.lease?.vat_rate ?? 0);
-  const hasLeaseItems = (inv.items || []).some((i) => {
+  const leaseVatBase = (inv.items || []).reduce((sum, i) => {
     const t = String(i.item_type || '').toLowerCase();
     const d = String(i.description || '').toLowerCase();
-    return t === 'rent' || t === 'service_charge' || d.includes('rent') || d.includes('service charge');
-  });
-  const vat = hasLeaseItems && vatRate > 0 ? Math.round(net * vatRate / 100) : 0;
+    if (['electricity', 'electricity_charge', 'electricity_vat'].includes(t) || d.includes('electricity') || d.includes('generator') || d.includes('submeter')) return sum;
+    if (t === 'rent' || t === 'service_charge' || d.includes('rent') || d.includes('service charge')) {
+      return sum + Number(i.total || 0);
+    }
+    return sum;
+  }, 0);
+  const vat = leaseVatBase > 0 && vatRate > 0 ? Math.round(leaseVatBase * vatRate / 100) : 0;
   return net + vat;
 };
 const classifyInvoiceItem = (item = {}) => {
@@ -24,7 +28,7 @@ const classifyInvoiceItem = (item = {}) => {
   const desc = String(item.description || '').toLowerCase();
   if (type === 'rent' || desc.includes('rent')) return 'rent';
   if (type === 'service_charge' || desc.includes('service charge')) return 'service_charge';
-  if (type === 'electricity' || desc.includes('electricity') || desc.includes('generator') || desc.includes('submeter')) return 'electricity';
+  if (['electricity', 'electricity_charge', 'electricity_vat'].includes(type) || desc.includes('electricity') || desc.includes('generator') || desc.includes('submeter')) return 'electricity';
   return 'electricity';
 };
 
@@ -301,6 +305,20 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
     return Array.from(map.values());
   }, [paymentRows]);
 
+  const tenantCreditForInvoice = (invoice) => {
+    if (!invoice) return 0;
+    const invoiceCurrency = getInvoiceCurrency(invoice);
+    const credit = creditsByTenant.find(
+      (c) => Number(c.tenant?.id) === Number(invoice.tenant_id) && normalizeCurrency(c.currency) === invoiceCurrency
+    );
+    return Number(credit?.amount || 0);
+  };
+
+  const invoiceOutstanding = (invoice) => {
+    if (!invoice) return 0;
+    return Math.max(0, invoiceTotal(invoice) - invoicePaidTotal(invoice.id) - tenantCreditForInvoice(invoice));
+  };
+
   const totalCreditTotals = creditsByTenant.reduce((acc, c) => {
     const money = normalizeCurrency(c.currency);
     acc[money] += Number(c.amount || 0);
@@ -328,13 +346,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
   const selectedInvoiceUnit = useMemo(() => resolveInvoiceUnit(selectedInvoice), [selectedInvoice, units]);
   const selectedInvoiceCurrency = useMemo(() => getInvoiceCurrency(selectedInvoice, selectedInvoiceUnit), [selectedInvoice, selectedInvoiceUnit]);
 
-  const selectedTenantCredit = useMemo(() => {
-    if (!selectedInvoice) return 0;
-    const credit = creditsByTenant.find(
-      (c) => Number(c.tenant?.id) === Number(selectedInvoice.tenant_id) && normalizeCurrency(c.currency) === selectedInvoiceCurrency
-    );
-    return Number(credit?.amount || 0);
-  }, [selectedInvoice, creditsByTenant, selectedInvoiceCurrency]);
+  const selectedTenantCredit = useMemo(() => tenantCreditForInvoice(selectedInvoice), [selectedInvoice, creditsByTenant]);
 
   const selectedInvoiceNet = selectedInvoice ? invoiceTotal(selectedInvoice) : 0;
   const selectedInvoicePaid = selectedInvoice ? invoicePaidTotal(selectedInvoice.id) : 0;
@@ -396,17 +408,13 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
       (u) => String(u.unit_number || '').trim().toLowerCase() === String(inv.unit_ref || '').trim().toLowerCase()
     );
 
-    const invoiceCurrency = getInvoiceCurrency(inv, unitFallback || null);
-    const tenantCredit = creditsByTenant.find(
-      (c) => Number(c.tenant?.id) === Number(inv.tenant_id) && normalizeCurrency(c.currency) === invoiceCurrency
-    );
     const invoicePaid = invoicePaidTotal(inv.id);
-    const due = Math.max(invoiceTotal(inv) - invoicePaid - Number(tenantCredit?.amount || 0), 0);
+    const due = Math.max(invoiceTotal(inv) - invoicePaid - tenantCreditForInvoice(inv), 0);
 
     setData('tenant_id', String(inv.tenant_id || tenantFallback?.id || ''));
     setData('unit_id', String(inv.unit_id || unitFallback?.id || ''));
     setData('month', String(inv.period || 'Mar 2026'));
-    setData('amount', due ? String(due) : String(invoiceTotal(inv)));
+    setData('amount', due > 0 ? String(due) : '');
     setData('reference', inv.invoice_number || '');
   };
 
@@ -721,8 +729,10 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                     <option value="">Select invoice...</option>
                     {eligibleInvoices.map((inv) => {
                       const invoiceCurrency = getInvoiceCurrency(inv);
+                      const total = invoiceTotal(inv);
+                      const outstanding = invoiceOutstanding(inv);
                       return (
-                        <option key={inv.id} value={inv.id}>{`${inv.invoice_number} — ${inv.tenant_name} (${inv.unit_ref || 'Unit'}) — ${formatAmount(invoiceTotal(inv), invoiceCurrency)}`}</option>
+                        <option key={inv.id} value={inv.id}>{`${inv.invoice_number} — ${inv.tenant_name} (${inv.unit_ref || 'Unit'}) — Balance ${formatAmount(outstanding, invoiceCurrency)} / Total ${formatAmount(total, invoiceCurrency)}`}</option>
                       );
                     })}
                   </select>
@@ -748,10 +758,17 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Unit {selectedInvoice.unit_ref || '—'} · {formatDisplayDateRange(selectedInvoice.period)}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Net Payable</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{formatAmount(selectedInvoiceNet, selectedInvoiceCurrency)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Balance Due</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>{formatAmount(selectedBalanceDue, selectedInvoiceCurrency)}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>Total {formatAmount(selectedInvoiceNet, selectedInvoiceCurrency)}</div>
                     </div>
                   </div>
+                  {selectedInvoicePaid > 0 && (
+                    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', fontSize: 13, marginBottom: selectedTenantCredit > 0 ? 8 : 0 }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Already paid: </span>
+                      <span style={{ fontWeight: 600 }}>{formatAmount(selectedInvoicePaid, selectedInvoiceCurrency)}</span>
+                    </div>
+                  )}
                   {selectedTenantCredit > 0 && (
                     <div style={{ background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
                       <span style={{ color: 'var(--green)', fontWeight: 600 }}>Credit on account: </span>
@@ -796,16 +813,20 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                     ? 'Electricity-only payment: receipt can be issued without WHT confirmation.'
                     : 'Rent/service charge payments require WHT confirmation before receipt issuance.'}
                 </div>
-                <div style={{ marginTop: 10 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                    <input type="checkbox" checked={!!data.wht_confirmed} onChange={(e) => setData('wht_confirmed', e.target.checked)} />
-                    Tenant confirmed WHT payment
-                  </label>
-                </div>
-                <div style={{ marginTop: 10 }}>
-                  <label className="form-label">WHT Reference / Note</label>
-                  <input className="form-input" type="text" value={data.wht_reference} onChange={(e) => setData('wht_reference', e.target.value)} placeholder="Optional WHT reference number" />
-                </div>
+                {invoiceBreakdown.hasLeaseRelated && (
+                  <>
+                    <div style={{ marginTop: 10 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                        <input type="checkbox" checked={!!data.wht_confirmed} onChange={(e) => setData('wht_confirmed', e.target.checked)} />
+                        Tenant confirmed WHT payment
+                      </label>
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <label className="form-label">WHT Reference / Note</label>
+                      <input className="form-input" type="text" value={data.wht_reference} onChange={(e) => setData('wht_reference', e.target.value)} placeholder="Optional WHT reference number" />
+                    </div>
+                  </>
+                )}
                 {(errors.wht_confirmed || errors.issue_receipt) && (
                   <div style={{ marginTop: 6, fontSize: 12, color: 'var(--red)' }}>{errors.wht_confirmed || errors.issue_receipt}</div>
                 )}

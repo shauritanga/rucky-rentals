@@ -154,9 +154,15 @@ class PaymentController extends Controller
         $data['breakdown_service_charge'] = $breakdown['service_charge'];
         $data['breakdown_electricity'] = $breakdown['electricity'];
 
+        if (!$breakdown['has_lease_related']) {
+            $whtConfirmed = false;
+            $data['wht_confirmed'] = false;
+            $data['wht_reference'] = null;
+        }
+
         $isPartialPayment = false;
         if ($invoice) {
-            $invoiceTotal = (float) $invoice->items->sum('total');
+            $invoiceTotal = $this->invoiceGrossTotal($invoice);
             $alreadyPaid = (float) Payment::where('invoice_id', $invoice->id)
                 ->where('status', 'paid')
                 ->sum('amount');
@@ -252,7 +258,7 @@ class PaymentController extends Controller
     {
         if (empty($invoiceId)) return;
 
-        $invoice = Invoice::with('items')->find($invoiceId);
+        $invoice = Invoice::with(['items', 'lease:id,vat_rate'])->find($invoiceId);
         if (!$invoice) return;
 
         // Convert proforma to tax invoice on first payment.
@@ -272,16 +278,14 @@ class PaymentController extends Controller
             $invoice->refresh();
         }
 
-        // Use base-currency amounts so USD invoices reconcile correctly.
-        // total_in_base is set by AccountingService when posting; fall back to
-        // items sum × exchange_rate for invoices not yet converted.
-        $invoiceTotal = (float) ($invoice->total_in_base
-            ?: ($invoice->exchange_rate
-                ? $invoice->items->sum('total') * (float) $invoice->exchange_rate
-                : $invoice->items->sum('total')));
+        $invoiceTotal = $this->invoiceGrossTotalInBase($invoice);
         $paidTotal = (float) Payment::where('invoice_id', $invoice->id)
             ->where('status', 'paid')
             ->sum(DB::raw('COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))'));
+        $paidTotalSource = (float) Payment::where('invoice_id', $invoice->id)
+            ->where('status', 'paid')
+            ->sum('amount');
+        $invoiceTotalSource = $this->invoiceGrossTotal($invoice);
 
         if ($invoiceTotal > 0 && $paidTotal + 0.01 >= $invoiceTotal) {
             $invoice->status = 'paid';
@@ -294,7 +298,7 @@ class PaymentController extends Controller
         }
 
         $invoice->save();
-        $this->reconcileInstallmentStatus($invoice, $paidTotal, $invoiceTotal);
+        $this->reconcileInstallmentStatus($invoice, $paidTotalSource, $invoiceTotalSource);
     }
 
     private function reconcileInstallmentStatus(Invoice $invoice, float $paidTotal, float $invoiceTotal): void
@@ -322,6 +326,55 @@ class PaymentController extends Controller
             'status' => $status,
             'paid_amount' => max(0, round($paidTotal, 2)),
         ]);
+    }
+
+    private function invoiceGrossTotal(Invoice $invoice): float
+    {
+        $invoice->loadMissing(['items', 'lease:id,vat_rate']);
+
+        $items = $invoice->items ?? collect();
+        $itemsTotal = (float) $items->sum('total');
+        $vatRate = (float) ($invoice->lease?->vat_rate ?? 0);
+
+        if ($vatRate <= 0) {
+            return round($itemsTotal, 2);
+        }
+
+        $leaseVatBase = (float) $items
+            ->filter(fn($item) => $this->isLeaseVatEligibleItem($item))
+            ->sum('total');
+
+        return round($itemsTotal + ($leaseVatBase * ($vatRate / 100)), 2);
+    }
+
+    private function invoiceGrossTotalInBase(Invoice $invoice): float
+    {
+        if (!empty($invoice->total_in_base)) {
+            return (float) $invoice->total_in_base;
+        }
+
+        $gross = $this->invoiceGrossTotal($invoice);
+        $exchangeRate = (float) ($invoice->exchange_rate ?: 1);
+
+        return round($gross * $exchangeRate, 2);
+    }
+
+    private function isLeaseVatEligibleItem($item): bool
+    {
+        $itemType = strtolower((string) ($item->item_type ?? 'other'));
+        if (in_array($itemType, ['electricity_charge', 'electricity', 'electricity_vat'], true)) {
+            return false;
+        }
+
+        $description = strtolower((string) ($item->description ?? ''));
+        if (str_contains($description, 'electricity') || str_contains($description, 'generator') || str_contains($description, 'submeter')) {
+            return false;
+        }
+
+        return $itemType === 'rent'
+            || $itemType === 'service_charge'
+            || str_contains($description, 'rent')
+            || str_contains($description, 'service charge');
     }
 
     private function attachInvoiceToInstallment(Invoice $invoice): void

@@ -18,7 +18,7 @@ class ReportVatExclusionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_reports_overview_excludes_vat_from_revenue_and_noi(): void
+    public function test_reports_overview_excludes_vat_from_gross_revenue_and_net_revenue(): void
     {
         [$user, $tenant, $unit, $lease, $property] = $this->createLeaseContext();
 
@@ -114,6 +114,7 @@ class ReportVatExclusionTest extends TestCase
         $page = $this->extractInertiaPage($response->getContent());
 
         $this->assertEquals(1280.0, data_get($page, 'props.report.kpis.revenue'));
+        $this->assertEquals(80.0, data_get($page, 'props.report.kpis.totalExpenses'));
         $this->assertEquals(1200.0, data_get($page, 'props.report.kpis.noi'));
         $this->assertEquals(1280.0, data_get($page, 'props.report.monthlyRevenue.0.value'));
         $this->assertEquals(1000.0, data_get($page, 'props.report.monthlyRevenue.0.rent'));
@@ -128,8 +129,9 @@ class ReportVatExclusionTest extends TestCase
 
         $csv->assertOk();
         $streamed = $csv->streamedContent();
-        $this->assertStringContainsString("Revenue,\"1,280.00\"", $streamed);
-        $this->assertStringContainsString("NOI,\"1,200.00\"", $streamed);
+        $this->assertStringContainsString("\"Gross Revenue\",\"1,280.00\"", $streamed);
+        $this->assertStringContainsString("\"Total Expenses\",80.00", $streamed);
+        $this->assertStringContainsString("\"Net Revenue\",\"1,200.00\"", $streamed);
     }
 
     private function createLeaseContext(): array

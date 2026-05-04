@@ -5,6 +5,15 @@ import AppLayout from '@/Layouts/AppLayout';
 const fmtNum = (value) => Number(value ?? 0).toLocaleString();
 const fmtTZS = (value) => `TZS ${fmtNum(Math.round(Number(value ?? 0)))}`;
 const fmtMonth = (value) => new Date(`${value}-02`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+const fmtQuarter = (value) => {
+    const date = new Date(`${value}T00:00:00`);
+
+    if (Number.isNaN(date.getTime())) {
+        return 'Select reading date';
+    }
+
+    return `Q${Math.floor(date.getMonth() / 3) + 1} ${date.getFullYear()}`;
+};
 const electricityTabs = ['overview', 'direct', 'submeter', 'generator', 'outages'];
 
 const resolveActiveTab = (url) => {
@@ -35,6 +44,7 @@ export default function Electricity({
     generatorSettings = {},
     submeterSettings = {},
     runtimeHistory = [],
+    directReadingPrompt = {},
 }) {
     const { props, url } = usePage();
     const flash = props.flash ?? {};
@@ -125,6 +135,8 @@ export default function Electricity({
     const flashSuccess = flash.success ?? null;
     const floorSelectOptions = ['All floors', ...floorOptions.filter((label) => label !== 'All floors')];
     const selectedDirectUnit = directUnits.find((unit) => String(unit.id) === String(readingForm.unit_id));
+    const quarterlyMissingUnits = directReadingPrompt.missing_units ?? [];
+    const quarterlyPromptComplete = (directReadingPrompt.total_units ?? 0) > 0 && quarterlyMissingUnits.length === 0;
 
     const setActiveTab = (nextTab) => {
         setTab(nextTab);
@@ -261,13 +273,38 @@ export default function Electricity({
                                 <div>
                                     <div className="page-title">Direct Generator Billing</div>
                                     <div className="page-sub">
-                                        Direct units are billed only for generator use at {fmtTZS(generatorRate)} per kWh plus {generatorVat}% VAT.
+                                        Direct units are prompted quarterly and billed only for generator use at {fmtTZS(generatorRate)} per kWh plus {generatorVat}% VAT.
                                     </div>
                                 </div>
                                 <div className="actions">
                                     <button className="btn-primary" onClick={() => post('/electricity/invoices/issue', { kind: 'direct' })}>
                                         Issue Generator Proforma
                                     </button>
+                                </div>
+                            </div>
+
+                            <div
+                                className="info-box"
+                                style={{
+                                    marginBottom: 16,
+                                    borderColor: quarterlyMissingUnits.length ? 'var(--amber)' : 'rgba(34, 197, 94, 0.35)',
+                                    background: quarterlyMissingUnits.length ? 'var(--amber-dim)' : 'var(--green-dim)',
+                                }}
+                            >
+                                <div className="info-box-text">
+                                    <strong>{directReadingPrompt.label ?? 'Current quarter'} electricity reading prompt:</strong>{' '}
+                                    {quarterlyPromptComplete
+                                        ? 'all direct units have a reading for this quarter.'
+                                        : `${quarterlyMissingUnits.length} of ${directReadingPrompt.total_units ?? directUnits.length} direct unit(s) still need a quarterly reading.`}
+                                    {quarterlyMissingUnits.length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                                            {quarterlyMissingUnits.map((unit) => (
+                                                <span key={unit.id} className="badge muted">
+                                                    {unit.unit_number}{unit.tenant_name ? ` - ${unit.tenant_name}` : ''}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -286,9 +323,9 @@ export default function Electricity({
                                                 </select>
                                             </div>
                                             <div className="form-group">
-                                                <label className="form-label">Billing Month</label>
+                                                <label className="form-label">Billing Quarter</label>
                                                 <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>
-                                                    {fmtMonth(readingForm.reading_date.slice(0, 7))}
+                                                    {fmtQuarter(readingForm.reading_date)}
                                                 </div>
                                             </div>
                                         </div>
@@ -347,10 +384,10 @@ export default function Electricity({
                                             <div className="info-box-text">The system calculates billable units automatically from <strong>current reading minus previous reading</strong>. No manual generator entry is required.</div>
                                         </div>
                                         <div className="info-box">
-                                            <div className="info-box-text">Saving a direct reading creates or updates one draft invoice per <strong>unit and reading date</strong>, only when the calculated units are greater than zero.</div>
+                                            <div className="info-box-text">Saving a direct reading creates or updates one proforma per <strong>unit and reading date</strong>, only when the calculated units are greater than zero.</div>
                                         </div>
                                         <div className="info-box">
-                                            <div className="info-box-text">Direct draft invoices this month: <strong>{directDraftCount}</strong></div>
+                                            <div className="info-box-text">Direct proformas this quarter: <strong>{directDraftCount}</strong></div>
                                         </div>
                                     </div>
                                 </div>
@@ -400,7 +437,7 @@ export default function Electricity({
                                                 <td>{reading.invoice_number ?? 'Pending'}</td>
                                             </tr>
                                         ))}
-                                        {directReadings.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>No direct readings recorded for {fmtMonth(currentMonth)}</td></tr>}
+                                        {directReadings.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>No direct readings recorded for {directReadingPrompt.label ?? fmtMonth(currentMonth)}</td></tr>}
                                     </tbody>
                                 </table>
                             </div>

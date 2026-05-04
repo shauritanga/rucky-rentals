@@ -13,7 +13,8 @@ const APPROVAL_BADGE = {
 };
 const fmt = (n) => Number(n).toLocaleString();
 const SQM_PER_SQFT = 0.09290304;
-const COMMERCIAL_UNIT_TYPES = [
+const UNIT_TYPES = [
+  'Apartment',
   'Office Suite',
   'Retail Shop',
   'Showroom',
@@ -22,6 +23,7 @@ const COMMERCIAL_UNIT_TYPES = [
   'Clinic',
   'Salon',
   'Store',
+  'Other',
 ];
 
 // Unit number must be G.01–G.99, M.01–M.99, F1.01–F1.99 … F99.99, B1.01–B1.99 … B99.99
@@ -463,9 +465,9 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Commercial Unit Type</label>
+                  <label className="form-label">Unit Type</label>
                   <select className="form-input form-select" value={editData.type} onChange={e => setEditData('type', e.target.value)}>
-                    {COMMERCIAL_UNIT_TYPES.map(t => <option key={t}>{t}</option>)}
+                    {UNIT_TYPES.map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
                 <div className="form-group">
@@ -574,7 +576,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
         <div className="modal">
           <div className="modal-header">
-            <div className="modal-title">Add New Commercial Unit</div>
+            <div className="modal-title">Add New Unit</div>
             <button className="modal-close" onClick={()=>setShowModal(false)}>✕</button>
           </div>
           <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
@@ -619,8 +621,8 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               </div>
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Commercial Unit Type</label>
-                  <select className={`form-input form-select${errors.type ? ' input-error' : ''}`} value={data.type} onChange={e=>setData('type',e.target.value)}>{COMMERCIAL_UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select>
+                  <label className="form-label">Unit Type</label>
+                  <select className={`form-input form-select${errors.type ? ' input-error' : ''}`} value={data.type} onChange={e=>setData('type',e.target.value)}>{UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select>
                   {errors.type && <div className="form-error">{errors.type}</div>}
                 </div>
                 <div className="form-group">

@@ -17,10 +17,13 @@ class ScheduledMaintenanceController extends Controller
             'next_due'  => 'required|date',
             'assignee'  => 'nullable|string',
             'notes'     => 'nullable|string',
+            'property_id' => 'nullable|exists:properties,id',
         ]);
 
         $unit       = $this->resolveUnitByReference($request, $data['unit_ref'] ?? null);
-        $propertyId = $unit?->property_id ?? $request->user()?->property_id;
+        $propertyId = $request->user()?->role === 'maintenance_staff' && empty($request->user()?->property_id)
+            ? ($data['property_id'] ?? $unit?->property_id)
+            : ($unit?->property_id ?? $request->user()?->property_id);
 
         abort_if(empty($propertyId), 422, 'Unable to determine property for this task.');
 

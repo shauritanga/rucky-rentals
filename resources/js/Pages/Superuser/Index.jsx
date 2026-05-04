@@ -262,21 +262,23 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
               <div className="form-row"><div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={managerForm.name} onChange={(e) => setManagerForm((f) => ({ ...f, name: e.target.value }))} required />{managerErrors.name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.name}</div>}</div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={managerForm.email} onChange={(e) => setManagerForm((f) => ({ ...f, email: e.target.value }))} required />{managerErrors.email && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.email}</div>}</div><div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={managerForm.phone} onChange={(e) => setManagerForm((f) => ({ ...f, phone: e.target.value }))} /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Role *</label>
-                <select className="form-input form-select" value={managerForm.role} onChange={(e) => setManagerForm((f) => ({ ...f, role: e.target.value }))} required>
+                <select className="form-input form-select" value={managerForm.role} onChange={(e) => setManagerForm((f) => ({ ...f, role: e.target.value, property_id: e.target.value === 'maintenance_staff' ? '' : f.property_id }))} required>
                   <option value="">Select role...</option>
                   <option value="manager">Property Manager</option>
                   <option value="accountant">Accountant</option>
+                  <option value="maintenance_staff">Maintenance Staff</option>
                   <option value="viewer">Viewer (Read-Only)</option>
                 </select>
                 {managerErrors.role && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.role}</div>}
               </div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Assign Property</label>
-                <select className="form-input form-select" value={managerForm.property_id} onChange={(e) => setManagerForm((f) => ({ ...f, property_id: e.target.value }))}>
-                  <option value="">Select property...</option>
+                <select className="form-input form-select" value={managerForm.property_id} onChange={(e) => setManagerForm((f) => ({ ...f, property_id: e.target.value }))} disabled={managerForm.role === 'maintenance_staff'}>
+                  <option value="">{managerForm.role === 'maintenance_staff' ? 'All Properties' : 'Select property...'}</option>
                   {effectiveProperties.map((property) => (
                     <option key={property.id} value={property.id}>{property.name}</option>
                   ))}
                 </select>
+                {managerForm.role === 'maintenance_staff' && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Maintenance Staff have access to all properties.</div>}
               </div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Require 2FA</label>
                 <select className="form-input form-select" value={managerForm.twoFA} onChange={(e) => setManagerForm((f) => ({ ...f, twoFA: e.target.value }))}>

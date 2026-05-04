@@ -120,6 +120,8 @@ class TeamController extends Controller
             'permissions' => 'nullable|array',
         ]);
 
+        abort_if($data['role'] === 'maintenance_staff' && ! $actor?->isSuperuser(), 403, 'Only superuser can create maintenance staff.');
+
         $propertyId = $this->resolvePropertyIdForActor($actor);
         $propertyName = $propertyId ? Property::where('id', $propertyId)->value('name') : null;
 
@@ -376,7 +378,14 @@ class TeamController extends Controller
             if (empty($user->property_id)) {
                 $query->whereRaw('1 = 0');
             } else {
-                $query->where('property_id', $user->property_id);
+                $query->where(function ($q) use ($user) {
+                    $q->where('property_id', $user->property_id)
+                        ->orWhere(function ($globalStaff) {
+                            $globalStaff
+                                ->where('role', 'maintenance_staff')
+                                ->whereNull('property_id');
+                        });
+                });
             }
         }
 
@@ -391,6 +400,8 @@ class TeamController extends Controller
             'email' => $member->email,
             'phone' => $member->phone,
             'role' => $member->role,
+            'property_id' => $member->property_id,
+            'global_access' => $member->role === 'maintenance_staff' && empty($member->property_id),
             'status' => $member->status ?: 'active',
             'last_active' => optional($member->updated_at)->diffForHumans(),
             'deleted_at' => $member->deleted_at ? $member->deleted_at->diffForHumans() : null,
