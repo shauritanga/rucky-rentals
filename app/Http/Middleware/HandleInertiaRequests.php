@@ -4,7 +4,6 @@ namespace App\Http\Middleware;
 
 use App\Models\Property;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -48,9 +47,12 @@ class HandleInertiaRequests extends Middleware
                     'bio'                  => $request->user()->bio,
                     'role'                 => $request->user()->role,
                     'property_id'          => $request->user()->property_id,
+                    'property_name'        => $request->user()->property_id
+                                                ? Property::find($request->user()->property_id)?->name
+                                                : null,
                     'must_change_password' => (bool) $request->user()->must_change_password,
                     'avatar_url'           => $request->user()->avatar
-                                                ? Storage::url($request->user()->avatar)
+                                                ? '/storage/' . $request->user()->avatar
                                                 : null,
                     'session_timeout_minutes' => EnforceSessionTimeout::timeoutMinutesFromSettings(),
                 ] : null,

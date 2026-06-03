@@ -88,9 +88,15 @@ class EnforceSessionTimeout
         return self::timeoutMinutesFromSettings();
     }
 
-    private function timeoutResponse(Request $request): JsonResponse|RedirectResponse
+    private function timeoutResponse(Request $request): Response
     {
         $message = 'Your session expired after inactivity. Please sign in again.';
+
+        if ($request->header('X-Inertia')) {
+            return response('', 409)->withHeaders([
+                'X-Inertia-Location' => route('login'),
+            ]);
+        }
 
         if ($request->expectsJson()) {
             return response()->json(['message' => $message], 401);

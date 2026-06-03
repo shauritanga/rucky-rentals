@@ -57,19 +57,19 @@ class ProfileController extends Controller
     public function updateAvatar(Request $request)
     {
         $request->validate([
-            'avatar' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'avatar' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
 
         $user = $request->user();
 
-        // Delete previous avatar file if it exists
         if ($user->avatar) {
             Storage::disk('public')->delete($user->avatar);
         }
 
+        Storage::disk('public')->makeDirectory('avatars');
         $path = $request->file('avatar')->store('avatars', 'public');
         $user->update(['avatar' => $path]);
 
-        return back()->with('success', 'Profile photo updated.');
+        return response()->json(['avatar_url' => '/storage/' . $path]);
     }
 }

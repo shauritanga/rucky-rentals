@@ -252,6 +252,7 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .form-input{width:100%;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:8px 11px;font-size:13.5px;font-family:inherit;color:var(--text-primary);outline:none;transition:border-color .15s}
 .form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
 .form-input.input-error{border-color:var(--red)}
+.form-input:-webkit-autofill,.form-input:-webkit-autofill:hover,.form-input:-webkit-autofill:focus{-webkit-box-shadow:0 0 0 1000px var(--bg-elevated) inset;-webkit-text-fill-color:var(--text-primary);transition:background-color 5000s ease-in-out 0s}
 .form-error{font-size:11.5px;color:var(--red);margin-top:4px}
 .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8d96' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
 .drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);z-index:90;opacity:0;pointer-events:none;transition:opacity .22s}
