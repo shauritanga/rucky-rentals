@@ -198,7 +198,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
       type:                   unit.type ?? 'Office Suite',
       size_sqm:               unit.size_sqm ?? '',
       rate_per_sqm:           unit.rate_per_sqm ?? unitRatePerSqm(unit),
-      service_charge_per_sqm: unit.service_charge_per_sqm ?? (unitSizeSqm(unit) > 0 ? (Number(unit.service_charge ?? 0) / unitSizeSqm(unit)).toFixed(2) : ''),
+      service_charge_per_sqm: unit.service_charge_per_sqm ?? (unitSizeSqm(unit) > 0 ? (Number(unit.service_charge ?? 0) / unitSizeSqm(unit)).toFixed(4) : ''),
       currency:               unit.currency ?? 'TZS',
       status:                 unit.status ?? 'vacant',
       electricity_type:       unit.electricity_type ?? 'direct',
@@ -485,13 +485,13 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                 </div>
                 <div className="form-group">
                   <label className="form-label">Rent Rate per m² ({editData.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={editData.rate_per_sqm} onChange={e => setEditData('rate_per_sqm', e.target.value)} required />
+                  <input className="form-input" type="number" step="0.0001" min="0" value={editData.rate_per_sqm} onChange={e => setEditData('rate_per_sqm', e.target.value)} required />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Service Charge Rate per m² ({editData.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={editData.service_charge_per_sqm} onChange={e => setEditData('service_charge_per_sqm', e.target.value)} />
+                  <input className="form-input" type="number" step="0.0001" min="0" value={editData.service_charge_per_sqm} onChange={e => setEditData('service_charge_per_sqm', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Electricity Type</label>
@@ -638,14 +638,14 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                 </div>
                 <div className="form-group">
                   <label className="form-label">Rent Rate per m² ({data.currency})</label>
-                  <input className={`form-input${errors.rate_per_sqm ? ' input-error' : ''}`} type="number" step="0.01" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required />
+                  <input className={`form-input${errors.rate_per_sqm ? ' input-error' : ''}`} type="number" step="0.0001" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required />
                   {errors.rate_per_sqm && <div className="form-error">{errors.rate_per_sqm}</div>}
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Service Charge Rate per m² ({data.currency})</label>
-                  <input className={`form-input${errors.service_charge_per_sqm ? ' input-error' : ''}`} type="number" step="0.01" min="0" value={data.service_charge_per_sqm} onChange={e=>setData('service_charge_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '2000' : '2'} />
+                  <input className={`form-input${errors.service_charge_per_sqm ? ' input-error' : ''}`} type="number" step="0.0001" min="0" value={data.service_charge_per_sqm} onChange={e=>setData('service_charge_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '2000' : '2'} />
                   {errors.service_charge_per_sqm && <div className="form-error">{errors.service_charge_per_sqm}</div>}
                 </div>
                 <div className="form-group">
