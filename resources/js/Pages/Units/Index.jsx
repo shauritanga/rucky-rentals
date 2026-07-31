@@ -472,7 +472,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                 </div>
                 <div className="form-group">
                   <label className="form-label">Size (m²)</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={editData.size_sqm} onChange={e => setEditData('size_sqm', e.target.value)} required />
+                  <input className="form-input" type="number" step="0.0001" min="0" value={editData.size_sqm} onChange={e => setEditData('size_sqm', e.target.value)} required />
                 </div>
               </div>
               <div className="form-row">
@@ -627,7 +627,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                 </div>
                 <div className="form-group">
                   <label className="form-label">Size (m²)</label>
-                  <input className={`form-input${errors.size_sqm ? ' input-error' : ''}`} type="number" step="0.01" min="0" value={data.size_sqm} onChange={e=>setData('size_sqm',e.target.value)} placeholder="60" required />
+                  <input className={`form-input${errors.size_sqm ? ' input-error' : ''}`} type="number" step="0.0001" min="0" value={data.size_sqm} onChange={e=>setData('size_sqm',e.target.value)} placeholder="60" required />
                   {errors.size_sqm && <div className="form-error">{errors.size_sqm}</div>}
                 </div>
               </div>
