@@ -16,6 +16,7 @@
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    @routes
     @viteReactRefresh
     @vite(['resources/js/app.jsx', 'resources/css/app.css'])
     @inertiaHead
