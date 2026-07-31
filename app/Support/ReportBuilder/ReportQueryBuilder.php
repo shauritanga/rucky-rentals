@@ -66,6 +66,11 @@ class ReportQueryBuilder
         return $col ? "{$entity['label']} - {$col['label']}" : "{$entityKey}.{$field}";
     }
 
+    public function columnType(string $entityKey, string $field): string
+    {
+        return $this->entities[$entityKey]['columns'][$field]['type'] ?? 'string';
+    }
+
     /**
      * @return array{0: Builder, 1: array<string, true>} the joined query (no select/sort yet)
      *         and the map of entity keys that ended up part of the join.

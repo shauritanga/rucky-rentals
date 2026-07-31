@@ -94,6 +94,7 @@ class ReportBuilderController extends Controller
             $columns = collect($config['columns'])->map(fn ($c) => [
                 'key' => "{$c['entity']}__{$c['field']}",
                 'label' => $builder->columnLabel($c['entity'], $c['field']),
+                'type' => $builder->columnType($c['entity'], $c['field']),
             ])->all();
 
             return response()->json([

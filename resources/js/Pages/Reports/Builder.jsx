@@ -3,8 +3,28 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
 import ReportTabs from './ReportTabs';
+import { formatDisplayDate } from '@/utils/dateFormat';
 
 const TYPE_LABEL = { string: 'Text', number: 'Number', currency: 'Currency', date: 'Date', enum: 'Choice', boolean: 'Yes/No' };
+
+function formatCell(value, type) {
+  if (value === null || value === undefined || value === '') return '';
+  if (type === 'currency') {
+    const n = Number(value);
+    return Number.isNaN(n) ? String(value) : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if (type === 'number') {
+    const n = Number(value);
+    return Number.isNaN(n) ? String(value) : n.toLocaleString();
+  }
+  if (type === 'date') {
+    return formatDisplayDate(value, String(value));
+  }
+  if (type === 'boolean') {
+    return value === true || value === 1 || value === '1' || value === 'true' ? 'Yes' : 'No';
+  }
+  return String(value);
+}
 
 function columnKey(entity, field) {
   return `${entity}.${field}`;
@@ -503,13 +523,19 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
                   <table className="data-table">
                     <thead>
                       <tr>
-                        {preview.columns.map((c) => <th key={c.key}>{c.label}</th>)}
+                        {preview.columns.map((c) => (
+                          <th key={c.key} style={c.type === 'currency' || c.type === 'number' ? { textAlign: 'right' } : undefined}>{c.label}</th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody>
                       {preview.rows.map((row, i) => (
                         <tr key={i}>
-                          {preview.columns.map((c) => <td key={c.key}>{String(row[c.key] ?? '')}</td>)}
+                          {preview.columns.map((c) => (
+                            <td key={c.key} style={c.type === 'currency' || c.type === 'number' ? { textAlign: 'right', fontVariantNumeric: 'tabular-nums' } : undefined}>
+                              {formatCell(row[c.key], c.type)}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
