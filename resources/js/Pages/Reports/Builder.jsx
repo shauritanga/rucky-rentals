@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head } from '@inertiajs/react';
 import axios from 'axios';
@@ -8,6 +8,55 @@ const TYPE_LABEL = { string: 'Text', number: 'Number', currency: 'Currency', dat
 
 function columnKey(entity, field) {
   return `${entity}.${field}`;
+}
+
+function MultiSelectDropdown({ options, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  function toggleOption(opt) {
+    onChange(selected.includes(opt) ? selected.filter((o) => o !== opt) : [...selected, opt]);
+  }
+
+  const label = selected.length === 0 ? 'All' : selected.length === 1 ? selected[0] : `${selected.length} selected`;
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="form-input"
+        style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span>{label}</span>
+        <span style={{ opacity: .6, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, marginTop: 4,
+            background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8,
+            boxShadow: 'var(--shadow-float)', maxHeight: 200, overflowY: 'auto', padding: 6,
+          }}
+        >
+          {options.map((opt) => (
+            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '4px 6px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggleOption(opt)} />
+              {opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function FilterInput({ type, value = {}, options = [], onChange }) {
@@ -39,16 +88,12 @@ function FilterInput({ type, value = {}, options = [], onChange }) {
   }
   if (type === 'enum' || type === 'boolean') {
     const opts = options?.length ? options : ['true', 'false'];
-    const selected = value.in ?? [];
     return (
-      <select
-        className="form-input"
-        multiple
-        value={selected}
-        onChange={(e) => onChange({ in: Array.from(e.target.selectedOptions).map((o) => o.value) })}
-      >
-        {opts.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
+      <MultiSelectDropdown
+        options={opts}
+        selected={value.in ?? []}
+        onChange={(vals) => onChange({ in: vals })}
+      />
     );
   }
   return null;
