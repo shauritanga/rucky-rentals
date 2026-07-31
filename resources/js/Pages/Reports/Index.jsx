@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 import ReactApexChart from 'react-apexcharts';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import ReportTabs from './ReportTabs';
 
 const getCSSVar = (name) =>
   typeof window !== 'undefined'
@@ -229,27 +230,13 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
       </div>
 
       {/* Tab Bar */}
-      <div className="reports-tabbar" style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '1px solid var(--border)' }}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              padding: '8px 16px',
-              fontSize: 13,
-              fontWeight: activeTab === tab.key ? 600 : 400,
-              color: activeTab === tab.key ? 'var(--accent)' : 'var(--text-secondary)',
-              background: 'none',
-              border: 'none',
-              borderBottom: activeTab === tab.key ? '2px solid var(--accent)' : '2px solid transparent',
-              cursor: 'pointer',
-              marginBottom: -1,
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <ReportTabs
+        active={activeTab}
+        tabs={[
+          ...TABS.map((tab) => ({ key: tab.key, label: tab.label, onClick: () => setActiveTab(tab.key) })),
+          { key: 'builder', label: 'Custom Reports', href: route('reports.builder') },
+        ]}
+      />
 
       {/* ── Overview Tab ── */}
       {activeTab === 'overview' && (
