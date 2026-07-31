@@ -10,8 +10,10 @@ function columnKey(entity, field) {
   return `${entity}.${field}`;
 }
 
-function MultiSelectDropdown({ options, selected, onChange }) {
+function MultiSelectDropdown({ options: staticOptions, entity, field, selected, onChange }) {
   const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState(staticOptions ?? null);
+  const [loading, setLoading] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -21,6 +23,22 @@ function MultiSelectDropdown({ options, selected, onChange }) {
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
+
+  async function handleToggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && options === null) {
+      setLoading(true);
+      try {
+        const { data } = await axios.get(route('reports.builder.column-options'), { params: { entity, field } });
+        setOptions(data.options || []);
+      } catch {
+        setOptions([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }
 
   function toggleOption(opt) {
     onChange(selected.includes(opt) ? selected.filter((o) => o !== opt) : [...selected, opt]);
@@ -34,7 +52,7 @@ function MultiSelectDropdown({ options, selected, onChange }) {
         type="button"
         className="form-input"
         style={{ textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggle}
       >
         <span>{label}</span>
         <span style={{ opacity: .6, fontSize: 10 }}>{open ? '▲' : '▼'}</span>
@@ -47,7 +65,9 @@ function MultiSelectDropdown({ options, selected, onChange }) {
             boxShadow: 'var(--shadow-float)', maxHeight: 200, overflowY: 'auto', padding: 6,
           }}
         >
-          {options.map((opt) => (
+          {loading && <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 6px' }}>Loading…</div>}
+          {!loading && (options ?? []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 6px' }}>No values found.</div>}
+          {!loading && (options ?? []).map((opt) => (
             <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '4px 6px', cursor: 'pointer' }}>
               <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggleOption(opt)} />
               {opt}
@@ -59,7 +79,7 @@ function MultiSelectDropdown({ options, selected, onChange }) {
   );
 }
 
-function FilterInput({ type, value = {}, options = [], onChange }) {
+function FilterInput({ type, entity, field, value = {}, options = [], onChange }) {
   if (type === 'string') {
     return (
       <input
@@ -87,10 +107,12 @@ function FilterInput({ type, value = {}, options = [], onChange }) {
     );
   }
   if (type === 'enum' || type === 'boolean') {
-    const opts = options?.length ? options : ['true', 'false'];
+    const staticOpts = options?.length ? options : (type === 'boolean' ? ['true', 'false'] : null);
     return (
       <MultiSelectDropdown
-        options={opts}
+        options={staticOpts}
+        entity={entity}
+        field={field}
         selected={value.in ?? []}
         onChange={(vals) => onChange({ in: vals })}
       />
@@ -428,6 +450,8 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 3 }}>{col.label} <span style={{ opacity: .6 }}>({TYPE_LABEL[col.type]})</span></div>
                             <FilterInput
                               type={col.type}
+                              entity={entKey}
+                              field={field}
                               options={col.options}
                               value={filters[columnKey(entKey, field)] || {}}
                               onChange={(v) => setFilterValue(entKey, field, v)}

@@ -82,6 +82,7 @@ Route::middleware('auth')->group(function () {
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
         Route::get('reports/export', [ReportController::class, 'export'])->name('reports.export');
         Route::get('reports/builder', [ReportBuilderController::class, 'index'])->name('reports.builder');
+        Route::get('reports/builder/column-options', [ReportBuilderController::class, 'columnOptions'])->name('reports.builder.column-options');
         Route::post('reports/builder/preview', [ReportBuilderController::class, 'preview'])->name('reports.builder.preview');
         Route::post('reports/builder/export', [ReportBuilderController::class, 'export'])->name('reports.builder.export');
         Route::post('reports/builder/templates', [ReportBuilderController::class, 'storeTemplate'])->name('reports.templates.store');

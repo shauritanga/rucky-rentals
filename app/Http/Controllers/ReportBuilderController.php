@@ -9,6 +9,7 @@ use App\Support\ReportBuilder\ReportBuilderException;
 use App\Support\ReportBuilder\ReportQueryBuilder;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -42,6 +43,43 @@ class ReportBuilderController extends Controller
                 ]),
             'properties' => $properties,
         ]);
+    }
+
+    /**
+     * Distinct values for a column marked as "enum" without a hardcoded options
+     * list — used to populate its filter dropdown from real data instead of
+     * making the user type a value that may not even exist.
+     */
+    public function columnOptions(Request $request)
+    {
+        $entityKey = (string) $request->query('entity');
+        $field = (string) $request->query('field');
+
+        $entity = EntityRegistry::entity($entityKey);
+        $col = $entity['columns'][$field] ?? null;
+
+        if (!$entity || !$col || $col['type'] !== 'enum' || !empty($col['options'])) {
+            return response()->json(['options' => []]);
+        }
+
+        if ($entityKey === 'properties' && $this->shouldScopeToProperty($request)) {
+            return response()->json(['options' => []]);
+        }
+
+        $query = DB::table($entity['table'])
+            ->select($field)
+            ->whereNotNull($field)
+            ->where($field, '!=', '')
+            ->distinct();
+
+        $propertyId = $this->resolvePropertyId($request);
+        if ($propertyId !== null && !empty($entity['property_key'])) {
+            $query->where($entity['property_key'], $propertyId);
+        }
+
+        $options = $query->orderBy($field)->limit(300)->pluck($field)->values();
+
+        return response()->json(['options' => $options]);
     }
 
     public function preview(Request $request)
