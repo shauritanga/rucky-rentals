@@ -22,8 +22,15 @@ class ReportBuilderController extends Controller
             ? Property::orderBy('name')->get(['id', 'name'])
             : [];
 
+        $registry = EntityRegistry::entities();
+        if ($this->shouldScopeToProperty($request)) {
+            // A user tied to a single property only ever sees their own property
+            // row through this entity — not useful as a report dimension for them.
+            unset($registry['properties']);
+        }
+
         return Inertia::render('Reports/Builder', [
-            'registry' => EntityRegistry::entities(),
+            'registry' => $registry,
             'templates' => ReportTemplate::visibleTo($user)->latest()->get()
                 ->map(fn (ReportTemplate $t) => [
                     'id' => $t->id,
@@ -187,9 +194,15 @@ class ReportBuilderController extends Controller
             throw new ReportBuilderException('Select at least one entity and one column before running this report.');
         }
 
+        $entities = array_values((array) $raw['entities']);
+
+        if ($this->shouldScopeToProperty($request) && in_array('properties', $entities, true)) {
+            throw new ReportBuilderException('The "Properties" entity isn\'t available for a property-scoped account — it would only ever return your own property.');
+        }
+
         return [
             'primary_entity' => $raw['primary_entity'],
-            'entities' => array_values((array) $raw['entities']),
+            'entities' => $entities,
             'columns' => array_values((array) $raw['columns']),
             'filters' => (array) ($raw['filters'] ?? []),
             'sort' => $raw['sort'] ?? null,
