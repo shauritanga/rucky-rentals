@@ -50,6 +50,22 @@ function formatMoney(amount, currency = CURRENCY_FALLBACK) {
   }).format(Number(amount));
 }
 
+// Unlike formatMoney (which drops decimals for TZS, the local convention for
+// whole-shilling display), this always shows cents — used for the new-lease
+// financial summary, where the line items are computed on full precision and
+// need to visibly reconcile to the displayed totals.
+function formatMoneyPrecise(amount, currency = CURRENCY_FALLBACK) {
+  if (amount == null || Number.isNaN(Number(amount))) return '—';
+  const code = resolveCurrency(currency);
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: code,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(amount));
+}
+
 function formatCompactMoney(amount, currency = CURRENCY_FALLBACK) {
   if (amount == null || Number.isNaN(Number(amount))) return '—';
   const code = resolveCurrency(currency);
@@ -229,11 +245,15 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const cycle = Number(data.payment_cycle) || 0;
     const duration = Number(data.duration_months) || 0;
     const serviceCharge = units.find(u => String(u.id) === String(data.unit_id))?.service_charge ?? 0;
+    // Keep full cent precision through every step — rounding vat/wht/etc.
+    // individually before combining them causes the displayed components to
+    // not sum exactly to the displayed totals. Only the final render rounds
+    // (to 2dp) for display.
     const subtotal = rent + serviceCharge;
-    const vat = Math.round(subtotal * (LEASE_VAT_RATE / 100));
+    const vat = subtotal * (LEASE_VAT_RATE / 100);
     const gross = subtotal + vat;
-    const rentWht = Math.round(rent * (Number(rentWhtRate || 0) / 100));
-    const serviceChargeWht = Math.round(serviceCharge * (Number(serviceChargeWhtRate || 0) / 100));
+    const rentWht = rent * (Number(rentWhtRate || 0) / 100);
+    const serviceChargeWht = serviceCharge * (Number(serviceChargeWhtRate || 0) / 100);
     const wht = rentWht + serviceChargeWht;
     const net = gross - wht;
     const instalment = net * cycle;
@@ -245,8 +265,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const fitoutDays = fitoutEnabled && possessionDate && fitoutToDate
       ? Math.max(0, Math.round((new Date(`${fitoutToDate}T00:00:00`) - new Date(`${possessionDate}T00:00:00`)) / 86400000) + 1)
       : 0;
-    const fitoutExtraSC = fitoutDays > 0 ? Math.round(serviceCharge * fitoutDays / 30) : 0;
-    const fitoutExtraVAT = fitoutDays > 0 ? Math.round(fitoutExtraSC * (LEASE_VAT_RATE / 100)) : 0;
+    const fitoutExtraSC = fitoutDays > 0 ? serviceCharge * fitoutDays / 30 : 0;
+    const fitoutExtraVAT = fitoutDays > 0 ? fitoutExtraSC * (LEASE_VAT_RATE / 100) : 0;
 
     return {
       rent,
@@ -966,24 +986,24 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
               {summary.rent > 0 && (
                 <div className="nl-summary-card" style={{marginBottom:14}}>
-                  <div className="nl-summary-row"><span>Monthly Rent</span><strong>{formatMoney(summary.rent, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Service Charge (unit flat rate)</span><strong>{formatMoney(summary.serviceCharge, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{formatMoney(summary.subtotal, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>VAT (18%)</span><strong>{formatMoney(summary.vat, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{formatMoney(summary.gross, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(rentWhtRate)}% rent + {Math.round(serviceChargeWhtRate)}% service charge, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${formatMoney(summary.wht, selectedUnitCurrency)})`}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{formatMoney(summary.net, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{formatMoney(summary.wht, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Rent WHT portion</span><strong>{formatMoney(summary.rentWht, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Service charge WHT portion</span><strong>{formatMoney(summary.serviceChargeWht, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{formatMoney(summary.instalment, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Security deposit</span><strong>{formatMoney(summary.deposit, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Annual value (incl. VAT)</span><strong>{formatMoney(summary.annual, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Monthly Rent</span><strong>{formatMoneyPrecise(summary.rent, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Service Charge (unit flat rate)</span><strong>{formatMoneyPrecise(summary.serviceCharge, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{formatMoneyPrecise(summary.subtotal, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>VAT (18%)</span><strong>{formatMoneyPrecise(summary.vat, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{formatMoneyPrecise(summary.gross, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(rentWhtRate)}% rent + {Math.round(serviceChargeWhtRate)}% service charge, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${formatMoneyPrecise(summary.wht, selectedUnitCurrency)})`}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{formatMoneyPrecise(summary.net, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{formatMoneyPrecise(summary.wht, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Rent WHT portion</span><strong>{formatMoneyPrecise(summary.rentWht, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Service charge WHT portion</span><strong>{formatMoneyPrecise(summary.serviceChargeWht, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{formatMoneyPrecise(summary.instalment, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Security deposit</span><strong>{formatMoneyPrecise(summary.deposit, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Annual value (incl. VAT)</span><strong>{formatMoneyPrecise(summary.annual, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>Lease period</span><strong>{summary.period}</strong></div>
                   {fitoutEnabled && summary.fitoutDays > 0 && (
                     <div className="nl-summary-row">
                       <span style={{color:'var(--amber)'}}>First invoice SC extra days</span>
-                      <strong style={{color:'var(--amber)'}}>{`${summary.fitoutDays} days · SC ${formatMoney(summary.fitoutExtraSC, selectedUnitCurrency)} + VAT ${formatMoney(summary.fitoutExtraVAT, selectedUnitCurrency)}`}</strong>
+                      <strong style={{color:'var(--amber)'}}>{`${summary.fitoutDays} days · SC ${formatMoneyPrecise(summary.fitoutExtraSC, selectedUnitCurrency)} + VAT ${formatMoneyPrecise(summary.fitoutExtraVAT, selectedUnitCurrency)}`}</strong>
                     </div>
                   )}
                 </div>
