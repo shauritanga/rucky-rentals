@@ -11,6 +11,7 @@ use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\User;
 use App\Notifications\LeaseApprovalRequestNotification;
+use App\Services\LeaseNumberService;
 use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
@@ -24,6 +25,8 @@ use Inertia\Inertia;
 class LeaseController extends Controller
 {
     use LogsAudit;
+
+    public function __construct(private LeaseNumberService $leaseNumberService) {}
 
     private function normalizeLeaseTiming(array $data): array
     {
@@ -218,6 +221,7 @@ class LeaseController extends Controller
         ];
 
         DB::transaction(function () use (&$lease, $data, $unit) {
+            $data['lease_number'] = $this->leaseNumberService->generateNumber();
             $lease = Lease::create($data);
             $unit->update(['status' => 'occupied']);
             // If auto-approved, generate installments and post deposit GL entry

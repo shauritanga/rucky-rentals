@@ -10,6 +10,7 @@ class Lease extends Model
     use SoftDeletes;
 
     protected $fillable = [
+        'lease_number',
         'property_id',
         'tenant_id',
         'unit_id',
