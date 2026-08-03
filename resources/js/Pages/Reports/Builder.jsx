@@ -465,7 +465,7 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
                     <div key={entKey}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>{ent.label}</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {Object.entries(ent.columns).map(([field, col]) => (
+                        {Object.entries(ent.columns).filter(([, col]) => !col.sql).map(([field, col]) => (
                           <div key={field}>
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 3 }}>{col.label} <span style={{ opacity: .6 }}>({TYPE_LABEL[col.type]})</span></div>
                             <FilterInput

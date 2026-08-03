@@ -34,18 +34,23 @@ class ReportQueryBuilder
         foreach ($columns as $col) {
             $entityKey = $col['entity'] ?? null;
             $field = $col['field'] ?? null;
-            if (!isset($required[$entityKey]) || !isset($this->entities[$entityKey]['columns'][$field])) {
+            $colDef = $this->entities[$entityKey]['columns'][$field] ?? null;
+            if (!isset($required[$entityKey]) || !$colDef) {
                 throw new ReportBuilderException("Unknown column \"{$field}\" for entity \"{$entityKey}\".");
             }
-            $select[] = "{$entityKey}.{$field} as {$entityKey}__{$field}";
+            $expr = $colDef['sql'] ?? "{$entityKey}.{$field}";
+            $select[] = DB::raw("({$expr}) as {$entityKey}__{$field}");
         }
         $query->select($select);
 
         $sort = $config['sort'] ?? null;
-        if ($sort && isset($sort['entity'], $sort['field']) && isset($required[$sort['entity']])
-            && isset($this->entities[$sort['entity']]['columns'][$sort['field']])) {
-            $dir = strtolower($sort['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
-            $query->orderBy("{$sort['entity']}.{$sort['field']}", $dir);
+        if ($sort && isset($sort['entity'], $sort['field']) && isset($required[$sort['entity']])) {
+            $sortColDef = $this->entities[$sort['entity']]['columns'][$sort['field']] ?? null;
+            if ($sortColDef) {
+                $dir = strtolower($sort['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+                $expr = $sortColDef['sql'] ?? "{$sort['entity']}.{$sort['field']}";
+                $query->orderByRaw("({$expr}) {$dir}");
+            }
         }
 
         return $query;
@@ -193,7 +198,9 @@ class ReportQueryBuilder
                 continue;
             }
             $colDef = $this->entities[$entityKey]['columns'][$field] ?? null;
-            if (!$colDef) {
+            if (!$colDef || !empty($colDef['sql'])) {
+                // Computed (raw-expression) columns aren't filterable — they're
+                // scalar subqueries, not plain columns you can compare directly.
                 continue;
             }
             $column = "{$entityKey}.{$field}";

@@ -68,6 +68,11 @@ class EntityRegistry
                     'city' => ['label' => 'City', 'type' => 'enum'],
                     'country' => ['label' => 'Country', 'type' => 'enum'],
                     'created_at' => ['label' => 'Created At', 'type' => 'date'],
+                    'total_deposit' => [
+                        'label' => 'Total Security Deposit (all leases)',
+                        'type' => 'currency',
+                        'sql' => "SELECT COALESCE(SUM(rl.deposit), 0) FROM leases rl WHERE rl.tenant_id = tenants.id AND rl.deleted_at IS NULL",
+                    ],
                 ],
             ],
             'leases' => [
@@ -111,6 +116,39 @@ class EntityRegistry
                     'exchange_rate' => ['label' => 'Exchange Rate', 'type' => 'number'],
                     'total_in_base' => ['label' => 'Total (base currency)', 'type' => 'currency'],
                     'created_at' => ['label' => 'Created At', 'type' => 'date'],
+                    'vat_amount' => [
+                        'label' => 'VAT Amount',
+                        'type' => 'currency',
+                        // VAT applies to rent + service charge line items only (mirrors
+                        // PaymentController::isLeaseVatEligibleItem), at the lease's vat_rate.
+                        'sql' => "
+                            COALESCE((
+                                SELECT SUM(ii.total) FROM invoice_items ii
+                                WHERE ii.invoice_id = invoices.id AND ii.item_type IN ('rent', 'service_charge')
+                            ), 0)
+                            * COALESCE((SELECT l.vat_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
+                        ",
+                    ],
+                    'wht_amount' => [
+                        'label' => 'WHT Amount (expected)',
+                        'type' => 'currency',
+                        // Mirrors AccountingService::postPayment's WHT calc: rent at the
+                        // lease's wht_rate, service charge at its service_charge_rate —
+                        // only meaningful for tax invoices, not proformas.
+                        'sql' => "
+                            CASE WHEN invoices.type = 'invoice' THEN
+                                COALESCE((
+                                    SELECT SUM(ii.total) FROM invoice_items ii
+                                    WHERE ii.invoice_id = invoices.id AND ii.item_type = 'rent'
+                                ), 0) * COALESCE((SELECT l.wht_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
+                                +
+                                COALESCE((
+                                    SELECT SUM(ii.total) FROM invoice_items ii
+                                    WHERE ii.invoice_id = invoices.id AND ii.item_type = 'service_charge'
+                                ), 0) * COALESCE((SELECT l.service_charge_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
+                            ELSE 0 END
+                        ",
+                    ],
                 ],
             ],
             'payments' => [

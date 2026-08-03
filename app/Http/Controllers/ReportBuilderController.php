@@ -11,6 +11,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class ReportBuilderController extends Controller
@@ -170,14 +171,19 @@ class ReportBuilderController extends Controller
 
     public function storeTemplate(Request $request)
     {
+        $user = $request->user();
+
         $data = $request->validate([
-            'name' => 'required|string|max:120',
+            'name' => [
+                'required', 'string', 'max:120',
+                Rule::unique('report_templates', 'name')->where(fn ($q) => $q->where('user_id', $user->id)),
+            ],
             'description' => 'nullable|string|max:500',
             'is_shared' => 'boolean',
             'config' => 'required|array',
+        ], [
+            'name.unique' => 'You already have a template with this name.',
         ]);
-
-        $user = $request->user();
 
         $template = ReportTemplate::create([
             'user_id' => $user->id,
@@ -196,10 +202,17 @@ class ReportBuilderController extends Controller
         abort_if($reportTemplate->user_id !== $request->user()->id, 403);
 
         $data = $request->validate([
-            'name' => 'required|string|max:120',
+            'name' => [
+                'required', 'string', 'max:120',
+                Rule::unique('report_templates', 'name')
+                    ->where(fn ($q) => $q->where('user_id', $request->user()->id))
+                    ->ignore($reportTemplate->id),
+            ],
             'description' => 'nullable|string|max:500',
             'is_shared' => 'boolean',
             'config' => 'required|array',
+        ], [
+            'name.unique' => 'You already have a template with this name.',
         ]);
 
         $reportTemplate->update($data);

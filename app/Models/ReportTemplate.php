@@ -24,10 +24,16 @@ class ReportTemplate extends Model
         return $query->where(function (Builder $q) use ($user) {
             $q->where('user_id', $user->id)
                 ->orWhere(function (Builder $q2) use ($user) {
-                    $q2->where('is_shared', true)
-                        ->where(function (Builder $q3) use ($user) {
+                    $q2->where('is_shared', true);
+                    // Superusers aren't tied to a single property (they switch
+                    // property context via session), so any shared template
+                    // should be visible to them regardless of which property
+                    // it was created under.
+                    if ($user->role !== 'superuser') {
+                        $q2->where(function (Builder $q3) use ($user) {
                             $q3->whereNull('property_id')->orWhere('property_id', $user->property_id);
                         });
+                    }
                 });
         });
     }
