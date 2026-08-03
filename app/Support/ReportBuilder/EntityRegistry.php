@@ -122,11 +122,13 @@ class EntityRegistry
                         // VAT applies to rent + service charge line items only (mirrors
                         // PaymentController::isLeaseVatEligibleItem), at the lease's vat_rate.
                         'sql' => "
-                            COALESCE((
-                                SELECT SUM(ii.total) FROM invoice_items ii
-                                WHERE ii.invoice_id = invoices.id AND ii.item_type IN ('rent', 'service_charge')
-                            ), 0)
-                            * COALESCE((SELECT l.vat_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
+                            ROUND(
+                                COALESCE((
+                                    SELECT SUM(ii.total) FROM invoice_items ii
+                                    WHERE ii.invoice_id = invoices.id AND ii.item_type IN ('rent', 'service_charge')
+                                ), 0)
+                                * COALESCE((SELECT l.vat_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100,
+                            2)
                         ",
                     ],
                     'wht_amount' => [
@@ -136,17 +138,19 @@ class EntityRegistry
                         // lease's wht_rate, service charge at its service_charge_rate —
                         // only meaningful for tax invoices, not proformas.
                         'sql' => "
-                            CASE WHEN invoices.type = 'invoice' THEN
-                                COALESCE((
-                                    SELECT SUM(ii.total) FROM invoice_items ii
-                                    WHERE ii.invoice_id = invoices.id AND ii.item_type = 'rent'
-                                ), 0) * COALESCE((SELECT l.wht_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
-                                +
-                                COALESCE((
-                                    SELECT SUM(ii.total) FROM invoice_items ii
-                                    WHERE ii.invoice_id = invoices.id AND ii.item_type = 'service_charge'
-                                ), 0) * COALESCE((SELECT l.service_charge_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
-                            ELSE 0 END
+                            ROUND(
+                                CASE WHEN invoices.type = 'invoice' THEN
+                                    COALESCE((
+                                        SELECT SUM(ii.total) FROM invoice_items ii
+                                        WHERE ii.invoice_id = invoices.id AND ii.item_type = 'rent'
+                                    ), 0) * COALESCE((SELECT l.wht_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
+                                    +
+                                    COALESCE((
+                                        SELECT SUM(ii.total) FROM invoice_items ii
+                                        WHERE ii.invoice_id = invoices.id AND ii.item_type = 'service_charge'
+                                    ), 0) * COALESCE((SELECT l.service_charge_rate FROM leases l WHERE l.id = invoices.lease_id), 0) / 100
+                                ELSE 0 END,
+                            2)
                         ",
                     ],
                 ],
