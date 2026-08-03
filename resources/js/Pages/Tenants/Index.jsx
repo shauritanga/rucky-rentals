@@ -23,10 +23,11 @@ export default function TenantsIndex({ tenants }) {
   const [view, setView] = useState('card');
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
   const [submitError,   setSubmitError]   = useState('');
 
-  const { data, setData, post, processing, reset } = useForm({
+  const { data, setData, post, put, processing, reset } = useForm({
     tenant_type: 'individual',
     name: '', email: '', phone: '',
     address: '', city: '', country: '',
@@ -80,17 +81,38 @@ export default function TenantsIndex({ tenants }) {
   const submit = (e) => {
     e.preventDefault();
     setSubmitError('');
-    post('/tenants', {
-      onSuccess: () => {
-        reset();
-        setShowModal(false);
-        setSubmitMessage({ type: 'success', text: 'Tenant created successfully.' });
-      },
-      onError: (errors) => {
-        const first = Object.values(errors || {}).flat().find(v => typeof v === 'string' && v.trim());
-        setSubmitError(first || 'Failed to create tenant. Please check the form.');
-      },
+    const onSuccess = () => {
+      reset();
+      setShowModal(false);
+      setEditingId(null);
+      setSubmitMessage({ type: 'success', text: editingId ? 'Tenant updated successfully.' : 'Tenant created successfully.' });
+    };
+    const onError = (errors) => {
+      const first = Object.values(errors || {}).flat().find(v => typeof v === 'string' && v.trim());
+      setSubmitError(first || `Failed to ${editingId ? 'update' : 'create'} tenant. Please check the form.`);
+    };
+    if (editingId) {
+      put(`/tenants/${editingId}`, { onSuccess, onError });
+    } else {
+      post('/tenants', { onSuccess, onError });
+    }
+  };
+
+  const openEditModal = (tenant) => {
+    setEditingId(tenant.id);
+    setData({
+      tenant_type: tenant.tenant_type || 'individual',
+      name: tenant.name || '', email: tenant.email || '', phone: tenant.phone || '',
+      address: tenant.address || '', city: tenant.city || '', country: tenant.country || '',
+      national_id: tenant.national_id || '',
+      nok_name: tenant.nok_name || '', nok_phone: tenant.nok_phone || '', nok_relation: tenant.nok_relation || '',
+      company_name: tenant.company_name || '', registration_number: tenant.registration_number || '',
+      tin: tenant.tin || '', vrn: tenant.vrn || '', contact_person: tenant.contact_person || '',
+      notes: tenant.notes || '',
     });
+    setSubmitError('');
+    setSelected(null);
+    setShowModal(true);
   };
 
   useEffect(() => {
@@ -181,7 +203,7 @@ export default function TenantsIndex({ tenants }) {
             <button className={`vt-btn ${view==='card'?'active':''}`} onClick={()=>setView('card')} title="Cards"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></button>
             <button className={`vt-btn ${view==='list'?'active':''}`} onClick={()=>setView('list')} title="List"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
           </div>
-          <button className="btn-primary" onClick={()=>{ setShowModal(true); setSubmitError(''); setSubmitMessage({ type:'', text:'' }); }}>
+          <button className="btn-primary" onClick={()=>{ reset(); setEditingId(null); setShowModal(true); setSubmitError(''); setSubmitMessage({ type:'', text:'' }); }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Tenant
           </button>
@@ -418,7 +440,7 @@ export default function TenantsIndex({ tenants }) {
                 </div>
 
                 <div className="tdr-footer">
-                  <button className="btn-primary" onClick={()=>setSelected(null)} style={{flex:1,justifyContent:'center'}}>
+                  <button className="btn-primary" onClick={()=>openEditModal(selected)} style={{flex:1,justifyContent:'center'}}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     Edit Tenant
                   </button>
@@ -438,11 +460,11 @@ export default function TenantsIndex({ tenants }) {
       </div>
 
       {/* Add Tenant Modal */}
-      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&(setShowModal(false),setSubmitError(''))}>
+      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&(setShowModal(false),setSubmitError(''),setEditingId(null))}>
         <div className="modal">
           <div className="modal-header">
-            <div className="modal-title">Add Tenant</div>
-            <button className="modal-close" onClick={()=>{ setShowModal(false); setSubmitError(''); }}>✕</button>
+            <div className="modal-title">{editingId ? 'Edit Tenant' : 'Add Tenant'}</div>
+            <button className="modal-close" onClick={()=>{ setShowModal(false); setSubmitError(''); setEditingId(null); }}>✕</button>
           </div>
           <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,overflow:'hidden'}}>
             <div className="modal-body">
@@ -526,8 +548,8 @@ export default function TenantsIndex({ tenants }) {
               </div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn-ghost" onClick={()=>{ setShowModal(false); setSubmitError(''); }}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing}>Add Tenant</button>
+              <button type="button" className="btn-ghost" onClick={()=>{ setShowModal(false); setSubmitError(''); setEditingId(null); }}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={processing}>{editingId ? 'Save Changes' : 'Add Tenant'}</button>
             </div>
           </form>
         </div>
