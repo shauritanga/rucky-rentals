@@ -272,10 +272,20 @@ class PaymentController extends Controller
                     'invoice_number' => $this->invoiceNumberService->generateNumber('INV'),
                     'type'           => 'invoice',
                 ]);
-                // Link to the next unlinked installment now that it's a tax invoice
-                $this->attachInvoiceToInstallment($invoice->fresh());
             });
             $invoice->refresh();
+        }
+
+        // The proforma→invoice type promotion can also happen outside this flow
+        // (e.g. InvoiceController::update changing status away from 'proforma'),
+        // which skips the installment link above. Catch it here so a lease-linked
+        // tax invoice never goes unlinked to its installment.
+        if (
+            $invoice->type === 'invoice'
+            && !empty($invoice->lease_id)
+            && !LeaseInstallment::where('invoice_id', $invoice->id)->exists()
+        ) {
+            $this->attachInvoiceToInstallment($invoice);
         }
 
         $invoiceTotal = $this->invoiceGrossTotalInBase($invoice);
