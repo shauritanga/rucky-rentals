@@ -48,6 +48,10 @@
         tbody tr:nth-child(even) {
             background: #fafafa;
         }
+        .num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
     </style>
 </head>
 <body>
@@ -60,7 +64,7 @@
         <thead>
             <tr>
                 @foreach ($columns as $col)
-                    <th>{{ $col['label'] }}</th>
+                    <th class="{{ in_array($col['type'], ['currency', 'number']) ? 'num' : '' }}">{{ $col['label'] }}</th>
                 @endforeach
             </tr>
         </thead>
@@ -68,7 +72,7 @@
             @forelse ($rows as $row)
                 <tr>
                     @foreach ($columns as $col)
-                        <td>{{ $row->{$col['key']} ?? '' }}</td>
+                        <td class="{{ in_array($col['type'], ['currency', 'number']) ? 'num' : '' }}">{{ $row[$col['key']] ?? '' }}</td>
                     @endforeach
                 </tr>
             @empty

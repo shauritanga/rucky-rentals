@@ -120,12 +120,20 @@ class ReportBuilderController extends Controller
             $columns = collect($config['columns'])->map(fn ($c) => [
                 'key' => "{$c['entity']}__{$c['field']}",
                 'label' => $builder->columnLabel($c['entity'], $c['field']),
+                'type' => $builder->columnType($c['entity'], $c['field']),
             ])->all();
 
             $title = $request->input('title') ?: 'Custom Report';
 
             if ($format === 'pdf') {
-                $rows = $builder->query($config, $propertyId)->limit(1000)->get();
+                $rows = $builder->query($config, $propertyId)->limit(1000)->get()
+                    ->map(function ($row) use ($columns) {
+                        $formatted = [];
+                        foreach ($columns as $col) {
+                            $formatted[$col['key']] = $this->formatExportValue($row->{$col['key']} ?? null, $col['type']);
+                        }
+                        return $formatted;
+                    });
 
                 $pdfContent = Pdf::loadView('pdf.custom-report', [
                     'title' => $title,
@@ -259,6 +267,25 @@ class ReportBuilderController extends Controller
             'filters' => (array) ($raw['filters'] ?? []),
             'sort' => $raw['sort'] ?? null,
         ];
+    }
+
+    /**
+     * Mirrors the on-screen preview's formatCell() (resources/js/Pages/Reports/Builder.jsx)
+     * so the PDF export reads the same way instead of dumping raw DB values.
+     */
+    private function formatExportValue(mixed $value, string $type): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        return match ($type) {
+            'currency' => is_numeric($value) ? number_format((float) $value, 2) : (string) $value,
+            'number' => is_numeric($value) ? number_format((float) $value) : (string) $value,
+            'date' => (string) $value ? \Carbon\Carbon::parse($value)->format('d M Y') : '',
+            'boolean' => in_array($value, [true, 1, '1', 'true'], true) ? 'Yes' : 'No',
+            default => (string) $value,
+        };
     }
 
     private function resolvePropertyId(Request $request): ?int
