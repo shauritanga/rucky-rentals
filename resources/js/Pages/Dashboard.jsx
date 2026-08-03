@@ -78,7 +78,6 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                   <th>Tenant</th>
                   <th>Status</th>
                   <th>Rent</th>
-                  <th>Due</th>
                   <th></th>
                 </tr>
               </thead>
@@ -86,21 +85,6 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                 {units.slice(0, 7).map((u) => {
                   const lease = u.leases?.[0];
                   const tenant = lease?.tenant;
-                  const isOverdue     = u.status === 'overdue';
-                  const isOccupied    = u.status === 'occupied';
-                  const latestPayment = u.payments?.[0];
-                  const paymentStatus = latestPayment?.status;
-
-                  let dueLabel, dueClass;
-                  if (paymentStatus === 'paid') {
-                    dueLabel = 'Paid';                        dueClass = 'paid';
-                  } else if (isOverdue || paymentStatus === 'overdue') {
-                    dueLabel = formatMoney(u.rent, u.currency); dueClass = 'due';
-                  } else if (paymentStatus === 'pending' || isOccupied) {
-                    dueLabel = 'Pending';                     dueClass = '';
-                  } else {
-                    dueLabel = '—';                           dueClass = '';
-                  }
 
                   return (
                     <tr key={u.id}>
@@ -120,7 +104,6 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                       </td>
                       <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
                       <td className="amount">{formatMoney(u.rent, u.currency)}</td>
-                      <td className={`amount ${dueClass}`}>{dueLabel}</td>
                       <td><button className="action-dots">···</button></td>
                     </tr>
                   );

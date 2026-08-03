@@ -134,10 +134,7 @@ class DashboardController extends Controller
             ->get();
 
         $units = (clone $unitsBaseQuery)
-            ->with([
-                'leases.tenant',
-                'payments' => fn ($q) => $q->latest()->limit(1),
-            ])
+            ->with(['leases.tenant'])
             ->orderBy('floor')
             ->orderBy('unit_number')
             ->limit(7)
