@@ -56,9 +56,10 @@ const unitRatePerSqm = (unit) => {
 };
 const money = (amount, currency = 'TZS') => currency === 'USD' ? `$${fmt(amount)}` : `TZS ${fmt(amount)}`;
 
+const tenantFirstName = (tenant) => tenant?.first_name || tenant?.name;
+
 function UnitCard({ unit, onClick }) {
-  const lease = unit.leases?.[0];
-  const tenant = lease?.tenant;
+  const activeLeases = unit.leases ?? [];
   const currency = unitCurrency(unit);
   const sizeSqm = unitSizeSqm(unit);
   const approval = APPROVAL_BADGE[unit.approval_status] ?? APPROVAL_BADGE.approved;
@@ -79,8 +80,13 @@ function UnitCard({ unit, onClick }) {
         </div>
       </div>
       <div style={{marginBottom:12}}>
-        {tenant
-          ? <><div style={{fontSize:13,fontWeight:500}}>{tenant.name}</div><div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>Lease until {lease.end_date?.slice(0,7)}</div></>
+        {activeLeases.length > 0
+          ? activeLeases.map(lease => (
+              <div key={lease.id} style={{marginBottom:4}}>
+                <div style={{fontSize:13,fontWeight:500}}>{tenantFirstName(lease.tenant)}</div>
+                <div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>Lease until {lease.end_date?.slice(0,7)}</div>
+              </div>
+            ))
           : <><div style={{fontSize:13,color:'var(--text-muted)'}}>— Unoccupied</div><div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{unit.status==='maintenance'?'Under maintenance':'Available now'}</div></>
         }
       </div>
@@ -182,7 +188,7 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
     const matchStatus = filter === 'all' || u.status === filter;
     const matchFloor  = !floorFilter || String(u.floor) === floorFilter;
     const q = search.toLowerCase();
-    const matchSearch = !q || u.unit_number.toLowerCase().includes(q) || u.type.toLowerCase().includes(q) || u.leases?.[0]?.tenant?.name?.toLowerCase().includes(q);
+    const matchSearch = !q || u.unit_number.toLowerCase().includes(q) || u.type.toLowerCase().includes(q) || u.leases?.some(l => l.tenant?.name?.toLowerCase().includes(q));
     return matchStatus && matchFloor && matchSearch;
   });
 
@@ -239,6 +245,9 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
   };
 
   const unitHistory = (unit) => {
+    // Intentionally leases?.[0]: this reports the most recent lease-assignment
+    // *event*, not "the current occupant" — a unit can have several concurrent
+    // co-tenant leases, but only the latest-created one is the relevant event here.
     const tenant = unit?.leases?.[0]?.tenant;
     const rentLabel = money(unit?.rent || 0, unitCurrency(unit));
     return [
@@ -301,12 +310,18 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                     <thead><tr><th>Unit</th><th>Type</th><th>Tenant</th><th>Status</th><th>Rent</th><th>Size</th></tr></thead>
                     <tbody>
                       {floorUnits.map(u => {
-                        const t = u.leases?.[0]?.tenant;
+                        const tenants = (u.leases ?? []).map(l => l.tenant).filter(Boolean);
                         return (
                           <tr key={u.id} onClick={()=>setSelected(u)}>
                             <td><div style={{fontWeight:700}}>{u.unit_number}</div></td>
                             <td style={{color:'var(--text-secondary)'}}>{u.type}</td>
-                            <td>{t?<div className="tenant-cell"><div className="t-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div>{t.name}</div>:<span style={{color:'var(--text-muted)'}}>—</span>}</td>
+                            <td>{tenants.length > 0
+                              ? <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                                  {tenants.map(t => (
+                                    <div key={t.id} className="tenant-cell"><div className="t-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div>{tenantFirstName(t)}</div>
+                                  ))}
+                                </div>
+                              : <span style={{color:'var(--text-muted)'}}>—</span>}</td>
                             <td>
                               <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-start'}}>
                                 <span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span>
@@ -365,30 +380,35 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
                   </div>
                 </div>
               )}
-              {selected.leases?.[0]?.tenant && (
-                <div className="drawer-section">
-                  <div className="drawer-section-title">Current Tenant</div>
+              {(selected.leases ?? []).filter(l => l.tenant).map((lease, idx, arr) => (
+                <div className="drawer-section" key={`tenant-${lease.id}`}>
+                  <div className="drawer-section-title">
+                    Current Tenant{arr.length > 1 ? ` (${idx + 1} of ${arr.length})` : ''}
+                  </div>
                   <div className="drawer-tenant-card">
-                    <div className="dt-avatar" style={{background:selected.leases[0].tenant.color,color:selected.leases[0].tenant.text_color}}>{selected.leases[0].tenant.initials}</div>
+                    <div className="dt-avatar" style={{background:lease.tenant.color,color:lease.tenant.text_color}}>{lease.tenant.initials}</div>
                     <div>
-                      <div className="dt-name">{selected.leases[0].tenant.name}</div>
-                      <div className="dt-email">{selected.leases[0].tenant.email}</div>
-                      <div className="dt-phone">{selected.leases[0].tenant.phone}</div>
+                      <div className="dt-name">{tenantFirstName(lease.tenant)}</div>
+                      <div className="dt-email">{lease.tenant.email}</div>
+                      <div className="dt-phone">{lease.tenant.phone}</div>
                     </div>
                   </div>
                 </div>
-              )}
-              {selected.leases?.[0] && (
-                <div className="drawer-section">
-                  <div className="drawer-section-title">Lease</div>
+              ))}
+              {(selected.leases ?? []).map((lease, idx, arr) => (
+                <div className="drawer-section" key={`lease-${lease.id}`}>
+                  <div className="drawer-section-title">
+                    Lease{arr.length > 1 ? ` (${idx + 1} of ${arr.length})` : ''}
+                  </div>
                   <div className="drawer-kv-grid">
-                    <div className="drawer-kv"><div className="drawer-kv-label">Start</div><div className="drawer-kv-value">{formatDisplayDate(selected.leases[0].start_date)}</div></div>
-                    <div className="drawer-kv"><div className="drawer-kv-label">End</div><div className="drawer-kv-value">{formatDisplayDate(selected.leases[0].end_date)}</div></div>
-                    <div className="drawer-kv"><div className="drawer-kv-label">Annual Value</div><div className="drawer-kv-value">{money(selected.rent*12, unitCurrency(selected))}</div></div>
-                    <div className="drawer-kv"><div className="drawer-kv-label">Status</div><div className={`drawer-kv-value ${selected.leases[0].status==='active'?'green':selected.leases[0].status==='overdue'?'red':'amber'}`}>{selected.leases[0].status}</div></div>
+                    <div className="drawer-kv"><div className="drawer-kv-label">Start</div><div className="drawer-kv-value">{formatDisplayDate(lease.start_date)}</div></div>
+                    <div className="drawer-kv"><div className="drawer-kv-label">End</div><div className="drawer-kv-value">{formatDisplayDate(lease.end_date)}</div></div>
+                    <div className="drawer-kv"><div className="drawer-kv-label">Monthly Rent</div><div className="drawer-kv-value">{money(lease.monthly_rent, unitCurrency(selected))}</div></div>
+                    <div className="drawer-kv"><div className="drawer-kv-label">Annual Value</div><div className="drawer-kv-value">{money(lease.monthly_rent*12, unitCurrency(selected))}</div></div>
+                    <div className="drawer-kv"><div className="drawer-kv-label">Status</div><div className={`drawer-kv-value ${lease.status==='active'?'green':lease.status==='overdue'?'red':'amber'}`}>{lease.status}</div></div>
                   </div>
                 </div>
-              )}
+              ))}
               <div className="drawer-section">
                 <div className="drawer-section-title">Activity</div>
                 {unitHistory(selected).map((h, idx) => (

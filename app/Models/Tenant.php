@@ -9,6 +9,8 @@ class Tenant extends Model
     protected $fillable = [
         'property_id',
         'name',
+        'first_name',
+        'last_name',
         'email',
         'phone',
         'national_id',
@@ -29,6 +31,15 @@ class Tenant extends Model
         'city',
         'country',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Tenant $tenant) {
+            if ($tenant->tenant_type === 'individual' && ($tenant->isDirty('first_name') || $tenant->isDirty('last_name'))) {
+                $tenant->name = trim(($tenant->first_name ?? '') . ' ' . ($tenant->last_name ?? ''));
+            }
+        });
+    }
 
     public function leases()
     {

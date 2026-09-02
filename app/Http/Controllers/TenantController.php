@@ -37,7 +37,8 @@ class TenantController extends Controller
 
         $data = $request->validate([
             'tenant_type'         => 'required|in:individual,company',
-            'name'                => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'first_name'          => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'last_name'           => 'required_if:tenant_type,individual|nullable|string|max:255',
             'national_id'         => 'required_if:tenant_type,individual|nullable|string|max:100',
             'nok_name'            => 'required_if:tenant_type,individual|nullable|string|max:255',
             'nok_phone'           => 'required_if:tenant_type,individual|nullable|string|max:50',
@@ -58,11 +59,14 @@ class TenantController extends Controller
         if ($data['tenant_type'] === 'company') {
             $data['name'] = $data['company_name'];
             $words = explode(' ', trim($data['company_name']));
+            $data['first_name']   = null;
+            $data['last_name']    = null;
             $data['national_id']  = null;
             $data['nok_name']     = null;
             $data['nok_phone']    = null;
             $data['nok_relation'] = null;
         } else {
+            $data['name'] = trim($data['first_name'] . ' ' . $data['last_name']);
             $words = explode(' ', trim($data['name']));
             $data['company_name']        = null;
             $data['registration_number'] = null;
@@ -109,7 +113,8 @@ class TenantController extends Controller
 
         $data = $request->validate([
             'tenant_type'         => 'required|in:individual,company',
-            'name'                => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'first_name'          => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'last_name'           => 'required_if:tenant_type,individual|nullable|string|max:255',
             'national_id'         => 'required_if:tenant_type,individual|nullable|string|max:100',
             'nok_name'            => 'required_if:tenant_type,individual|nullable|string|max:255',
             'nok_phone'           => 'required_if:tenant_type,individual|nullable|string|max:50',
@@ -129,11 +134,14 @@ class TenantController extends Controller
 
         if ($data['tenant_type'] === 'company') {
             $data['name'] = $data['company_name'];
+            $data['first_name']   = null;
+            $data['last_name']    = null;
             $data['national_id']  = null;
             $data['nok_name']     = null;
             $data['nok_phone']    = null;
             $data['nok_relation'] = null;
         } else {
+            $data['name'] = trim($data['first_name'] . ' ' . $data['last_name']);
             $data['company_name']        = null;
             $data['registration_number'] = null;
             $data['tin']                 = null;

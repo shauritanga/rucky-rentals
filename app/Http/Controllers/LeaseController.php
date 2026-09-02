@@ -192,6 +192,18 @@ class LeaseController extends Controller
             ]);
         }
 
+        // A lease whose end date has already passed is historical record-keeping,
+        // not a live tenancy — record it as terminated directly, skip approval
+        // entirely, and don't mark the unit occupied for it.
+        if (Carbon::parse($validated['end_date'])->startOfDay()->lt(Carbon::today())) {
+            $status = 'terminated';
+            $approvalLog = json_encode([[
+                'step' => 0, 'action' => 'recorded', 'by' => $user->name,
+                'date' => now()->toDateString(),
+                'text' => 'Historical lease recorded as terminated.',
+            ]]);
+        }
+
         $data = [
             'property_id' => $propertyId,
             'tenant_id' => $tenantId,
@@ -223,7 +235,9 @@ class LeaseController extends Controller
         DB::transaction(function () use (&$lease, $data, $unit) {
             $data['lease_number'] = $this->leaseNumberService->generateNumber();
             $lease = Lease::create($data);
-            $unit->update(['status' => 'occupied']);
+            if ($lease->status !== 'terminated') {
+                $unit->update(['status' => 'occupied']);
+            }
             // If auto-approved, generate installments and post deposit GL entry
             if ($lease->status === 'active') {
                 $this->ensureInstallmentsGenerated($lease->fresh());
@@ -322,6 +336,26 @@ class LeaseController extends Controller
                     $user->name
                 )
             );
+        } elseif ($action === 'terminate') {
+            abort_if($user->role !== 'superuser' && !$this->isSuperuserActing($request), 403, 'Only superuser can terminate a lease.');
+            abort_if(!in_array($lease->status, ['active', 'expiring', 'overdue']), 422, 'Only an active lease can be terminated.');
+
+            $log = json_decode($lease->approval_log, true) ?? [];
+            $log[] = ['step' => 0, 'action' => 'terminated', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease terminated.'];
+
+            DB::transaction(function () use ($lease, $log) {
+                $this->voidDepositEntry($lease);
+                app(\App\Services\AccountingService::class)->postDepositRefund($lease);
+
+                $lease->update(['status' => 'terminated', 'approval_log' => json_encode($log)]);
+
+                if ($lease->unit_id) {
+                    $unit = Unit::find($lease->unit_id);
+                    if ($unit && !$unit->hasOtherActiveLeases()) {
+                        $unit->update(['status' => 'vacant']);
+                    }
+                }
+            });
         } elseif ($action === 'edit') {
             // Active/expiring/overdue leases → superuser only
             if (in_array($lease->status, ['active', 'expiring', 'overdue'])) {
@@ -360,7 +394,10 @@ class LeaseController extends Controller
                 $lease->update($editData);
 
                 if ((int) $oldUnitId !== (int) $newUnitId) {
-                    Unit::where('id', $oldUnitId)->update(['status' => 'vacant']);
+                    $oldUnit = Unit::find($oldUnitId);
+                    if ($oldUnit && !$oldUnit->hasOtherActiveLeases(excludeLeaseId: $lease->id)) {
+                        $oldUnit->update(['status' => 'vacant']);
+                    }
                     Unit::where('id', $newUnitId)->update(['status' => 'occupied']);
                 }
 
@@ -421,12 +458,17 @@ class LeaseController extends Controller
             $this->voidDepositEntry($lease);
             app(\App\Services\AccountingService::class)->postDepositRefund($lease);
 
-            // Free up the unit so it shows as vacant immediately
-            if ($lease->unit_id) {
-                \App\Models\Unit::where('id', $lease->unit_id)->update(['status' => 'vacant']);
-            }
-
+            $unitId = $lease->unit_id;
+            // Soft-delete first so hasOtherActiveLeases() below excludes this lease.
             $lease->delete();
+
+            // Only vacate the unit if no other co-tenant lease still occupies it.
+            if ($unitId) {
+                $unit = \App\Models\Unit::find($unitId);
+                if ($unit && !$unit->hasOtherActiveLeases()) {
+                    $unit->update(['status' => 'vacant']);
+                }
+            }
         });
 
         $this->logAudit(

@@ -29,7 +29,7 @@ export default function TenantsIndex({ tenants }) {
 
   const { data, setData, post, put, processing, reset } = useForm({
     tenant_type: 'individual',
-    name: '', email: '', phone: '',
+    first_name: '', last_name: '', email: '', phone: '',
     address: '', city: '', country: '',
     national_id: '',
     nok_name: '', nok_phone: '', nok_relation: '',
@@ -102,7 +102,7 @@ export default function TenantsIndex({ tenants }) {
     setEditingId(tenant.id);
     setData({
       tenant_type: tenant.tenant_type || 'individual',
-      name: tenant.name || '', email: tenant.email || '', phone: tenant.phone || '',
+      first_name: tenant.first_name || '', last_name: tenant.last_name || '', email: tenant.email || '', phone: tenant.phone || '',
       address: tenant.address || '', city: tenant.city || '', country: tenant.country || '',
       national_id: tenant.national_id || '',
       nok_name: tenant.nok_name || '', nok_phone: tenant.nok_phone || '', nok_relation: tenant.nok_relation || '',
@@ -478,7 +478,7 @@ export default function TenantsIndex({ tenants }) {
                 <label className="form-label">Tenant Type</label>
                 <div className="nl-toggle-bar">
                   <button type="button" className={`nl-toggle-btn ${data.tenant_type==='individual'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'individual',company_name:'',registration_number:'',tin:'',vrn:'',contact_person:''}))}>Individual</button>
-                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='company'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'company',name:'',national_id:'',nok_name:'',nok_phone:'',nok_relation:''}))}>Company</button>
+                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='company'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'company',first_name:'',last_name:'',national_id:'',nok_name:'',nok_phone:'',nok_relation:''}))}>Company</button>
                 </div>
               </div>
 
@@ -504,7 +504,10 @@ export default function TenantsIndex({ tenants }) {
               {data.tenant_type === 'individual' && (
                 <>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={data.name} onChange={e=>setData('name',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">First Name *</label><input className="form-input" value={data.first_name} onChange={e=>setData('first_name',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">Last Name *</label><input className="form-input" value={data.last_name} onChange={e=>setData('last_name',e.target.value)} required /></div>
+                  </div>
+                  <div className="form-row">
                     <div className="form-group"><label className="form-label">National ID / Passport *</label><input className="form-input" value={data.national_id} onChange={e=>setData('national_id',e.target.value)} required /></div>
                   </div>
                 </>

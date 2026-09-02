@@ -50,6 +50,14 @@ class Unit extends Model
     {
         return $this->hasMany(Lease::class);
     }
+
+    public function hasOtherActiveLeases(?int $excludeLeaseId = null): bool
+    {
+        return $this->leases()
+            ->whereIn('status', ['active', 'expiring', 'overdue'])
+            ->when($excludeLeaseId, fn($q) => $q->where('id', '!=', $excludeLeaseId))
+            ->exists();
+    }
     public function property()
     {
         return $this->belongsTo(Property::class);
