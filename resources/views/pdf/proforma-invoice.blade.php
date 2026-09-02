@@ -142,7 +142,6 @@
         }
         table.items tbody td.right { text-align: right; }
         table.items tbody td.center { text-align: center; }
-        table.items tbody td.bold { font-weight: 700; }
 
         /* ── Totals ── */
         .totals-wrap {
@@ -342,7 +341,7 @@
         <tbody>
             @if($unitLine)
             <tr>
-                <td colspan="5" class="bold" style="background:#f2f2f2;">{{ strtoupper($unitLine) }}</td>
+                <td colspan="5" style="background:#f2f2f2;">{{ strtoupper($unitLine) }}</td>
             </tr>
             @endif
             @php $rowNum = 1; @endphp
