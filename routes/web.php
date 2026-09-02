@@ -97,6 +97,8 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/managers/{id}/restore', [SuperuserController::class, 'restoreManager'])->name('superuser.managers.restore');
         Route::patch('superuser/properties/{property}/assign-manager', [SuperuserController::class, 'assignManager'])->name('superuser.properties.assign-manager');
         Route::patch('superuser/settings', [SuperuserController::class, 'updateSettings'])->name('superuser.settings.update');
+        Route::post('superuser/settings/logo', [SuperuserController::class, 'updateLogo'])->name('superuser.settings.logo.update');
+        Route::delete('superuser/settings/logo', [SuperuserController::class, 'removeLogo'])->name('superuser.settings.logo.delete');
         Route::patch('superuser/roles', [SuperuserController::class, 'updateRoles'])->name('superuser.roles.update');
         Route::patch('superuser/password', [SuperuserController::class, 'changePassword'])->name('superuser.password.change');
         Route::post('superuser/property/{property}/enter', [SuperuserController::class, 'enterPropertyView'])->name('superuser.property.enter');

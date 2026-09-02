@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class SuperuserController extends Controller
@@ -367,7 +368,7 @@ class SuperuserController extends Controller
     public function updateSettings(Request $request)
     {
         $allowed = [
-            'company_name', 'company_registration', 'vat_number', 'default_currency',
+            'company_name', 'company_registration', 'vat_number', 'tin_number', 'default_currency',
             'default_country', 'support_email', 'min_lease_months',
             'deposit_rent_months', 'deposit_service_charge_months',
             'late_fee_days', 'late_fee_percent', 'expiry_warning_days', 'auto_renew',
@@ -391,6 +392,55 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Settings saved.');
+    }
+
+    public function updateLogo(Request $request)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $request->validate([
+            'logo' => ['required', 'file', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048'],
+        ]);
+
+        $existing = SystemSetting::get('company_logo');
+        if ($existing) {
+            Storage::disk('public')->delete($existing);
+        }
+
+        Storage::disk('public')->makeDirectory('logos');
+        $path = $request->file('logo')->store('logos', 'public');
+        SystemSetting::set('company_logo', $path);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Company logo updated',
+            resource: 'System settings',
+            propertyName: 'All',
+            category: 'settings',
+        );
+
+        return response()->json(['logo_url' => '/storage/' . $path]);
+    }
+
+    public function removeLogo(Request $request)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $existing = SystemSetting::get('company_logo');
+        if ($existing) {
+            Storage::disk('public')->delete($existing);
+        }
+        SystemSetting::set('company_logo', '');
+
+        $this->logAudit(
+            request: $request,
+            action: 'Company logo removed',
+            resource: 'System settings',
+            propertyName: 'All',
+            category: 'settings',
+        );
+
+        return back()->with('success', 'Logo removed.');
     }
 
     public function updateRoles(Request $request)

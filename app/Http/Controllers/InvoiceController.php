@@ -9,7 +9,6 @@ use App\Models\InvoiceItem;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
-use App\Models\SystemSetting;
 use App\Models\Tenant;
 use App\Models\ExchangeRate;
 use App\Services\InvoiceNumberService;
@@ -367,48 +366,18 @@ class InvoiceController extends Controller
 
         $invoice->load('items');
 
-        // ── Company & property details (mirrors ProformaInvoiceMail::generatePdf) ──
-        $companyName     = SystemSetting::get('company_name', 'Mwamba Properties');
-        $companyEmail    = SystemSetting::get('support_email', '');
-        $vatNumber       = SystemSetting::get('vat_number', '');
-        $companyReg      = SystemSetting::get('company_registration', '');
-        $property        = $invoice->property_id ? Property::find($invoice->property_id) : null;
-        $companyPhone    = $property?->phone ?? '';
-        $bankName        = $property?->bank_name ?? '';
-        $bankAccount     = $property?->bank_account ?? '';
-        $bankAccountName = $property?->bank_account_name ?? '';
-        $swiftCode       = $property?->swift_code ?? '';
-        $tenantPhone     = '';
-        $tenantId        = null;
-        $vatRate         = 0;
-
-        if ($invoice->lease_id) {
-            $lease = $invoice->relationLoaded('lease') ? $invoice->lease : $invoice->load('lease')->lease;
-            if ($lease) {
-                $tenantId    = $lease->tenant_id;
-                $vatRate     = (float) ($lease->vat_rate ?? 0);
-                $tenant      = Tenant::find($tenantId);
-                $tenantPhone = $tenant?->phone ?? '';
-            }
-        }
-        if (!$tenantPhone && $invoice->tenant_email) {
-            $tenant      = Tenant::where('email', $invoice->tenant_email)->first();
-            $tenantPhone = $tenant?->phone ?? '';
-            $tenantId    = $tenantId ?? $tenant?->id;
-        }
-
-        $invoiceLabel = $invoice->type === 'proforma' ? 'PROFORMA INVOICE' : 'TAX INVOICE';
         $items        = $invoice->items;
-        $tenantUnit   = $invoice->unit_ref ?? '';
+        $invoiceLabel = $invoice->type === 'proforma' ? 'PROFORMA INVOICE' : 'TAX INVOICE';
 
-        $pdfContent = Pdf::loadView('pdf.proforma-invoice', compact(
-            'invoice', 'items', 'property',
-            'companyName', 'companyEmail', 'companyPhone',
-            'vatNumber', 'companyReg',
-            'tenantUnit', 'tenantPhone',
-            'bankName', 'bankAccount', 'bankAccountName', 'swiftCode',
-            'vatRate', 'invoiceLabel',
-        ))->setPaper('a4', 'portrait')->output();
+        // ── Company/property/tenant/unit details (mirrors ProformaInvoiceMail::generatePdf) ──
+        $viewData   = $invoice->buildPdfViewData($items);
+        $tenantId   = $viewData['tenantId'];
+        $property   = $viewData['property'];
+        unset($viewData['tenantId']);
+
+        $pdfContent = Pdf::loadView('pdf.proforma-invoice', array_merge($viewData, compact(
+            'invoice', 'items', 'invoiceLabel',
+        )))->setPaper('a4', 'portrait')->output();
 
         $filename    = $invoice->invoice_number . '.pdf';
         $storagePath = 'documents/' . $filename;

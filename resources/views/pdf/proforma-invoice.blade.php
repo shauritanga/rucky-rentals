@@ -16,32 +16,55 @@
         }
 
         /* ── Header ── */
-        .header {
+        .header-table {
+            display: table;
+            width: 100%;
+        }
+        .header-cell {
+            display: table-cell;
+            vertical-align: top;
+        }
+        .header-logo-cell {
+            width: 60%;
+            text-align: left;
+        }
+        .header-meta-cell {
+            width: 40%;
+            text-align: right;
+        }
+        .logo-img {
+            max-height: 64px;
+            max-width: 220px;
+        }
+        .header-title-wrap {
             text-align: center;
-            margin-bottom: 20px;
+            margin: 10px 0 4px;
         }
         .invoice-title {
-            font-size: 26px;
+            font-size: 24px;
             font-weight: 700;
             letter-spacing: 3px;
             text-transform: uppercase;
-            margin-bottom: 10px;
         }
-        .company-name {
-            font-size: 13px;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .company-meta {
-            font-size: 11px;
-            color: #444;
+        .header-meta {
+            font-size: 10px;
+            color: #333;
             line-height: 1.7;
+            text-align: right;
+        }
+        .header-meta .hm-label {
+            font-weight: 700;
+        }
+
+        .company-name {
+            font-size: 15px;
+            font-weight: 700;
         }
 
         .divider {
             border: none;
             border-top: 2px solid #111;
-            margin: 16px 0;
+            margin: 12px 0 16px;
         }
         .divider-thin {
             border: none;
@@ -49,51 +72,38 @@
             margin: 12px 0;
         }
 
-        /* ── Date / Number row ── */
-        .meta-row {
+        /* ── Landlord / Tenant ── */
+        .parties {
             display: table;
             width: 100%;
-            background: #f2f2f2;
             margin-bottom: 20px;
         }
-        .meta-cell {
+        .party-col {
             display: table-cell;
-            padding: 10px 14px;
             width: 50%;
+            vertical-align: top;
+            padding-right: 16px;
         }
-        .meta-cell.right {
-            text-align: right;
+        .party-col-right {
+            padding-right: 0;
+            padding-left: 16px;
         }
-        .meta-label {
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            color: #666;
-            margin-bottom: 4px;
-        }
-        .meta-value {
-            font-size: 14px;
-            font-weight: 700;
-        }
-
-        /* ── Bill To ── */
-        .bill-to {
-            margin-bottom: 20px;
-        }
-        .bill-to-label {
-            font-size: 11px;
+        .party-label {
+            font-size: 10px;
             font-weight: 700;
             font-style: italic;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            color: #666;
             margin-bottom: 5px;
         }
-        .bill-to-name {
+        .party-name {
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
             text-transform: uppercase;
             margin-bottom: 3px;
         }
-        .bill-to-line {
+        .party-line {
             font-size: 11px;
             color: #333;
             margin-bottom: 2px;
@@ -106,12 +116,12 @@
             margin-bottom: 0;
         }
         table.items thead tr {
-            background: #111;
+            background: #2563eb;
             color: #fff;
         }
         table.items thead th {
-            padding: 9px 10px;
-            font-size: 10px;
+            padding: 6px 10px;
+            font-size: 9.5px;
             font-weight: 700;
             letter-spacing: .5px;
             text-transform: uppercase;
@@ -154,7 +164,8 @@
         }
         .totals-table table tr td.right { text-align: right; }
         .totals-table table tr.total-row {
-            border-top: 2px solid #111;
+            border-top: 2px solid #2563eb;
+            background: rgba(37,99,235,.08);
         }
         .totals-table table tr.total-row td {
             padding: 9px 10px;
@@ -165,10 +176,10 @@
         }
         .clearfix::after { content: ''; display: table; clear: both; }
 
-        /* ── Payment details ── */
+        /* ── Account details ── */
         .payment-box {
             margin-top: 28px;
-            border-left: 4px solid #111;
+            border-left: 4px solid #2563eb;
             padding: 12px 16px;
             background: #f8f8f8;
         }
@@ -197,7 +208,7 @@
         .payment-val {
             display: table-cell;
             font-size: 11px;
-            font-weight: 600;
+            font-weight: 400;
             padding: 3px 0;
         }
 
@@ -225,55 +236,90 @@
 </head>
 <body>
 
-    {{-- ── Company Header ── --}}
-    <div class="header">
-        <div class="invoice-title">{{ $invoiceLabel }}</div>
-        <div class="company-name">{{ $companyName }}</div>
-        <div class="company-meta">
-            {{ $property->address ?? '' }}{{ ($property->city ?? '') ? ', ' . $property->city : '' }}{{ ($property->country ?? '') ? ', ' . $property->country : '' }}<br>
-            {{ $companyEmail }}{{ $companyPhone ? ' | ' . $companyPhone : '' }}
-            @if($vatNumber)
-                <br>VAT No: {{ $vatNumber }}
-            @endif
-            @if($companyReg)
-                &nbsp;| Reg No: {{ $companyReg }}
+    @php
+        $lineItems = $items->filter(fn($i) => ($i->item_type ?? '') !== 'electricity_vat');
+        $vatItems  = $items->filter(fn($i) => ($i->item_type ?? '') === 'electricity_vat');
+        $currency  = $invoice->currency ?? 'TZS';
+    @endphp
+
+    {{-- ── Header: logo top-left, meta top-right, title centered below ── --}}
+    <div class="header-table">
+        <div class="header-cell header-logo-cell">
+            @if($companyLogoBase64)
+                <img src="{{ $companyLogoBase64 }}" class="logo-img" alt="{{ $companyName }}">
+            @else
+                <div class="company-name">{{ $companyName }}</div>
             @endif
         </div>
+        <div class="header-cell header-meta-cell">
+            <div class="header-meta">
+                <div><span class="hm-label">Date:</span> {{ \Carbon\Carbon::parse($invoice->issued_date)->format('d/m/Y') }}</div>
+                <div><span class="hm-label">Invoice No:</span> {{ $invoice->invoice_number }}</div>
+                @if($vatNumber)
+                <div><span class="hm-label">VRN No:</span> {{ $vatNumber }}</div>
+                @endif
+                @if($tinNumber)
+                <div><span class="hm-label">TIN No:</span> {{ $tinNumber }}</div>
+                @endif
+            </div>
+        </div>
+    </div>
+
+    <div class="header-title-wrap">
+        <div class="invoice-title">{{ $invoiceLabel }}</div>
     </div>
 
     <hr class="divider">
 
-    {{-- ── Date / Invoice Number ── --}}
-    <div class="meta-row">
-        <div class="meta-cell">
-            <div class="meta-label">Date</div>
-            <div class="meta-value">{{ \Carbon\Carbon::parse($invoice->issued_date)->format('d/m/Y') }}</div>
-        </div>
-        <div class="meta-cell right">
-            <div class="meta-label">Invoice Number</div>
-            <div class="meta-value">{{ $invoice->invoice_number }}</div>
-        </div>
-    </div>
-
-    {{-- ── Bill To ── --}}
-    <div class="bill-to">
-        <div class="bill-to-label">BILL TO</div>
-        <div class="bill-to-name">{{ strtoupper($invoice->tenant_name) }}</div>
-        @if($tenantUnit)
-        <div class="bill-to-line">{{ $tenantUnit }}</div>
-        @endif
-        <div class="bill-to-line">
-            {{ $invoice->tenant_email ?? '' }}
-            @if($tenantPhone)
-                {{ $invoice->tenant_email ? ' | ' : '' }}{{ $tenantPhone }}
+    {{-- ── Landlord / Tenant ── --}}
+    <div class="parties">
+        <div class="party-col">
+            <div class="party-label">Landlord</div>
+            <div class="party-name">{{ $companyName }}</div>
+            @if($property?->address || $property?->city || $property?->country)
+            <div class="party-line">
+                {{ $property->address ?? '' }}{{ ($property->city ?? '') ? ', ' . $property->city : '' }}{{ ($property->country ?? '') ? ', ' . $property->country : '' }}
+            </div>
+            @endif
+            @if($companyPhone || $companyEmail)
+            <div class="party-line">
+                {{ $companyPhone ? 'Tel: ' . $companyPhone : '' }}{{ ($companyPhone && $companyEmail) ? ' | ' : '' }}{{ $companyEmail }}
+            </div>
+            @endif
+            @if($companyReg)
+            <div class="party-line">Reg No: {{ $companyReg }}</div>
             @endif
         </div>
-        @if($invoice->period)
-        <div class="bill-to-line" style="margin-top:4px;color:#555;">Period: {{ $invoice->period }}</div>
-        @endif
-        @if($invoice->due_date)
-        <div class="bill-to-line" style="color:#555;">Due: {{ \Carbon\Carbon::parse($invoice->due_date)->format('d/m/Y') }}</div>
-        @endif
+        <div class="party-col party-col-right">
+            <div class="party-label">Tenant</div>
+            <div class="party-name">{{ strtoupper($invoice->tenant_name) }}</div>
+            @if($tenantTin || $tenantVrn)
+            <div class="party-line">
+                {{ $tenantTin ? 'TIN No: ' . $tenantTin : '' }}{{ ($tenantTin && $tenantVrn) ? ' | ' : '' }}{{ $tenantVrn ? 'VRN No: ' . $tenantVrn : '' }}
+            </div>
+            @endif
+            @if($tenantUnit || $property?->name)
+            <div class="party-line">
+                {{ $property?->name }}{{ ($property?->name && $tenantUnit) ? ' — Unit ' : ($tenantUnit ? 'Unit ' : '') }}{{ $tenantUnit }}
+            </div>
+            @endif
+            @if($tenantAddress || $tenantCity)
+            <div class="party-line">
+                {{ $tenantAddress }}{{ ($tenantAddress && $tenantCity) ? ', ' : '' }}{{ $tenantCity }}
+            </div>
+            @endif
+            @if($invoice->tenant_email || $tenantPhone)
+            <div class="party-line">
+                {{ $invoice->tenant_email }}{{ ($invoice->tenant_email && $tenantPhone) ? ' | ' : '' }}{{ $tenantPhone }}
+            </div>
+            @endif
+            @if($invoice->period)
+            <div class="party-line" style="margin-top:4px;color:#555;">Period: {{ $invoice->period }}</div>
+            @endif
+            @if($invoice->due_date)
+            <div class="party-line" style="color:#555;">Due: {{ \Carbon\Carbon::parse($invoice->due_date)->format('d/m/Y') }}</div>
+            @endif
+        </div>
     </div>
 
     {{-- ── Items Table ── --}}
@@ -282,17 +328,24 @@
             <tr>
                 <th style="width:32px;">NO</th>
                 <th style="text-align:left;">DESCRIPTION</th>
-                <th class="center" style="width:60px;">QTY</th>
-                <th class="right" style="width:120px;">RATE</th>
-                <th class="right" style="width:130px;">AMOUNT</th>
+                @if($isRentServiceOnly)
+                    <th class="center" style="width:90px;">NO OF MONTHS</th>
+                    <th class="right" style="width:130px;">RENT/{{ $currency }}/MONTH</th>
+                    <th class="right" style="width:130px;">TOTAL {{ $currency }}</th>
+                @else
+                    <th class="center" style="width:60px;">QTY</th>
+                    <th class="right" style="width:120px;">RATE</th>
+                    <th class="right" style="width:130px;">AMOUNT</th>
+                @endif
             </tr>
         </thead>
         <tbody>
-            @php
-                $lineItems = $items->filter(fn($i) => ($i->item_type ?? '') !== 'electricity_vat');
-                $vatItems  = $items->filter(fn($i) => ($i->item_type ?? '') === 'electricity_vat');
-                $rowNum = 1;
-            @endphp
+            @if($unitLine)
+            <tr>
+                <td colspan="5" class="bold" style="background:#f2f2f2;">{{ strtoupper($unitLine) }}</td>
+            </tr>
+            @endif
+            @php $rowNum = 1; @endphp
             @foreach($lineItems as $item)
             <tr>
                 <td class="center">{{ $rowNum++ }}</td>
@@ -304,7 +357,7 @@
                 </td>
                 <td class="center">{{ number_format((float)$item->quantity, 2) }}</td>
                 <td class="right">{{ number_format((float)$item->unit_price, 2) }}</td>
-                <td class="right bold">{{ number_format((float)$item->total, 2) }}</td>
+                <td class="right">{{ number_format((float)$item->total, 2) }}</td>
             </tr>
             @endforeach
         </tbody>
@@ -312,17 +365,16 @@
 
     {{-- ── Totals ── --}}
     @php
-        $subtotal  = $lineItems->sum('total');
-        $vatAmount = $vatItems->sum('total');
+        $subtotal   = $lineItems->sum('total');
+        $vatAmount  = $vatItems->sum('total');
         $grandTotal = $subtotal + $vatAmount;
-        $currency   = $invoice->currency ?? 'TZS';
     @endphp
 
     <div class="totals-wrap clearfix">
         <div class="totals-table">
             <table>
                 <tr>
-                    <td>Subtotal</td>
+                    <td>Sub Total</td>
                     <td class="right">{{ number_format($subtotal, 2) }}</td>
                 </tr>
                 @if($vatAmount > 0)
@@ -339,33 +391,33 @@
                 @php $grandTotal = $subtotal + $calcVat; @endphp
                 @endif
                 <tr class="total-row">
-                    <td>Total Amount {{ $currency }}</td>
+                    <td>Invoice Total {{ $currency }}</td>
                     <td class="right">{{ number_format($grandTotal, 2) }}</td>
                 </tr>
             </table>
         </div>
     </div>
 
-    {{-- ── Payment Details ── --}}
+    {{-- ── Account Details ── --}}
     @if($bankName || $bankAccount)
     <div class="payment-box">
-        <div class="payment-box-title">Payment Details</div>
+        <div class="payment-box-title">Account Details</div>
         <div class="payment-grid">
             @if($bankName)
             <div class="payment-row">
-                <div class="payment-key">Bank Name:</div>
+                <div class="payment-key">Bank:</div>
                 <div class="payment-val">{{ $bankName }}</div>
             </div>
             @endif
             @if($bankAccount)
             <div class="payment-row">
-                <div class="payment-key">Account Number:</div>
+                <div class="payment-key">Acct No:</div>
                 <div class="payment-val">{{ $bankAccount }}</div>
             </div>
             @endif
             @if($bankAccountName)
             <div class="payment-row">
-                <div class="payment-key">Account Name:</div>
+                <div class="payment-key">A/C Name:</div>
                 <div class="payment-val">{{ $bankAccountName }}</div>
             </div>
             @endif
@@ -381,7 +433,7 @@
 
     {{-- ── Footer ── --}}
     <div class="footer">
-        <div class="footer-left">Approved by: {{ $companyName }}</div>
+        <div class="footer-left">Approved by: {{ $approvedByName ?: $companyName }}</div>
         <div class="footer-right">Date: {{ \Carbon\Carbon::now()->format('d/m/Y') }}</div>
     </div>
 

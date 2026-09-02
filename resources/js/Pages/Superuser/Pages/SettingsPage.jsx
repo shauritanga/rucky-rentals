@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
 
+function logoSrc(path) {
+  return path ? `/storage/${path}` : '';
+}
+
 function Toggle({ value, onChange }) {
   return (
     <button
@@ -21,10 +25,15 @@ export default function SettingsPage({ settings = {} }) {
     company_name:         settings.company_name         ?? 'Mwamba Properties Ltd',
     company_registration: settings.company_registration ?? '',
     vat_number:           settings.vat_number           ?? '',
+    tin_number:           settings.tin_number           ?? '',
     default_currency:     settings.default_currency     ?? 'TZS',
     default_country:      settings.default_country      ?? 'Tanzania',
     support_email:        settings.support_email        ?? '',
   });
+
+  // ── General — Company Logo ───────────────────────────────────────────────
+  const [logoUrl, setLogoUrl] = useState(logoSrc(settings.company_logo));
+  const [logoUploading, setLogoUploading] = useState(false);
 
   // ── General — Lease Policy ───────────────────────────────────────────────
   const [lease, setLease] = useState({
@@ -72,6 +81,41 @@ export default function SettingsPage({ settings = {} }) {
     });
   };
 
+  const onLogoPick = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true);
+    try {
+      const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+      const fd = new FormData();
+      fd.append('logo', file);
+      const res = await fetch('/superuser/settings/logo', {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+        body: fd,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setLogoUrl(json?.logo_url || '');
+        setSubmitMessage('Company logo saved.');
+      } else {
+        setSubmitMessage(json?.message || (json?.errors?.logo?.[0]) || 'Logo upload failed — try again.');
+      }
+    } catch {
+      setSubmitMessage('Logo upload failed — try again.');
+    } finally {
+      setLogoUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  const onLogoRemove = () => {
+    router.delete('/superuser/settings/logo', {
+      preserveScroll: true,
+      onSuccess: () => { setLogoUrl(''); setSubmitMessage('Company logo removed.'); },
+    });
+  };
+
   const saveIdentity  = () => save(identity);
   const saveLease     = () => save(lease);
   const saveSecurity  = () => save({
@@ -116,6 +160,25 @@ export default function SettingsPage({ settings = {} }) {
           <div className="card" style={{ padding: 20 }}>
             <div className="card-title" style={{ marginBottom: 12 }}>Platform Identity</div>
             <div className="form-row">
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 56, height: 56, borderRadius: 8, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: 'var(--bg-subtle, #f5f5f5)', flexShrink: 0 }}>
+                  {logoUrl ? <img src={logoUrl} alt="Company logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>No logo</span>}
+                </div>
+                <div>
+                  <label className="form-label" style={{ display: 'block' }}>Company Logo</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => document.getElementById('company-logo-input')?.click()} disabled={logoUploading}>
+                      {logoUploading ? 'Uploading…' : (logoUrl ? 'Change' : 'Upload')}
+                    </button>
+                    {logoUrl && (
+                      <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }} onClick={onLogoRemove} disabled={logoUploading}>Remove</button>
+                    )}
+                  </div>
+                  <input id="company-logo-input" type="file" accept="image/*" style={{ display: 'none' }} onChange={onLogoPick} />
+                </div>
+              </div>
+            </div>
+            <div className="form-row">
               <div className="form-group">
                 <label className="form-label">Company Name</label>
                 <input className="form-input" value={identity.company_name} onChange={e => setIdentity(p => ({ ...p, company_name: e.target.value }))} />
@@ -127,8 +190,14 @@ export default function SettingsPage({ settings = {} }) {
                 <input className="form-input" value={identity.company_registration} onChange={e => setIdentity(p => ({ ...p, company_registration: e.target.value }))} />
               </div>
               <div className="form-group">
-                <label className="form-label">VAT Number</label>
+                <label className="form-label">VRN No.</label>
                 <input className="form-input" value={identity.vat_number} onChange={e => setIdentity(p => ({ ...p, vat_number: e.target.value }))} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">TIN No.</label>
+                <input className="form-input" value={identity.tin_number} onChange={e => setIdentity(p => ({ ...p, tin_number: e.target.value }))} />
               </div>
             </div>
             <div className="form-row">
