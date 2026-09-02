@@ -247,6 +247,37 @@ class InvoiceController extends Controller
 
         // Observer handles status transitions (post/void as appropriate)
 
+        // Manual status changes here (e.g. the "Mark as Paid" button) don't go through
+        // PaymentController's payment-driven reconciliation, so the linked lease
+        // installment's status/paid_amount would otherwise stay stale (e.g. still
+        // "overdue" after the invoice is marked paid). Mirror the chosen status onto it.
+        //
+        // A proforma invoice never gets linked at creation (attachInvoiceToInstallment()
+        // bails out for type='proforma'), so when this same request promotes it to
+        // type='invoice' above, catch it up here too — mirrors the same catch-up in
+        // PaymentController::reconcileInvoiceStatus().
+        if (
+            $invoice->type === 'invoice'
+            && !empty($invoice->lease_id)
+            && !LeaseInstallment::where('invoice_id', $invoice->id)->exists()
+        ) {
+            $this->attachInvoiceToInstallment($invoice);
+        }
+
+        $installment = LeaseInstallment::where('invoice_id', $invoice->id)->first();
+        if ($installment) {
+            $installment->update([
+                'status'      => in_array($data['status'], ['paid', 'partially_paid', 'overdue', 'unpaid'], true)
+                    ? $data['status']
+                    : 'unpaid',
+                'paid_amount' => match ($data['status']) {
+                    'paid'   => (float) $installment->amount,
+                    'unpaid' => 0,
+                    default  => $installment->paid_amount,
+                },
+            ]);
+        }
+
         $propertyName = Property::where('id', $invoice->property_id)->value('name');
         $this->logAudit(
             request: $request,
