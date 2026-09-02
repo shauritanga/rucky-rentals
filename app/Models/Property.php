@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\FloorConfig;
+use App\Support\UnitTypes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
@@ -19,6 +20,7 @@ class Property extends Model
         'occupied_units',
         'total_floors',  // deprecated — kept for backward compat; use floor_config
         'floor_config',
+        'unit_types',
         'manager_user_id',
         'phone',
         'bank_name',
@@ -29,6 +31,7 @@ class Property extends Model
 
     protected $casts = [
         'floor_config' => 'array',
+        'unit_types' => 'array',
     ];
 
     /**
@@ -38,6 +41,15 @@ class Property extends Model
     public function floorList(): array
     {
         return FloorConfig::floors(FloorConfig::parse($this->floor_config));
+    }
+
+    /**
+     * Return this property's unit type options: defaults merged with any
+     * custom types the property has saved, deduped case-insensitively.
+     */
+    public function unitTypeList(): array
+    {
+        return UnitTypes::merge($this->unit_types);
     }
 
     public function manager()

@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { floorSortOrder } from '@/utils/floorConfig';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import CreatableTypeSelect from '@/Components/CreatableTypeSelect';
 
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
@@ -13,18 +14,6 @@ const APPROVAL_BADGE = {
 };
 const fmt = (n) => Number(n).toLocaleString();
 const SQM_PER_SQFT = 0.09290304;
-const UNIT_TYPES = [
-  'Apartment',
-  'Office Suite',
-  'Retail Shop',
-  'Showroom',
-  'Warehouse',
-  'Restaurant',
-  'Clinic',
-  'Salon',
-  'Store',
-  'Other',
-];
 
 // Unit number must be G.01–G.99, M.01–M.99, F1.01–F1.99 … F99.99, B1.01–B1.99 … B99.99
 const UNIT_NUMBER_RE = /^(G|M|F\d{1,2}|B\d{1,2})\.(?:0[1-9]|[1-9]\d)$/i;
@@ -98,7 +87,7 @@ function UnitCard({ unit, onClick }) {
   );
 }
 
-export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = true, settings = {} }) {
+export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], canCreateUnit = true, settings = {} }) {
   const { props } = usePage();
   const user = props?.auth?.user;
   const [filter, setFilter] = useState('all');
@@ -120,6 +109,9 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
     () => Object.fromEntries(availableFloors.map(f => [f.id, f.label])),
     [availableFloors],
   );
+
+  const [availableTypes, setAvailableTypes] = useState(Array.isArray(unitTypes) ? unitTypes : []);
+  useEffect(() => { setAvailableTypes(Array.isArray(unitTypes) ? unitTypes : []); }, [unitTypes]);
 
   // ── Create form ──────────────────────────────────────────────────────────
   const { data, setData, post, processing, reset, errors } = useForm({
@@ -486,9 +478,13 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Unit Type</label>
-                  <select className="form-input form-select" value={editData.type} onChange={e => setEditData('type', e.target.value)}>
-                    {UNIT_TYPES.map(t => <option key={t}>{t}</option>)}
-                  </select>
+                  <CreatableTypeSelect
+                    value={editData.type}
+                    options={availableTypes}
+                    error={editErrors.type}
+                    onChange={(v) => setEditData('type', v)}
+                    onOptionsChange={setAvailableTypes}
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Size (m²)</label>
@@ -642,8 +638,13 @@ export default function UnitsIndex({ units, floorOptions = [], canCreateUnit = t
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Unit Type</label>
-                  <select className={`form-input form-select${errors.type ? ' input-error' : ''}`} value={data.type} onChange={e=>setData('type',e.target.value)}>{UNIT_TYPES.map(t=><option key={t}>{t}</option>)}</select>
-                  {errors.type && <div className="form-error">{errors.type}</div>}
+                  <CreatableTypeSelect
+                    value={data.type}
+                    options={availableTypes}
+                    error={errors.type}
+                    onChange={(v) => setData('type', v)}
+                    onOptionsChange={setAvailableTypes}
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Size (m²)</label>

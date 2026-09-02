@@ -46,8 +46,10 @@ Route::middleware('auth')->group(function () {
 
         Route::resource('units', UnitController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::post('units/{unit}/resubmit', [UnitController::class, 'resubmit'])->name('units.resubmit');
+        Route::post('units/types', [UnitController::class, 'storeType'])->name('units.types.store');
         Route::resource('tenants', TenantController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('leases', LeaseController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::get('leases/{lease}/pdf', [LeaseController::class, 'downloadAgreement'])->name('leases.pdf');
         Route::resource('payments', PaymentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('maintenance', MaintenanceController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('scheduled-maintenance', ScheduledMaintenanceController::class)->only(['store', 'update', 'destroy']);

@@ -15,6 +15,7 @@ use App\Services\LeaseNumberService;
 use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -440,6 +441,85 @@ class LeaseController extends Controller
         );
 
         return back()->with('success', 'Lease updated.');
+    }
+
+    /**
+     * Generate a lease agreement PDF for download (always fresh — not cached).
+     */
+    public function downloadAgreement(Request $request, Lease $lease): \Illuminate\Http\Response
+    {
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $lease->property_id !== $effectiveId, 403);
+        }
+
+        $lease->load(['tenant', 'unit', 'property']);
+        $tenant = $lease->tenant;
+        $unit = $lease->unit;
+        $property = $lease->property;
+
+        abort_if(!$tenant || !$unit || !$property, 422, 'Lease is missing required tenant/unit/property data.');
+
+        // ── Company & property details (mirrors InvoiceController::downloadPdf) ──
+        $companyName  = SystemSetting::get('company_name', 'Mwamba Properties');
+        $companyEmail = SystemSetting::get('support_email', '');
+        $companyReg   = SystemSetting::get('company_registration', '');
+        $companyPhone = $property->phone ?? '';
+
+        $joinAddress = fn (...$parts) => collect($parts)
+            ->map(fn ($p) => trim((string) $p, " \t\n\r\0\x0B,"))
+            ->filter()
+            ->join(', ');
+
+        $lessorName    = $companyName;
+        $lessorRegNo   = $companyReg;
+        $lessorAddress = $joinAddress($property->address, $property->city, $property->country);
+
+        $lesseeName = $tenant->tenant_type === 'company' ? ($tenant->company_name ?: $tenant->name) : $tenant->name;
+        $lesseeAddress = $joinAddress($tenant->address, $tenant->city, $tenant->country) ?: '—';
+
+        $floorLabel = null;
+        $floors = $property->floorList();
+        foreach ($floors as $floor) {
+            if ($floor['id'] === $unit->floor) {
+                $floorLabel = $floor['label'];
+                break;
+            }
+        }
+
+        $currency = $lease->currency ?? $unit->currency ?? 'TZS';
+
+        $agreementDate = $lease->created_at ? Carbon::parse($lease->created_at) : Carbon::now();
+        $commencementDate = Carbon::parse($lease->possession_date ?? $lease->start_date);
+
+        $years = intdiv((int) $lease->duration_months, 12);
+        $months = (int) $lease->duration_months % 12;
+        $leaseTermLabel = trim(
+            ($years > 0 ? $years . ' year' . ($years > 1 ? 's' : '') : '')
+            . ($years > 0 && $months > 0 ? ' and ' : '')
+            . ($months > 0 ? $months . ' month' . ($months > 1 ? 's' : '') : '')
+        ) ?: $lease->duration_months . ' month(s)';
+
+        $installmentsPerYear = max(1, (int) round(12 / max(1, (int) $lease->payment_cycle)));
+        $installmentIntervalMonths = (int) $lease->payment_cycle;
+        $rentPerInstallment = (float) $lease->monthly_rent * $installmentIntervalMonths;
+
+        $pdfContent = Pdf::loadView('pdf.lease-agreement', compact(
+            'lease', 'tenant', 'unit', 'property',
+            'companyName', 'companyEmail', 'companyPhone',
+            'lessorName', 'lessorRegNo', 'lessorAddress',
+            'lesseeName', 'lesseeAddress',
+            'floorLabel', 'currency',
+            'agreementDate', 'commencementDate', 'leaseTermLabel',
+            'installmentsPerYear', 'installmentIntervalMonths', 'rentPerInstallment',
+        ))->setPaper('a4', 'portrait')->output();
+
+        $filename = ($lease->lease_number ?: 'lease-' . $lease->id) . '.pdf';
+
+        return response($pdfContent, 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 
     public function destroy(Lease $lease)

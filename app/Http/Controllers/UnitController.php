@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Notifications\UnitApprovalRequestNotification;
 use App\Support\FloorConfig;
 use App\Support\MockRentalData;
+use App\Support\UnitTypes;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,24 +22,13 @@ class UnitController extends Controller
 {
     use LogsAudit;
     private const SQM_PER_SQFT = 0.09290304;
-    private const UNIT_TYPES = [
-        'Apartment',
-        'Office Suite',
-        'Retail Shop',
-        'Showroom',
-        'Warehouse',
-        'Restaurant',
-        'Clinic',
-        'Salon',
-        'Store',
-        'Other',
-    ];
 
     public function index(Request $request)
     {
         $user = $request->user();
         $floorOptions = $this->resolveFloorOptions($request);
         $canCreateUnit = count($floorOptions) > 0;
+        $unitTypes = $this->resolveUnitTypeOptions($request);
 
         $settings = SystemSetting::pluck('value', 'key');
 
@@ -47,6 +37,7 @@ class UnitController extends Controller
                 'units'         => MockRentalData::units(),
                 'floorOptions'  => $floorOptions,
                 'canCreateUnit' => $canCreateUnit,
+                'unitTypes'     => $unitTypes,
                 'settings'      => $settings,
             ]);
         }
@@ -66,6 +57,7 @@ class UnitController extends Controller
             'units'         => $units,
             'floorOptions'  => $floorOptions,
             'canCreateUnit' => $canCreateUnit,
+            'unitTypes'     => $unitTypes,
             'settings'      => $settings,
         ]);
     }
@@ -88,6 +80,8 @@ class UnitController extends Controller
             ? ['required', 'string', Rule::in($validFloorIds)]
             : ['required', 'string'];
 
+        $allowedTypes = $this->resolveUnitTypeOptions($request);
+
         $unitNumberUniqueRule = Rule::unique('units', 'unit_number')
             ->where(fn ($query) => $effectivePropertyId === null
                 ? $query->whereNull('property_id')
@@ -96,7 +90,7 @@ class UnitController extends Controller
         $data = $request->validate([
             'unit_number'            => ['required', 'string', $unitNumberUniqueRule],
             'floor'                  => $floorRule,
-            'type'                   => ['required', 'string', Rule::in(self::UNIT_TYPES)],
+            'type'                   => ['required', 'string', Rule::in($allowedTypes)],
             'size_sqm'               => 'required|numeric|min:0.1',
             'rate_per_sqm'           => 'required|numeric|min:0',
             'service_charge_per_sqm' => 'nullable|numeric|min:0',
@@ -182,6 +176,8 @@ class UnitController extends Controller
             ? ['required', 'string', Rule::in($validFloorIds)]
             : ['required', 'string'];
 
+        $allowedTypes = $this->resolveUnitTypeOptions($request);
+
         $unitNumberUniqueRule = Rule::unique('units', 'unit_number')
             ->ignore($unit->id)
             ->where(fn ($query) => $effectivePropertyId === null
@@ -191,7 +187,7 @@ class UnitController extends Controller
         $data = $request->validate([
             'unit_number'            => ['required', 'string', $unitNumberUniqueRule],
             'floor'                  => $floorRule,
-            'type'                   => 'required|string',
+            'type'                   => ['required', 'string', Rule::in($allowedTypes)],
             'size_sqm'               => 'required|numeric|min:0.1',
             'rate_per_sqm'           => 'required|numeric|min:0',
             'service_charge_per_sqm' => 'nullable|numeric|min:0',
@@ -229,6 +225,43 @@ class UnitController extends Controller
         );
 
         return back()->with('success', 'Unit updated.');
+    }
+
+    public function storeType(Request $request)
+    {
+        abort_unless($this->shouldScopeToProperty($request), 422, 'Custom unit types must be created within a property context.');
+        $propertyId = $this->effectivePropertyId($request);
+        abort_if($propertyId === null, 422, 'No property selected.');
+
+        $property = Property::findOrFail($propertyId);
+        $existing = $property->unitTypeList();
+
+        $validated = $request->validate([
+            'type' => ['required', 'string', 'max:60'],
+        ]);
+        $newType = trim($validated['type']);
+
+        if ($newType === '') {
+            return back()->withErrors(['type' => 'Type name cannot be empty.']);
+        }
+        if (collect($existing)->contains(fn ($t) => mb_strtolower($t) === mb_strtolower($newType))) {
+            return back()->withErrors(['type' => 'This type already exists.']);
+        }
+
+        $custom = $property->unit_types ?? [];
+        $custom[] = $newType;
+        $property->update(['unit_types' => array_values($custom)]);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Unit type added',
+            resource: $newType,
+            propertyName: $property->name,
+            category: 'settings',
+            propertyId: $property->id,
+        );
+
+        return back()->with('success', "Unit type \"{$newType}\" added.")->with('newUnitType', $newType);
     }
 
     public function destroy(Unit $unit)
@@ -319,6 +352,17 @@ class UnitController extends Controller
         }
         // Default for superuser without a property context
         return FloorConfig::floors(FloorConfig::parse(null));
+    }
+
+    private function resolveUnitTypeOptions(Request $request): array
+    {
+        if ($this->shouldScopeToProperty($request)) {
+            $propertyId = $this->effectivePropertyId($request);
+            $property = $propertyId ? Property::find($propertyId) : null;
+            return $property ? $property->unitTypeList() : UnitTypes::DEFAULTS;
+        }
+        // Default for superuser without a property context
+        return UnitTypes::DEFAULTS;
     }
 
 }
