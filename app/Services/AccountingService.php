@@ -8,6 +8,7 @@ use App\Models\JournalEntry;
 use App\Models\Lease;
 use App\Models\Payment;
 use App\Models\MaintenanceRecord;
+use App\Models\UnitClearance;
 use App\Models\ExchangeRate;
 use App\Support\AccountingAutoPoster;
 use Illuminate\Support\Carbon;
@@ -857,6 +858,103 @@ class AccountingService
                     reference: $reference,
                     description: 'Deposit refund posting failed',
                     data: ['lease_id' => $lease->id],
+                    errorMessage: $e->getMessage(),
+                );
+                throw $e;
+            }
+        });
+    }
+
+    /**
+     * Post the settlement GL entry when a unit clearance is finalized.
+     *
+     * Unlike postDepositRefund() (unconditional full refund), this nets the
+     * deposit against tenant-responsible damage costs recorded on the clearance:
+     *
+     * GL entry (reference DEP-REF-{lease_id}, same key the old unconditional
+     * refund used, so existing reporting joined on that reference still works):
+     *   Dr: 2100  Deposits Payable          deposit          (clears the full liability)
+     *     Cr: 1000  Cash at Bank              refund           (0 if fully consumed by damage)
+     *     Cr: 4110  Damage Recovery Income    recovered        (deductions, capped at deposit)
+     *
+     * Any deductions beyond the deposit (shortfall) are informational only —
+     * stored on the clearance, not auto-invoiced.
+     */
+    public function postClearanceSettlement(UnitClearance $clearance): void
+    {
+        $lease = $clearance->lease ?: Lease::find($clearance->lease_id);
+        abort_if(!$lease, 422, 'Clearance is not linked to a lease.');
+
+        $deposit    = (float) $clearance->deposit_amount;
+        $deductions = (float) $clearance->total_deductions;
+        $recovered  = min($deductions, $deposit);
+        $refund     = max(0, $deposit - $deductions);
+
+        if ($deposit <= 0) {
+            return;
+        }
+
+        $currency = strtoupper((string) ($clearance->currency ?: $lease->currency ?: 'TZS'));
+        $rate = $currency === 'TZS' ? 1.0 : ExchangeRate::getRate(
+            propertyId: null,
+            fromCurrency: $currency,
+            toCurrency: 'TZS',
+            date: $lease->start_date,
+        );
+
+        $depositTzs   = round($deposit * $rate, 2);
+        $refundTzs    = round($refund * $rate, 2);
+        $recoveredTzs = round($depositTzs - $refundTzs, 2); // floating-point safe: guarantees balance
+
+        $reference = 'DEP-REF-' . $lease->id;
+
+        DB::transaction(function () use ($clearance, $lease, $depositTzs, $refundTzs, $recoveredTzs, $reference) {
+            try {
+                $lines = [
+                    ['account_code' => '2100', 'debit' => $depositTzs, 'credit' => 0],
+                ];
+                if ($refundTzs > 0) {
+                    $lines[] = ['account_code' => '1000', 'debit' => 0, 'credit' => $refundTzs];
+                }
+                if ($recoveredTzs > 0) {
+                    $lines[] = ['account_code' => '4110', 'debit' => 0, 'credit' => $recoveredTzs];
+                }
+
+                $journalEntry = $this->poster->post(
+                    propertyId: $lease->property_id,
+                    entryDate: now()->toDateString(),
+                    description: 'Security deposit settled — clearance ' . $clearance->clearance_number,
+                    reference: $reference,
+                    lines: $lines,
+                    sourceType: 'unit_clearance',
+                    sourceId: $clearance->id,
+                );
+
+                AccountingEvent::logSuccess(
+                    propertyId: $lease->property_id,
+                    eventType: 'deposit_settled',
+                    entityType: 'UnitClearance',
+                    entityId: $clearance->id,
+                    reference: $reference,
+                    description: 'Deposit settlement posted for clearance ' . $clearance->clearance_number,
+                    data: [
+                        'lease_id'      => $lease->id,
+                        'clearance_id'  => $clearance->id,
+                        'deposit_tzs'   => $depositTzs,
+                        'refund_tzs'    => $refundTzs,
+                        'recovered_tzs' => $recoveredTzs,
+                    ],
+                    postedEntries: [$journalEntry->id],
+                );
+            } catch (\Exception $e) {
+                AccountingEvent::logFailure(
+                    propertyId: $lease->property_id,
+                    eventType: 'deposit_settled',
+                    entityType: 'UnitClearance',
+                    entityId: $clearance->id,
+                    reference: $reference,
+                    description: 'Deposit settlement posting failed',
+                    data: ['lease_id' => $lease->id, 'clearance_id' => $clearance->id],
                     errorMessage: $e->getMessage(),
                 );
                 throw $e;

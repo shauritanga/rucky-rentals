@@ -64,6 +64,10 @@ class HandleInertiaRequests extends Middleware
                 'created_invoice_id' => fn() => $request->session()->get('created_invoice_id'),
             ],
             'notifications_unread' => fn() => $request->user()?->unreadNotifications()->count() ?? 0,
+            // One-shot flag: true only on the first page load right after login, then
+            // consumed (pull removes it from the session) — drives the due-invoices
+            // popup showing once per login rather than once per calendar day.
+            'just_logged_in' => fn() => (bool) $request->session()->pull('just_logged_in', false),
             'viewing_property' => fn() => (
                 $request->user()?->role === 'superuser' && $request->session()->get('superuser_viewing_property_id')
                     ? Property::find($request->session()->get('superuser_viewing_property_id'), ['id', 'name'])

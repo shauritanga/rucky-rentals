@@ -3,6 +3,7 @@ import { Link, usePage, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 import useIdleLogout from '@/hooks/useIdleLogout';
 import echo from '@/echo';
+import DueInvoicesPopup from '@/Components/DueInvoicesPopup';
 
 /* ─── Notification Bell ──────────────────────────────────────────── */
 function timeAgo(ts) {
@@ -629,6 +630,8 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
 
         <div className="content">{children}</div>
       </div>
+
+      <DueInvoicesPopup user={user} />
     </div>
   );
 }

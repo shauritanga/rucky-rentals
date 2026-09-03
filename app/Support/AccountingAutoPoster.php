@@ -27,6 +27,7 @@ class AccountingAutoPoster
         '4100' => ['name' => 'Service Charge Income',  'type' => 'revenue',   'category' => 'Operating Revenue'],
         '4200' => ['name' => 'Electricity Income',     'type' => 'revenue',   'category' => 'Operating Revenue'],
         '4900' => ['name' => 'Other Income',           'type' => 'revenue',   'category' => 'Other Revenue'],
+        '4110' => ['name' => 'Damage Recovery Income',  'type' => 'revenue',   'category' => 'Operating Revenue'],
         '5000' => ['name' => 'Maintenance Expense',    'type' => 'expense',   'category' => 'Operating Expenses'],
         '5100' => ['name' => 'Utilities Expense',      'type' => 'expense',   'category' => 'Operating Expenses'],
         '5500' => ['name' => 'Management Fee',         'type' => 'expense',   'category' => 'Operating Expenses'],

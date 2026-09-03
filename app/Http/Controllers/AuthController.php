@@ -390,6 +390,7 @@ class AuthController extends Controller
         $request->session()->regenerate();
         $request->session()->forget(self::PENDING_LOGIN_SESSION_KEY);
         $request->session()->put(EnforceSessionTimeout::lastActivitySessionKey(), now()->timestamp);
+        $request->session()->put('just_logged_in', true);
 
         AuditLog::create([
             'user_id'     => $user->id,

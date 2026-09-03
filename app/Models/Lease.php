@@ -61,4 +61,9 @@ class Lease extends Model
     {
         return $this->hasMany(LeaseInstallment::class)->orderBy('sequence');
     }
+
+    public function clearances()
+    {
+        return $this->hasMany(UnitClearance::class);
+    }
 }

@@ -283,6 +283,24 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(8px);background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-primary);padding:10px 18px;border-radius:10px;font-size:13px;font-weight:500;box-shadow:var(--shadow-float);z-index:300;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap;font-family:inherit}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.due-invoices-popup{position:fixed;bottom:20px;right:20px;width:340px;max-height:420px;display:flex;flex-direction:column;background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-float);z-index:500;overflow:hidden;animation:duePopupIn .22s cubic-bezier(.22,.85,.32,1) both;font-family:inherit}
+@keyframes duePopupIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.due-invoices-popup-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border-subtle);font-size:13px;font-weight:600;color:var(--text-primary)}
+.due-invoices-popup-close{background:none;border:none;color:var(--text-muted);font-size:14px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:6px}
+.due-invoices-popup-close:hover{color:var(--text-primary);background:var(--bg-hover)}
+.due-invoices-popup-list{overflow-y:auto;flex:1}
+.due-invoices-popup-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border-subtle)}
+.due-invoices-popup-item:last-child{border-bottom:none}
+.due-invoices-popup-item-main{display:flex;flex-direction:column;gap:2px;min-width:0}
+.due-invoices-popup-tenant{font-size:12.5px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.due-invoices-popup-unit{font-size:11px;color:var(--text-muted)}
+.due-invoices-popup-item-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0}
+.due-invoices-popup-amount{font-size:12.5px;font-weight:700;color:var(--text-primary);white-space:nowrap}
+.due-invoices-popup-status{font-size:10.5px;font-weight:600;white-space:nowrap}
+.due-invoices-popup-status.overdue{color:var(--red)}
+.due-invoices-popup-status.soon{color:var(--amber)}
+.due-invoices-popup-footer{display:block;text-align:center;padding:10px;font-size:12.5px;font-weight:500;color:var(--accent);text-decoration:none;border-top:1px solid var(--border-subtle)}
+.due-invoices-popup-footer:hover{background:var(--bg-hover)}
 .units-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
 .unit-card{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:16px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .12s;position:relative;overflow:hidden}
 .unit-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0}
@@ -667,6 +685,10 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .apv-step.active .apv-label{color:var(--amber)}
 .apv-step.rejected .apv-label{color:var(--red)}
 .apv-sublabel{font-size:10px;color:var(--text-muted);margin-top:2px;line-height:1.2}
+.apv-step.clickable{cursor:pointer}
+.apv-step.clickable:hover .apv-dot{box-shadow:0 0 0 4px var(--accent-dim)}
+.apv-step.current .apv-dot{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);box-shadow:0 0 0 4px var(--accent-dim)}
+.apv-step.current .apv-label{color:var(--accent)}
 
 .apv-action-banner{border-radius:10px;padding:12px 13px;border:1px solid var(--border)}
 .apv-action-banner.can-approve{background:var(--accent-dim);border-color:var(--accent)}

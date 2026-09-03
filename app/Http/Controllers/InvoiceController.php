@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
+use App\Models\Payment;
 use App\Models\Property;
 use App\Models\Tenant;
 use App\Models\ExchangeRate;
@@ -15,6 +16,7 @@ use App\Services\InvoiceNumberService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -57,6 +59,60 @@ class InvoiceController extends Controller
         $leases   = $leasesQuery->get();
         $tenants  = $tenantsQuery->get();
         return Inertia::render('Invoices/Index', compact('invoices', 'leases', 'tenants'));
+    }
+
+    /**
+     * Overdue + due-within-7-days invoices for the bottom-right reminder popup.
+     * Eligibility is computed from due_date directly rather than trusting `status`,
+     * since status is only recomputed reactively when a payment is recorded — an
+     * untouched invoice past its due date will not automatically flip to 'overdue'.
+     */
+    public function dueReminders(Request $request)
+    {
+        $user = $request->user();
+        abort_unless(in_array($user?->role, ['superuser', 'manager', 'accountant'], true), 403);
+
+        $today = Carbon::today();
+        $in7Days = $today->copy()->addDays(7);
+
+        $query = Invoice::with('items')
+            ->whereNotIn('status', ['draft', 'proforma', 'paid'])
+            ->where('due_date', '<=', $in7Days)
+            ->orderBy('due_date');
+
+        $this->scopeByUserProperty($query, $request, 'property_id');
+
+        $invoices = $query->get();
+
+        $paidByInvoice = Payment::whereIn('invoice_id', $invoices->pluck('id'))
+            ->where('status', 'paid')
+            ->selectRaw('invoice_id, SUM(amount) as paid_sum')
+            ->groupBy('invoice_id')
+            ->pluck('paid_sum', 'invoice_id');
+
+        $due = $invoices->map(function ($inv) use ($today, $paidByInvoice) {
+            $total = (float) $inv->items->sum('total');
+            $amountDue = max(0, round($total - (float) ($paidByInvoice[$inv->id] ?? 0), 2));
+            $dueDate = Carbon::parse($inv->due_date)->startOfDay();
+            $daysDiff = $today->diffInDays($dueDate, false); // negative = overdue
+
+            return [
+                'id'             => $inv->id,
+                'invoice_number' => $inv->invoice_number,
+                'tenant_name'    => $inv->tenant_name,
+                'unit_ref'       => $inv->unit_ref,
+                'amount_due'     => $amountDue,
+                'currency'       => $inv->currency ?? 'USD',
+                'due_date'       => $inv->due_date,
+                'is_overdue'     => $daysDiff < 0,
+                'days'           => abs($daysDiff),
+            ];
+        })
+            ->filter(fn ($row) => $row['amount_due'] > 0)
+            ->sortBy('due_date')
+            ->values();
+
+        return response()->json(['due_invoices' => $due]);
     }
 
     public function store(Request $request)

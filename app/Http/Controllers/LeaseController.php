@@ -340,6 +340,7 @@ class LeaseController extends Controller
         } elseif ($action === 'terminate') {
             abort_if($user->role !== 'superuser' && !$this->isSuperuserActing($request), 403, 'Only superuser can terminate a lease.');
             abort_if(!in_array($lease->status, ['active', 'expiring', 'overdue']), 422, 'Only an active lease can be terminated.');
+            abort_if((float) $lease->deposit > 0, 422, 'This lease has a deposit on file. Start a Clearance to inspect the unit and terminate it.');
 
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 0, 'action' => 'terminated', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease terminated.'];
@@ -529,6 +530,8 @@ class LeaseController extends Controller
             $effectiveId = $this->effectivePropertyId($request);
             abort_if($effectiveId !== null && (int) $lease->property_id !== $effectiveId, 403);
         }
+
+        abort_if((float) $lease->deposit > 0, 422, 'This lease has a deposit on file. Start a Clearance to inspect the unit and terminate it.');
 
         $propertyId   = $lease->property_id;
         $propertyName = Property::where('id', $propertyId)->value('name');

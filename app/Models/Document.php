@@ -9,7 +9,8 @@ class Document extends Model
     protected $fillable = [
         'unit_id', 'name', 'file_path', 'file_type', 'file_size',
         'tag', 'document_type', 'unit_ref', 'tenant_id', 'invoice_id',
-        'maintenance_record_id', 'description', 'uploaded_by',
+        'maintenance_record_id', 'unit_clearance_id', 'unit_clearance_item_id',
+        'description', 'uploaded_by',
     ];
 
     public function unit() { return $this->belongsTo(Unit::class); }

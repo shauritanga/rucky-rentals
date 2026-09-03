@@ -169,7 +169,7 @@ class LeaseCoTenancyTest extends TestCase
         ]);
     }
 
-    private function leasePayload(int $tenantId, int $unitId): array
+    private function leasePayload(int $tenantId, int $unitId, float $deposit = 0): array
     {
         return [
             'tenant_mode' => 'existing',
@@ -180,7 +180,7 @@ class LeaseCoTenancyTest extends TestCase
             'duration_months' => 12,
             'payment_cycle' => 3,
             'monthly_rent' => 500,
-            'deposit' => 500,
+            'deposit' => $deposit,
         ];
     }
 }
