@@ -1,0 +1,40 @@
+module.exports = {
+  apps: [
+    {
+      name: 'rucky-web',
+      script: 'artisan',
+      interpreter: 'php',
+      args: 'serve --host=127.0.0.1 --port=8085',
+      cwd: '/var/www/rucky-rentals',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      env: {
+        PHP_CLI_SERVER_WORKERS: '4',
+      },
+    },
+    {
+      name: 'rucky-worker',
+      script: 'artisan',
+      interpreter: 'php',
+      args: 'queue:work database --sleep=3 --tries=3 --max-time=3600',
+      cwd: '/var/www/rucky-rentals',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '300M',
+    },
+    {
+      name: 'rucky-scheduler',
+      script: 'artisan',
+      interpreter: 'php',
+      args: 'schedule:work',
+      cwd: '/var/www/rucky-rentals',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '200M',
+    },
+  ],
+};
