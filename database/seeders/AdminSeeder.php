@@ -18,9 +18,25 @@ class AdminSeeder extends Seeder
                 'role'               => 'superuser',
                 'property_id'        => null,
                 'email_verified_at'  => now(),
+                'status'             => 'active',
+                'must_change_password' => false,
+            ]
+        );
+
+        User::updateOrCreate(
+            ['email' => 'shauritangaathanas@gmail.com'],
+            [
+                'name'               => 'Athanas Shauritanga',
+                'password'           => Hash::make('Athanas@2015'),
+                'role'               => 'superuser',
+                'property_id'        => null,
+                'email_verified_at'  => now(),
+                'status'             => 'active',
+                'must_change_password' => false,
             ]
         );
 
         $this->command->info('Admin user seeded: admin@mwambaproperties.co.tz');
+        $this->command->info('Superuser seeded: shauritangaathanas@gmail.com');
     }
 }
