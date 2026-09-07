@@ -11,8 +11,10 @@ use App\Models\LeaseInstallment;
 use App\Models\Payment;
 use App\Models\Property;
 use App\Models\Tenant;
+use App\Models\Unit;
 use App\Models\ExchangeRate;
 use App\Services\InvoiceNumberService;
+use App\Services\PaymentReceiptService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -289,6 +291,10 @@ class InvoiceController extends Controller
 
         $original = $invoice->getOriginal();
 
+        if ($invoice->type === 'proforma' && ($data['status'] ?? '') === 'paid') {
+            abort(422, 'Proforma invoices cannot be directly marked as paid. Convert to a tax invoice first.');
+        }
+
         // Promote type proforma→invoice in the SAME update so the observer sees type='invoice'
         // when postInvoice() is called (postInvoice skips type='proforma')
         if (
@@ -296,12 +302,26 @@ class InvoiceController extends Controller
             ($data['status'] ?? '') !== 'proforma' &&
             $invoice->type === 'proforma'
         ) {
+            abort_if($invoice->approval_status !== 'approved', 422, 'Only approved proforma invoices can be converted to tax invoices.');
             $data['type'] = 'invoice';
+            if (str_starts_with((string) $invoice->invoice_number, 'PF-')) {
+                $data['invoice_number'] = $this->invoiceNumberService->generateNumber('INV');
+            }
         }
 
         $invoice->update($data);
 
         // Observer handles status transitions (post/void as appropriate)
+
+        // Ensure corresponding Payment record exists when marked as paid
+        if ($data['status'] === 'paid' && ($original['status'] ?? '') !== 'paid') {
+            $this->ensurePaymentRecordedForInvoice($invoice);
+        } elseif ($data['status'] !== 'paid' && ($original['status'] ?? '') === 'paid') {
+            Payment::where('invoice_id', $invoice->id)
+                ->where('notes', 'like', '%auto-recorded%')
+                ->get()
+                ->each(fn($p) => $p->delete());
+        }
 
         // Manual status changes here (e.g. the "Mark as Paid" button) don't go through
         // PaymentController's payment-driven reconciliation, so the linked lease
@@ -636,5 +656,86 @@ class InvoiceController extends Controller
         return back()->with('success', $approvalStatus === 'draft'
             ? 'Draft invoice updated.'
             : 'Proforma invoice updated and resubmitted for approval.');
+    }
+
+    private function ensurePaymentRecordedForInvoice(Invoice $invoice): void
+    {
+        $invoice->loadMissing(['items', 'lease.tenant', 'lease.unit']);
+        $alreadyPaid = (float) Payment::where('invoice_id', $invoice->id)
+            ->where('status', 'paid')
+            ->sum('amount');
+        $grossTotal = $this->invoiceGrossTotal($invoice);
+        $remaining = max(0, round($grossTotal - $alreadyPaid, 2));
+
+        if ($remaining <= 0) {
+            return;
+        }
+
+        $lease = $invoice->lease;
+        $tenantId = $lease?->tenant_id ?: Tenant::where('property_id', $invoice->property_id)->where('name', $invoice->tenant_name)->value('id');
+        $unitId = $lease?->unit_id ?: Unit::where('property_id', $invoice->property_id)->where('unit_number', $invoice->unit_ref)->value('id');
+
+        if (!$tenantId || !$unitId) {
+            return;
+        }
+
+        $paymentReceiptService = app(PaymentReceiptService::class);
+        $breakdown = $paymentReceiptService->buildPaymentBreakdown($invoice, $remaining);
+
+        Payment::create([
+            'property_id'              => $invoice->property_id,
+            'invoice_id'               => $invoice->id,
+            'tenant_id'                => $tenantId,
+            'unit_id'                  => $unitId,
+            'month'                    => $invoice->period ?: Carbon::now()->format('M Y'),
+            'amount'                   => $remaining,
+            'method'                   => 'Bank Transfer',
+            'status'                   => 'paid',
+            'paid_date'                => Carbon::now()->toDateString(),
+            'currency'                 => $invoice->currency ?: 'TZS',
+            'breakdown_rent'           => $breakdown['rent'],
+            'breakdown_service_charge' => $breakdown['service_charge'],
+            'breakdown_electricity'    => $breakdown['electricity'],
+            'notes'                    => 'Payment auto-recorded when invoice was marked as paid',
+        ]);
+
+        Unit::find($unitId)?->update(['status' => 'occupied']);
+    }
+
+    private function invoiceGrossTotal(Invoice $invoice): float
+    {
+        $invoice->loadMissing(['items', 'lease:id,vat_rate']);
+
+        $items = $invoice->items ?? collect();
+        $itemsTotal = (float) $items->sum('total');
+        $vatRate = (float) ($invoice->lease?->vat_rate ?? 0);
+
+        if ($vatRate <= 0) {
+            return round($itemsTotal, 2);
+        }
+
+        $leaseVatBase = (float) $items
+            ->filter(fn($item) => $this->isLeaseVatEligibleItem($item))
+            ->sum('total');
+
+        return round($itemsTotal + ($leaseVatBase * ($vatRate / 100)), 2);
+    }
+
+    private function isLeaseVatEligibleItem($item): bool
+    {
+        $itemType = strtolower((string) ($item->item_type ?? 'other'));
+        if (in_array($itemType, ['electricity_charge', 'electricity', 'electricity_vat'], true)) {
+            return false;
+        }
+
+        $description = strtolower((string) ($item->description ?? ''));
+        if (str_contains($description, 'electricity') || str_contains($description, 'generator') || str_contains($description, 'submeter')) {
+            return false;
+        }
+
+        return $itemType === 'rent'
+            || $itemType === 'service_charge'
+            || str_contains($description, 'rent')
+            || str_contains($description, 'service charge');
     }
 }

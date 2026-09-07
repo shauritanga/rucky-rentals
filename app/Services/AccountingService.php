@@ -115,7 +115,7 @@ class AccountingService
                     $exchangeRate = $rate;
                     $fx = $rate;
 
-                    $invoice->update([
+                    $invoice->updateQuietly([
                         'exchange_rate' => $exchangeRate,
                         'total_in_base' => round(($invoiceTotal + $leaseVat) * $fx, 2),
                     ]);

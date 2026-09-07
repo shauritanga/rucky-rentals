@@ -137,7 +137,7 @@ class DashboardController extends Controller
             ->with(['leases.tenant'])
             ->orderBy('floor')
             ->orderBy('unit_number')
-            ->limit(7)
+            ->limit(5)
             ->get();
 
         $occupancyByFloor = (clone $unitsBaseQuery)

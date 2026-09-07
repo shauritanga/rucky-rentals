@@ -54,7 +54,16 @@ const fmtVariance = (amount, formatter) => {
   return `(${formatter(Math.abs(amount))})`;
 };
 
-export default function PaymentsIndex({ payments, invoices = [], tenants, units }) {
+const DEPOSIT_STATUS_META = {
+  refund_due: { label: 'Refund Due', bg: 'var(--green-dim)', color: 'var(--green)' },
+  held: { label: 'Held in Trust', bg: 'rgba(59,130,246,.12)', color: 'var(--accent)' },
+  in_clearance: { label: 'In Clearance', bg: 'var(--amber-dim)', color: 'var(--amber)' },
+  cancelled: { label: 'Cancelled', bg: 'var(--bg-elevated)', color: 'var(--text-muted)' },
+};
+
+export default function PaymentsIndex({ payments, invoices = [], tenants, units, deposits = [], depositRefunds = [] }) {
+  const depositList = (deposits && deposits.length > 0) ? deposits : (depositRefunds || []);
+
   const normalizeCurrency = (value) => (String(value || '').toUpperCase() === 'TZS' ? 'TZS' : 'USD');
 
   const resolveInvoiceUnit = (invoice) => {
@@ -103,7 +112,13 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
     })}`;
   };
 
-  const [activeTab, setActiveTab] = useState('pay-ledger');
+  const [activeTab, setActiveTab] = useState(() => {
+    const p = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
+    if (['pay-ledger', 'pay-deposits', 'pay-credits', 'pay-refunds'].includes(p)) {
+      return p === 'pay-refunds' ? 'pay-deposits' : p;
+    }
+    return 'pay-ledger';
+  });
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [month, setMonth] = useState('');
@@ -111,6 +126,46 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
   const [submitError, setSubmitError] = useState('');
+
+  const [depositFilter, setDepositFilter] = useState('all');
+  const [depositSearch, setDepositSearch] = useState('');
+  const [selectedDeposit, setSelectedDeposit] = useState(null);
+
+  const depositCounts = useMemo(() => {
+    let refundDue = 0;
+    let held = 0;
+    let inClearance = 0;
+    depositList.forEach((d) => {
+      if (d.status === 'refund_due') refundDue++;
+      else if (d.status === 'held') held++;
+      else if (d.status === 'in_clearance') inClearance++;
+    });
+    return {
+      all: depositList.length,
+      refund_due: refundDue,
+      held,
+      in_clearance: inClearance,
+    };
+  }, [depositList]);
+
+  const filteredDeposits = useMemo(() => {
+    return depositList.filter((d) => {
+      if (depositFilter !== 'all' && d.status !== depositFilter) {
+        return false;
+      }
+      if (depositSearch.trim()) {
+        const q = depositSearch.toLowerCase().trim();
+        const tName = String(d.tenant?.name || '').toLowerCase();
+        const uNum = String(d.unit?.unit_number || '').toLowerCase();
+        const lNum = String(d.lease_number || '').toLowerCase();
+        const cRef = String(d.clearance_ref || '').toLowerCase();
+        if (!tName.includes(q) && !uNum.includes(q) && !lNum.includes(q) && !cRef.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [depositList, depositFilter, depositSearch]);
 
   const { data, setData, post, processing, reset, errors, clearErrors } = useForm({
     invoice_id: '',
@@ -514,6 +569,14 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
 
       <div className="team-tabs" style={{ marginBottom: 18 }}>
         <button className={`team-tab ${activeTab === 'pay-ledger' ? 'active' : ''}`} onClick={() => setActiveTab('pay-ledger')}>Payment Ledger</button>
+        <button className={`team-tab ${activeTab === 'pay-deposits' ? 'active' : ''}`} onClick={() => setActiveTab('pay-deposits')}>
+          Deposits
+          {depositCounts.refund_due > 0 && (
+            <span style={{ marginLeft: 6, fontSize: 11, padding: '1px 6px', borderRadius: 10, background: 'var(--green-dim)', color: 'var(--green)', fontWeight: 700 }}>
+              {depositCounts.refund_due}
+            </span>
+          )}
+        </button>
         <button className={`team-tab ${activeTab === 'pay-credits' ? 'active' : ''}`} onClick={() => setActiveTab('pay-credits')}>Tenant Credits</button>
       </div>
 
@@ -628,6 +691,195 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
                 </tbody>
               </table>
             )}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'pay-deposits' && (
+        <>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
+            Tenant security deposits held on account, showing clearance deductions and net refundable balances upon move-out.
+          </div>
+
+          <div className="toolbar" style={{ marginBottom: 14 }}>
+            <div className="filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {[
+                ['all', 'All Deposits', depositCounts.all],
+                ['refund_due', 'Refund Due', depositCounts.refund_due],
+                ['held', 'Held in Trust', depositCounts.held],
+                ['in_clearance', 'In Clearance', depositCounts.in_clearance],
+              ].map(([key, label, count]) => (
+                <button
+                  key={key}
+                  className={`filter-pill ${depositFilter === key ? 'active' : ''}`}
+                  onClick={() => setDepositFilter(key)}
+                >
+                  {label} <span className="pill-count">{count || 0}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div className="search-box" style={{ width: 260 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input
+                  type="text"
+                  placeholder="Search tenant, unit, clearance ref..."
+                  value={depositSearch}
+                  onChange={(e) => setDepositSearch(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Tenant</th>
+                  <th>Unit</th>
+                  <th>Lease Ref</th>
+                  <th style={{ textAlign: 'right' }}>Initial Deposit</th>
+                  <th style={{ textAlign: 'center' }}>Clearance Ref</th>
+                  <th style={{ textAlign: 'right' }}>Clearance Deductions</th>
+                  <th style={{ textAlign: 'right' }}>Final Amount</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDeposits.length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                      No deposit records found matching your filters.
+                    </td>
+                  </tr>
+                )}
+                {filteredDeposits.map((dep) => {
+                  const initialDeposit = Number(dep.deposit_amount || 0);
+                  const deductions = Number(dep.deductions || 0);
+                  const finalAmount = Number(dep.final_amount ?? (initialDeposit - deductions));
+                  const currency = normalizeCurrency(dep.currency);
+                  const statusMeta = DEPOSIT_STATUS_META[dep.status] || {
+                    label: dep.status || 'Held',
+                    bg: 'var(--bg-elevated)',
+                    color: 'var(--text-muted)',
+                  };
+
+                  return (
+                    <tr
+                      key={dep.id}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setSelectedDeposit(dep)}
+                    >
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div
+                            className="t-avatar"
+                            style={{
+                              width: 32,
+                              height: 32,
+                              fontSize: 12,
+                              background: dep.tenant?.color || 'var(--accent-dim)',
+                              color: dep.tenant?.text_color || 'var(--accent)',
+                            }}
+                          >
+                            {dep.tenant?.initials || toInitials(dep.tenant?.name)}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>{dep.tenant?.name || '—'}</div>
+                            <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                              {dep.tenant?.phone || dep.tenant?.email || '—'}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{dep.unit?.unit_number || '—'}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
+                          {dep.unit?.floor !== undefined ? `Floor ${dep.unit.floor}` : (dep.unit?.type || '—')}
+                        </div>
+                      </td>
+                      <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                        {dep.lease_number || '—'}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 500 }}>
+                        {formatAmount(initialDeposit, currency)}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {dep.clearance_ref ? (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              background: 'var(--accent-dim)',
+                              color: 'var(--accent)',
+                            }}
+                          >
+                            {dep.clearance_ref}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {deductions > 0 ? (
+                          <span style={{ color: 'var(--red)', fontWeight: 600 }}>
+                            -{formatAmount(deductions, currency)}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: 13.5,
+                            color: dep.status === 'refund_due' ? 'var(--green)' : 'var(--text)',
+                          }}
+                        >
+                          {formatAmount(finalAmount, currency)}
+                        </div>
+                        {dep.status === 'refund_due' && (
+                          <div style={{ fontSize: 10.5, color: 'var(--green)', fontWeight: 600 }}>
+                            Refund Due
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: 16,
+                            background: statusMeta.bg,
+                            color: statusMeta.color,
+                          }}
+                        >
+                          {statusMeta.label}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          style={{ fontSize: 12, padding: '4px 8px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDeposit(dep);
+                          }}
+                        >
+                          Statement
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </>
       )}
@@ -865,6 +1117,205 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units 
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* ── Deposit Statement Detail Drawer ───────────────────────────── */}
+      <div
+        className={`drawer-overlay ${selectedDeposit ? 'open' : ''}`}
+        onClick={(e) => e.target === e.currentTarget && setSelectedDeposit(null)}
+      >
+        <div className="drawer" style={{ width: 440 }}>
+          {selectedDeposit && (
+            <>
+              <div className="drawer-header">
+                <div>
+                  <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-.3px' }}>
+                    Deposit Statement
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {selectedDeposit.tenant?.name} · Unit {selectedDeposit.unit?.unit_number}
+                  </div>
+                </div>
+                <button className="drawer-close" onClick={() => setSelectedDeposit(null)}>✕</button>
+              </div>
+
+              <div className="drawer-body">
+                {/* Financial Waterfall Card */}
+                <div
+                  style={{
+                    background: 'var(--bg-elevated)',
+                    borderRadius: 10,
+                    padding: '14px 16px',
+                    border: '1px solid var(--border)',
+                    marginBottom: 16,
+                  }}
+                >
+                  <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {selectedDeposit.status === 'refund_due'
+                      ? 'Net Refund Amount Due'
+                      : selectedDeposit.status === 'in_clearance'
+                        ? 'Deposit Under Clearance'
+                        : 'Deposit Held in Trust'}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 22,
+                      fontWeight: 700,
+                      color: selectedDeposit.status === 'refund_due' ? 'var(--green)' : 'var(--accent)',
+                      marginTop: 4,
+                    }}
+                  >
+                    {formatAmount(selectedDeposit.final_amount, selectedDeposit.currency)}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {selectedDeposit.status === 'refund_due'
+                      ? `Approved for refund to ${selectedDeposit.tenant?.name}`
+                      : selectedDeposit.status === 'in_clearance'
+                        ? `Move-out clearance in progress (${selectedDeposit.clearance_ref || 'Pending'})`
+                        : `Security deposit held for lease ${selectedDeposit.lease_number || ''}`}
+                  </div>
+                </div>
+
+                {/* Accounting Calculation */}
+                <div className="drawer-section">
+                  <div className="drawer-section-title">Deposit Accounting</div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', fontSize: 12.5 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Initial Lease Deposit</span>
+                      <span style={{ fontWeight: 600 }}>
+                        {formatAmount(selectedDeposit.deposit_amount, selectedDeposit.currency)}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)' }}>Clearance Deductions</span>
+                        {selectedDeposit.clearance_ref && (
+                          <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--accent)', fontWeight: 600 }}>
+                            ({selectedDeposit.clearance_ref})
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          color: Number(selectedDeposit.deductions || 0) > 0 ? 'var(--red)' : 'var(--text-muted)',
+                        }}
+                      >
+                        {Number(selectedDeposit.deductions || 0) > 0
+                          ? `-${formatAmount(selectedDeposit.deductions, selectedDeposit.currency)}`
+                          : '—'}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '12px 14px',
+                        background: 'var(--bg-elevated)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      <span>
+                        {selectedDeposit.status === 'refund_due'
+                          ? 'Net Refund Payable'
+                          : 'Net Deposit Balance'}
+                      </span>
+                      <span
+                        style={{
+                          color: selectedDeposit.status === 'refund_due' ? 'var(--green)' : 'var(--text)',
+                        }}
+                      >
+                        {formatAmount(selectedDeposit.final_amount, selectedDeposit.currency)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tenant & Lease Reference */}
+                <div className="drawer-section">
+                  <div className="drawer-section-title">Tenant & Lease Details</div>
+                  <div className="drawer-tenant-card" style={{ marginBottom: 12 }}>
+                    <div
+                      className="t-avatar"
+                      style={{
+                        width: 40,
+                        height: 40,
+                        fontSize: 14,
+                        background: selectedDeposit.tenant?.color || 'var(--accent-dim)',
+                        color: selectedDeposit.tenant?.text_color || 'var(--accent)',
+                      }}
+                    >
+                      {selectedDeposit.tenant?.initials || toInitials(selectedDeposit.tenant?.name)}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{selectedDeposit.tenant?.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {selectedDeposit.tenant?.phone || 'No phone'} · {selectedDeposit.tenant?.email || 'No email'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="drawer-kv-grid">
+                    <div className="drawer-kv">
+                      <div className="drawer-kv-label">Unit</div>
+                      <div className="drawer-kv-value">{selectedDeposit.unit?.unit_number}</div>
+                    </div>
+                    <div className="drawer-kv">
+                      <div className="drawer-kv-label">Lease No.</div>
+                      <div className="drawer-kv-value">{selectedDeposit.lease_number || '—'}</div>
+                    </div>
+                    <div className="drawer-kv">
+                      <div className="drawer-kv-label">Clearance Ref</div>
+                      <div className="drawer-kv-value">
+                        {selectedDeposit.clearance_ref ? (
+                          <span style={{ fontWeight: 600, color: 'var(--accent)' }}>
+                            {selectedDeposit.clearance_ref}
+                          </span>
+                        ) : '—'}
+                      </div>
+                    </div>
+                    <div className="drawer-kv">
+                      <div className="drawer-kv-label">Status</div>
+                      <div className="drawer-kv-value" style={{ textTransform: 'capitalize' }}>
+                        {DEPOSIT_STATUS_META[selectedDeposit.status]?.label || selectedDeposit.status}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                {selectedDeposit.notes && (
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">Notes</div>
+                    <div
+                      style={{
+                        background: 'var(--bg-elevated)',
+                        padding: '10px 12px',
+                        borderRadius: 8,
+                        fontSize: 12.5,
+                        color: 'var(--text)',
+                      }}
+                    >
+                      {selectedDeposit.notes}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="drawer-footer" style={{ justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setSelectedDeposit(null)}
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </AppLayout>

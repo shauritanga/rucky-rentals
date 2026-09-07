@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Payment;
 use App\Models\Property;
 use App\Models\Invoice;
+use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Models\UnitClearance;
 use App\Models\ExchangeRate;
 use App\Services\AccountingService;
 use App\Services\InvoiceNumberService;
@@ -29,12 +31,79 @@ class PaymentController extends Controller
     {
         $user = $request->user();
 
+        // ── Deposits & Clearance Adjustments ──────────────────────────────────
+        $clearancesQuery = UnitClearance::with(['tenant', 'unit', 'lease', 'property'])
+            ->orderByDesc('finalized_at')
+            ->orderByDesc('created_at');
+        $this->scopeByUserProperty($clearancesQuery, $request, 'property_id');
+        $clearances = $clearancesQuery->get();
+
+        $clearedLeaseIds = $clearances->pluck('lease_id')->filter()->all();
+
+        $activeLeasesQuery = Lease::with(['tenant', 'unit', 'property'])
+            ->where('deposit', '>', 0)
+            ->whereNotIn('id', $clearedLeaseIds)
+            ->orderByDesc('created_at');
+        $this->scopeByUserProperty($activeLeasesQuery, $request, 'property_id');
+        $activeLeases = $activeLeasesQuery->get();
+
+        $deposits = collect();
+
+        foreach ($clearances as $c) {
+            $dep = (float) $c->deposit_amount;
+            $ded = (float) ($c->total_deductions ?? 0);
+            $ref = $c->refund_amount !== null ? (float) $c->refund_amount : max(0, $dep - $ded);
+            $status = $c->status === 'completed' ? 'refund_due' : ($c->status === 'cancelled' ? 'cancelled' : 'in_clearance');
+
+            $deposits->push([
+                'id'             => 'clr-' . $c->id,
+                'clearance_id'   => $c->id,
+                'lease_id'       => $c->lease_id,
+                'lease_number'   => $c->lease?->lease_number,
+                'tenant'         => $c->tenant,
+                'unit'           => $c->unit,
+                'property'       => $c->property,
+                'currency'       => $c->currency ?: ($c->lease?->currency ?: 'TZS'),
+                'deposit_amount' => $dep,
+                'clearance_ref'  => $c->clearance_number,
+                'clearance_date' => $c->finalized_at?->toDateString() ?: $c->scheduled_date,
+                'deductions'     => $ded,
+                'final_amount'   => $ref,
+                'status'         => $status,
+                'notes'          => $c->manager_notes,
+            ]);
+        }
+
+        foreach ($activeLeases as $l) {
+            $deposits->push([
+                'id'             => 'lease-' . $l->id,
+                'clearance_id'   => null,
+                'lease_id'       => $l->id,
+                'lease_number'   => $l->lease_number,
+                'tenant'         => $l->tenant,
+                'unit'           => $l->unit,
+                'property'       => $l->property,
+                'currency'       => $l->currency ?: 'TZS',
+                'deposit_amount' => (float) $l->deposit,
+                'clearance_ref'  => null,
+                'clearance_date' => null,
+                'deductions'     => 0,
+                'final_amount'   => (float) $l->deposit,
+                'status'         => 'held',
+                'notes'          => null,
+            ]);
+        }
+
+        $depositsList = $deposits->values()->all();
+
         if (MockRentalData::shouldUse() && $user?->role !== 'manager') {
             return Inertia::render('Payments/Index', [
-                'payments' => MockRentalData::payments(),
-                'tenants' => MockRentalData::tenants(),
-                'units' => MockRentalData::units(),
-                'invoices' => MockRentalData::invoices(),
+                'payments'       => MockRentalData::payments(),
+                'tenants'        => MockRentalData::tenants(),
+                'units'          => MockRentalData::units(),
+                'invoices'       => MockRentalData::invoices(),
+                'deposits'       => empty($depositsList) ? MockRentalData::deposits() : $depositsList,
+                'depositRefunds' => empty($depositsList) ? MockRentalData::deposits() : $depositsList,
             ]);
         }
 
@@ -52,7 +121,15 @@ class PaymentController extends Controller
         $invoices = $invoicesQuery->get();
         $tenants  = $tenantsQuery->get();
         $units    = $unitsQuery->get();
-        return Inertia::render('Payments/Index', compact('payments', 'tenants', 'units', 'invoices'));
+
+        return Inertia::render('Payments/Index', [
+            'payments'       => $payments,
+            'tenants'        => $tenants,
+            'units'          => $units,
+            'invoices'       => $invoices,
+            'deposits'       => $depositsList,
+            'depositRefunds' => $depositsList,
+        ]);
     }
 
     public function store(Request $request, AccountingService $accountingService, PaymentReceiptService $paymentReceiptService)

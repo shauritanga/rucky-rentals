@@ -63,6 +63,16 @@ class MockRentalData
         return self::build()['invoices'];
     }
 
+    public static function deposits(): array
+    {
+        return self::build()['deposits'] ?? [];
+    }
+
+    public static function depositRefunds(): array
+    {
+        return self::build()['depositRefunds'] ?? [];
+    }
+
     private static function build(): array
     {
         static $cache = null;
@@ -192,6 +202,7 @@ class MockRentalData
                 'rate_per_sqm' => $ratePerSqm,
                 'currency' => 'USD',
                 'rent' => $seed['rent'],
+                'service_charge' => 0,
                 'status' => $seed['status'],
                 'deposit' => $seed['rent'] * 2,
                 'notes' => null,
@@ -540,7 +551,7 @@ class MockRentalData
 
         ksort($occupancyByFloorMap);
 
-        $dashboardUnits = array_slice($units, 0, 7);
+        $dashboardUnits = array_slice($units, 0, 5);
 
         $recentPayments = $payments;
         usort($recentPayments, static fn($a, $b) => $b['id'] <=> $a['id']);
@@ -550,6 +561,141 @@ class MockRentalData
         usort($maintenanceItems, static fn($a, $b) => strcmp($b['reported_date'], $a['reported_date']));
         $maintenanceItems = array_slice($maintenanceItems, 0, 4);
 
+        $deposits = [
+            [
+                'id'             => 'clr-101',
+                'tenant'         => [
+                    'id' => 1,
+                    'name' => 'Sarah Rutto',
+                    'email' => 'sarah.rutto@gmail.com',
+                    'phone' => '+254 712 345 678',
+                    'initials' => 'SR',
+                    'color' => 'rgba(59,130,246,.18)',
+                    'text_color' => 'var(--accent)',
+                ],
+                'unit'           => ['id' => 1, 'unit_number' => 'A-101', 'floor' => 1, 'type' => '1 Bed'],
+                'lease_number'   => 'LSE-001',
+                'currency'       => 'TZS',
+                'deposit_amount' => 5034000.00,
+                'clearance_ref'  => 'CLR-001',
+                'clearance_date' => '2026-02-28',
+                'deductions'     => 450000.00,
+                'final_amount'   => 4584000.00,
+                'status'         => 'refund_due',
+                'notes'          => 'Deductions for painting and cleaning applied. Balance approved for refund.',
+            ],
+            [
+                'id'             => 'clr-102',
+                'tenant'         => [
+                    'id' => 4,
+                    'name' => 'Lydia Wambui',
+                    'email' => 'lydia.w@gmail.com',
+                    'phone' => '+254 745 321 654',
+                    'initials' => 'LW',
+                    'color' => 'rgba(245,158,11,.18)',
+                    'text_color' => 'var(--amber)',
+                ],
+                'unit'           => ['id' => 4, 'unit_number' => 'A-104', 'floor' => 1, 'type' => '2 Bed'],
+                'lease_number'   => 'LSE-004',
+                'currency'       => 'USD',
+                'deposit_amount' => 1450.00,
+                'clearance_ref'  => 'CLR-002',
+                'clearance_date' => '2026-03-03',
+                'deductions'     => 0.00,
+                'final_amount'   => 1450.00,
+                'status'         => 'refund_due',
+                'notes'          => 'Unit handed over in perfect order. Full deposit refund approved.',
+            ],
+            [
+                'id'             => 'clr-103',
+                'tenant'         => [
+                    'id' => 6,
+                    'name' => 'Charles Kiprop',
+                    'email' => 'c.kiprop@gmail.com',
+                    'phone' => '+254 729 456 123',
+                    'initials' => 'CK',
+                    'color' => 'rgba(34,197,94,.18)',
+                    'text_color' => 'var(--green)',
+                ],
+                'unit'           => ['id' => 3, 'unit_number' => 'A-103', 'floor' => 1, 'type' => 'Studio'],
+                'lease_number'   => 'LSE-006',
+                'currency'       => 'TZS',
+                'deposit_amount' => 3800000.00,
+                'clearance_ref'  => 'CLR-003',
+                'clearance_date' => '2026-03-06',
+                'deductions'     => 700000.00,
+                'final_amount'   => 3100000.00,
+                'status'         => 'refund_due',
+                'notes'          => 'Plumbing and door lock repairs deducted. Net balance approved for refund.',
+            ],
+            [
+                'id'             => 'clr-104',
+                'tenant'         => [
+                    'id' => 7,
+                    'name' => 'Lulu Sebastiaon',
+                    'email' => 'lulusebastiaon567@gmail.com',
+                    'phone' => '6567698',
+                    'initials' => 'LS',
+                    'color' => 'rgba(59,130,246,.18)',
+                    'text_color' => 'var(--accent)',
+                ],
+                'unit'           => ['id' => 8, 'unit_number' => 'G.01', 'floor' => 'G', 'type' => 'Office Suite'],
+                'lease_number'   => 'LSE-008',
+                'currency'       => 'TZS',
+                'deposit_amount' => 5034000.00,
+                'clearance_ref'  => 'CLR-004',
+                'clearance_date' => '2026-03-07',
+                'deductions'     => 0.00,
+                'final_amount'   => 5034000.00,
+                'status'         => 'in_clearance',
+                'notes'          => 'Move-out clearance initiated, inspection in progress.',
+            ],
+            [
+                'id'             => 'lease-201',
+                'tenant'         => [
+                    'id' => 2,
+                    'name' => 'Brian Kimani',
+                    'email' => 'b.kimani@outlook.com',
+                    'phone' => '+254 722 100 200',
+                    'initials' => 'BK',
+                    'color' => 'rgba(34,197,94,.18)',
+                    'text_color' => 'var(--green)',
+                ],
+                'unit'           => ['id' => 2, 'unit_number' => 'A-102', 'floor' => 1, 'type' => '1 Bed'],
+                'lease_number'   => 'LSE-002',
+                'currency'       => 'USD',
+                'deposit_amount' => 950.00,
+                'clearance_ref'  => null,
+                'clearance_date' => null,
+                'deductions'     => 0.00,
+                'final_amount'   => 950.00,
+                'status'         => 'held',
+                'notes'          => 'Active lease deposit held in trust.',
+            ],
+            [
+                'id'             => 'lease-202',
+                'tenant'         => [
+                    'id' => 3,
+                    'name' => 'Amina Musa',
+                    'email' => 'amina.musa@gmail.com',
+                    'phone' => '+254 733 887 654',
+                    'initials' => 'AM',
+                    'color' => 'rgba(245,158,11,.18)',
+                    'text_color' => 'var(--amber)',
+                ],
+                'unit'           => ['id' => 7, 'unit_number' => 'B-201', 'floor' => 2, 'type' => '2 Bed'],
+                'lease_number'   => 'LSE-007',
+                'currency'       => 'USD',
+                'deposit_amount' => 1400.00,
+                'clearance_ref'  => null,
+                'clearance_date' => null,
+                'deductions'     => 0.00,
+                'final_amount'   => 1400.00,
+                'status'         => 'held',
+                'notes'          => 'Active lease deposit held in trust.',
+            ],
+        ];
+
         $cache = [
             'tenants' => $tenants,
             'units' => $units,
@@ -558,6 +704,8 @@ class MockRentalData
             'documents' => $documents,
             'maintenance' => $maintenance,
             'invoices' => $invoices,
+            'deposits' => $deposits,
+            'depositRefunds' => $deposits,
             'stats' => [
                 'totalUnits'      => count($units),
                 'totalUnitsDelta' => 0,
@@ -600,6 +748,7 @@ class MockRentalData
             'floor' => $unit['floor'],
             'type' => $unit['type'],
             'rent' => $unit['rent'],
+            'service_charge' => $unit['service_charge'] ?? 0,
             'size_sqft' => $unit['size_sqft'],
             'size_sqm' => $unit['size_sqm'] ?? null,
             'rate_per_sqm' => $unit['rate_per_sqm'] ?? null,

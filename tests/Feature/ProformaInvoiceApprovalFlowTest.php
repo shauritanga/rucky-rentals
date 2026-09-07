@@ -110,6 +110,53 @@ class ProformaInvoiceApprovalFlowTest extends TestCase
         $this->assertSame('Tenant One', $invoice->fresh()->tenant_name);
     }
 
+    public function test_proforma_cannot_be_marked_as_paid_directly(): void
+    {
+        $property = $this->createProperty();
+        $manager = $this->createManager($property->id);
+        $invoice = $this->createProformaInvoice($property->id, $manager->id, 'approved');
+
+        $response = $this->actingAs($manager)->patch("/invoices/{$invoice->id}", [
+            'status' => 'paid',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('proforma', $invoice->fresh()->type);
+        $this->assertSame('proforma', $invoice->fresh()->status);
+    }
+
+    public function test_approved_proforma_can_be_converted_to_tax_invoice_with_inv_number(): void
+    {
+        $property = $this->createProperty();
+        $manager = $this->createManager($property->id);
+        $invoice = $this->createProformaInvoice($property->id, $manager->id, 'approved');
+
+        $response = $this->actingAs($manager)->patch("/invoices/{$invoice->id}", [
+            'status' => 'unpaid',
+        ]);
+
+        $response->assertRedirect();
+        $fresh = $invoice->fresh();
+        $this->assertSame('invoice', $fresh->type);
+        $this->assertSame('unpaid', $fresh->status);
+        $this->assertStringStartsWith('INV-', $fresh->invoice_number);
+    }
+
+    public function test_unapproved_proforma_cannot_be_converted_to_tax_invoice(): void
+    {
+        $property = $this->createProperty();
+        $manager = $this->createManager($property->id);
+        $invoice = $this->createProformaInvoice($property->id, $manager->id, 'pending_approval');
+
+        $response = $this->actingAs($manager)->patch("/invoices/{$invoice->id}", [
+            'status' => 'unpaid',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('proforma', $invoice->fresh()->type);
+        $this->assertSame('proforma', $invoice->fresh()->status);
+    }
+
     private function createProperty(): Property
     {
         return Property::create([
@@ -153,7 +200,7 @@ class ProformaInvoiceApprovalFlowTest extends TestCase
             'approval_decided_at' => $approvalStatus === 'approved' ? now() : null,
             'sent_to_tenant_at' => $sentAt,
             'notes' => 'Bank details here',
-            'currency' => 'USD',
+            'currency' => 'TZS',
         ]);
 
         InvoiceItem::create([

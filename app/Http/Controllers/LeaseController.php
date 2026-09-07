@@ -617,8 +617,11 @@ class LeaseController extends Controller
             return;
         }
 
+        $lease->loadMissing('unit');
         $cycleMonths = (int) ($lease->payment_cycle ?: 1);
         $monthlyRent = (float) ($lease->monthly_rent ?: 0);
+        $monthlyServiceCharge = (float) ($lease->unit?->service_charge ?: 0);
+        $monthlyTotal = $monthlyRent + $monthlyServiceCharge;
         $currency = in_array(strtoupper((string) $lease->currency), ['USD', 'TZS'], true)
             ? strtoupper((string) $lease->currency)
             : 'USD';
@@ -637,7 +640,7 @@ class LeaseController extends Controller
             $periodEnd = $periodClose->copy()->subDay();
 
             $monthsInPeriod = max(1, $periodStart->diffInMonths($periodClose));
-            $amount = round($monthlyRent * $monthsInPeriod, 2);
+            $amount = round($monthlyTotal * $monthsInPeriod, 2);
             $status = $periodStart->lt($today) ? 'overdue' : 'unpaid';
 
             LeaseInstallment::create([

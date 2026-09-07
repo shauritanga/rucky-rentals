@@ -88,7 +88,7 @@ function UnitCard({ unit, onClick }) {
 }
 
 export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], canCreateUnit = true, settings = {} }) {
-  const { props } = usePage();
+  const { props, url } = usePage();
   const user = props?.auth?.user;
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
@@ -99,6 +99,16 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const searchStr = url?.includes('?') ? url.substring(url.indexOf('?')) : (typeof window !== 'undefined' ? window.location.search : '');
+    const params = new URLSearchParams(searchStr);
+    const unitId = params.get('unit_id');
+    if (unitId && units?.length > 0) {
+      const match = units.find(u => String(u.id) === String(unitId));
+      if (match) setSelected(match);
+    }
+  }, [url, units]);
 
   const availableFloors = useMemo(
     () => (Array.isArray(floorOptions) && floorOptions.length > 0 ? floorOptions : []),

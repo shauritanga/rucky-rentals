@@ -1,5 +1,5 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 import { formatDisplayDate } from '@/utils/dateFormat';
 
@@ -82,12 +82,16 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                 </tr>
               </thead>
               <tbody>
-                {units.slice(0, 7).map((u) => {
+                {units.slice(0, 5).map((u) => {
                   const lease = u.leases?.[0];
                   const tenant = lease?.tenant;
 
                   return (
-                    <tr key={u.id}>
+                    <tr
+                      key={u.id}
+                      onClick={() => router.get('/units', { unit_id: u.id })}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <td>
                         <div className="unit-id">{u.unit_number}</div>
                         <div className="unit-floor">Floor {u.floor}</div>
@@ -104,7 +108,7 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
                       </td>
                       <td><span className={`badge ${STATUS_CLASS[u.status]}`}>{STATUS_LABEL[u.status]}</span></td>
                       <td className="amount">{formatMoney(u.rent, u.currency)}</td>
-                      <td><button className="action-dots">···</button></td>
+                      <td><span className="action-dots" aria-hidden="true">···</span></td>
                     </tr>
                   );
                 })}

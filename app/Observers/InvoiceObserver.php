@@ -24,12 +24,16 @@ class InvoiceObserver
      */
     public function updated(Invoice $invoice): void
     {
-        $original = $invoice->getOriginal();
+        if (! $invoice->wasChanged('status')) {
+            return;
+        }
+
+        $originalStatus = $invoice->getOriginal('status');
 
         // If transitioning TO draft/proforma, void the entry
         if (
             in_array($invoice->status, ['draft', 'proforma']) &&
-            !in_array($original['status'], ['draft', 'proforma'])
+            !in_array($originalStatus, ['draft', 'proforma'])
         ) {
             $this->accountingService->voidInvoice($invoice);
             return;
@@ -37,7 +41,7 @@ class InvoiceObserver
 
         // If transitioning FROM draft to issued, post the entry
         if (
-            in_array($original['status'], ['draft', 'proforma']) &&
+            in_array($originalStatus, ['draft', 'proforma']) &&
             !in_array($invoice->status, ['draft', 'proforma'])
         ) {
             $this->accountingService->postInvoice($invoice);

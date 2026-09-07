@@ -138,6 +138,8 @@ function buildPaymentSchedule(lease, isPending) {
   const end = new Date(`${lease?.end_date}T00:00:00`);
   const cycle = Number(lease?.payment_cycle) || 3;
   const monthlyRent = Number(lease?.monthly_rent) || 0;
+  const unitServiceCharge = Number(lease?.unit?.service_charge) || 0;
+  const monthlyTotal = monthlyRent + unitServiceCharge;
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
     return [];
@@ -174,7 +176,7 @@ function buildPaymentSchedule(lease, isPending) {
       installNum: index,
       dueDate: fmtDateLong(toLocalIsoDate(periodStart)),
       period: `${fmtDateShort(toLocalIsoDate(periodStart))} - ${fmtDateShort(toLocalIsoDate(periodEnd))}`,
-      amount: monthlyRent * monthsInPeriod,
+      amount: monthlyTotal * monthsInPeriod,
       status,
     });
 
@@ -575,7 +577,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
       <div className="card">
         <table className="data-table">
-          <thead><tr><th>Tenant</th><th>Unit</th><th>Start</th><th>End</th><th>Cycle</th><th>Rent/mo</th><th>Approval</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Tenant</th><th>Unit</th><th>Start</th><th>End</th><th>Cycle</th><th>Rent/mo</th><th>Service Charge/mo</th><th>Approval</th><th>Status</th><th></th></tr></thead>
           <tbody>
             {filtered.map(l => (
               <tr key={l.id} onClick={()=>setSelected(l)}>
@@ -585,6 +587,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{formatDisplayDate(l.end_date)}</td>
                 <td><span className={`lease-cycle-pill c${l.payment_cycle}`}>{CYCLE_LABELS[l.payment_cycle]}</span></td>
                 <td style={{fontWeight:600}}>{formatMoney(l.monthly_rent, l.currency || l.unit?.currency)}</td>
+                <td style={{fontWeight:600}}>{formatMoney(l.unit?.service_charge ?? 0, l.currency || l.unit?.currency)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
                   {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':(l.status==='pending_accountant'||l.status==='pending_pm')?'⏳ Pending':l.status==='rejected'?'✕ Rejected':'—'}
                 </td>
@@ -681,7 +684,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Payment Cycle</div><div className="kv-value ldr-kv-value" style={{fontSize:'12.5px'}}>{CYCLE_PAYMENTS[selected.payment_cycle] || `${selected.payment_cycle} months`}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{formatMoney(selected.monthly_rent, selectedLeaseCurrency)}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Service Charge</div><div className="kv-value ldr-kv-value">{formatMoney(selected.unit?.service_charge ?? 0, selectedLeaseCurrency)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{formatMoney(selected.monthly_rent * selected.payment_cycle, selectedLeaseCurrency)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{formatMoney((Number(selected.monthly_rent || 0) + Number(selected.unit?.service_charge || 0)) * Number(selected.payment_cycle || 1), selectedLeaseCurrency)}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{formatMoney(selected.monthly_rent * 12, selectedLeaseCurrency)}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{formatMoney(selected.deposit, selectedLeaseCurrency)}</div></div>
                 </div>

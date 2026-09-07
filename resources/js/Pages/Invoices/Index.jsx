@@ -176,7 +176,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const modalCurrency = normalizeCurrency(selectedLease?.currency || selectedLease?.unit?.currency);
 
   const filtered = invoices.filter(inv => {
-    const matchFilter = filter === 'all' || inv.status === filter;
+    const matchFilter = filter === 'all'
+      || (filter === 'proforma' ? (inv.type === 'proforma' || inv.status === 'proforma') : (inv.type !== 'proforma' && inv.status === filter));
     const q = search.toLowerCase();
     const matchSearch = !q || inv.tenant_name?.toLowerCase().includes(q) || inv.unit_ref?.toLowerCase().includes(q) || inv.invoice_number?.toLowerCase().includes(q);
     return matchFilter && matchSearch;
@@ -190,14 +191,14 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
   const counts = {
     all: invoices.length,
-    proforma: invoices.filter(i=>i.status==='proforma').length,
-    unpaid: invoices.filter(i=>i.status==='unpaid' || i.status==='draft').length,
-    partially_paid: invoices.filter(i=>i.status==='partially_paid').length,
-    paid: invoices.filter(i=>i.status==='paid').length,
-    overdue: invoices.filter(i=>i.status==='overdue').length,
+    proforma: invoices.filter(i=>i.type==='proforma'||i.status==='proforma').length,
+    unpaid: invoices.filter(i=>i.type!=='proforma' && (i.status==='unpaid' || i.status==='draft')).length,
+    partially_paid: invoices.filter(i=>i.type!=='proforma' && i.status==='partially_paid').length,
+    paid: invoices.filter(i=>i.type!=='proforma' && i.status==='paid').length,
+    overdue: invoices.filter(i=>i.type!=='proforma' && i.status==='overdue').length,
   };
   const collectedTotals = invoices
-    .filter(i => i.status === 'paid')
+    .filter(i => i.type !== 'proforma' && i.status === 'paid')
     .reduce((acc, inv) => {
       const currency = resolveInvoiceCurrency(inv, leases);
       acc[currency] += Number(total(inv) || 0);
@@ -569,8 +570,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               <InvoiceDoc inv={selected} currency={resolveInvoiceCurrency(selected, leases)} lease={leases.find((l) => Number(l.id) === Number(selected?.lease_id))} />
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:8,flexShrink:0,background:'var(--bg-surface)'}}>
-              {(selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
-              {selected.status==='proforma' && selected.approval_status === 'approved' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(s=>s?{...s,status:'unpaid',type:'invoice'}:null)})}>Convert to Invoice</button>}
+              {selected.type === 'invoice' && (selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
+              {selected.type === 'proforma' && selected.status==='proforma' && selected.approval_status === 'approved' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(null)})}>Convert to Invoice</button>}
               {selected.status==='paid' && <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>window.location.href=`/invoices/${selected.id}/pdf`}>Save PDF</button>}
               {canEditProforma(selected) && <button className="btn-secondary" onClick={()=>openEditInvoiceModal(selected)}>Edit</button>}
               {selected.type === 'proforma' && selected.approval_status === 'rejected' && !selected.sent_to_tenant_at && (
