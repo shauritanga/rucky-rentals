@@ -10,7 +10,7 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        User::updateOrCreate(
+        User::withTrashed()->updateOrCreate(
             ['email' => 'admin@mwambaproperties.co.tz'],
             [
                 'name'               => 'Super Admin',
@@ -20,10 +20,11 @@ class AdminSeeder extends Seeder
                 'email_verified_at'  => now(),
                 'status'             => 'active',
                 'must_change_password' => false,
+                'deleted_at'         => null,
             ]
         );
 
-        User::updateOrCreate(
+        User::withTrashed()->updateOrCreate(
             ['email' => 'shauritangaathanas@gmail.com'],
             [
                 'name'               => 'Athanas Shauritanga',
@@ -33,6 +34,7 @@ class AdminSeeder extends Seeder
                 'email_verified_at'  => now(),
                 'status'             => 'active',
                 'must_change_password' => false,
+                'deleted_at'         => null,
             ]
         );
 
