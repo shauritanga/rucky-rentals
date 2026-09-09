@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
-import useExchangeRate from '@/hooks/useExchangeRate';
 import useIdleLogout from '@/hooks/useIdleLogout';
 import echo from '@/echo';
 import DueInvoicesPopup from '@/Components/DueInvoicesPopup';
@@ -404,7 +403,6 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
       if (outcome === 'accepted') { setInstallPrompt(null); setIsInstalled(true); window.__pwaInstallPrompt = null; }
     }
   };
-  const { rate, sourceLabel, refreshRate } = useExchangeRate();
 
   /* ── Nav overflow ──────────────────────────────────────────────── */
   const navRef = useRef(null);
@@ -612,13 +610,6 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
           <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '4px 12px', borderRadius: 20, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
             <span style={{ width: 6, height: 6, background: 'var(--green)', borderRadius: '50%', display: 'inline-block' }}></span>
             All systems operational
-          </div>
-          <div
-            onClick={refreshRate}
-            title="Click to refresh rate"
-            style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)', cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            {`1 USD = ${Math.round(rate).toLocaleString()} TZS · ${sourceLabel}`}
           </div>
           <button className="icon-btn" onClick={() => setTheme((t) => t === 'dark' ? 'light' : 'dark')} title="Toggle theme">
             {theme === 'dark'

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
-import useExchangeRate from '@/hooks/useExchangeRate';
 import useIdleLogout from '@/hooks/useIdleLogout';
 import echo from '@/echo';
 import DueInvoicesPopup from '@/Components/DueInvoicesPopup';
@@ -360,7 +359,6 @@ export default function AppLayout({ children, title, subtitle }) {
     // Chrome will fire beforeinstallprompt once engagement criteria are met.
   };
   const { url, props } = usePage();
-  const { rate, sourceLabel, refreshRate } = useExchangeRate();
 
   /* ── Nav overflow ──────────────────────────────────────────────── */
   const navRef = useRef(null);
@@ -598,13 +596,6 @@ export default function AppLayout({ children, title, subtitle }) {
           <div className="search-box">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             <input type="text" placeholder="Search units, tenants…" />
-          </div>
-          <div
-            onClick={refreshRate}
-            title="Click to refresh rate"
-            style={{fontSize:11,color:'var(--text-muted)',background:'var(--bg-elevated)',padding:'4px 10px',borderRadius:20,border:'1px solid var(--border)',cursor:'pointer',whiteSpace:'nowrap'}}
-          >
-            {`1 USD = ${Math.round(rate).toLocaleString()} TZS · ${sourceLabel}`}
           </div>
           <button className="icon-btn" onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} title="Toggle theme">
             {theme === 'dark'
