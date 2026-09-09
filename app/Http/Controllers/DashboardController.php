@@ -47,7 +47,6 @@ class DashboardController extends Controller
         $totalUnits    = (clone $unitsBaseQuery)->count();
         $occupiedUnits = (clone $unitsBaseQuery)->whereIn('status', ['occupied', 'overdue'])->count();
         $vacantUnits   = (clone $unitsBaseQuery)->where('status', 'vacant')->count();
-        $overdueUnits  = (clone $unitsBaseQuery)->where('status', 'overdue')->count();
 
         // ── Last-month deltas ─────────────────────────────────────────────────
         $thisMonthStart = Carbon::now()->startOfMonth();
@@ -103,23 +102,80 @@ class DashboardController extends Controller
 
         $revenueDelta = $monthlyRevenueTzs - $lastMonthRevenueTzs;
 
-        // Sum overdue payments in TZS, using the stored base amount where available,
-        // otherwise converting on the fly. Never mix currencies raw.
-        $overdueBalanceTzs = Payment::where('status', 'overdue')
+        // ── Overdue Invoices & Balance ─────────────────────────────────────────
+        // Calculate real overdue rent from unpaid/overdue invoices past their due date.
+        $today = Carbon::today();
+        $overdueInvoicesQuery = Invoice::with(['items', 'lease'])
+            ->whereNotIn('status', ['draft', 'proforma', 'paid'])
+            ->where(function ($q) use ($today) {
+                $q->where('status', 'overdue')
+                  ->orWhere('due_date', '<', $today);
+            });
+
+        if ($this->shouldScopeToProperty($request)) {
+            $effectivePropId = $this->effectivePropertyId($request);
+            if ($effectivePropId !== null) {
+                $overdueInvoicesQuery->where(function ($q) use ($effectivePropId, $unitIdsQuery) {
+                    $q->where('property_id', $effectivePropId)
+                      ->orWhereIn('lease_id', Lease::whereIn('unit_id', $unitIdsQuery)->select('id'));
+                });
+            } else {
+                $overdueInvoicesQuery->whereRaw('1 = 0');
+            }
+        }
+
+        $overdueInvoices = $overdueInvoicesQuery->get();
+
+        $paidByInvoice = Payment::whereIn('invoice_id', $overdueInvoices->pluck('id'))
+            ->where('status', 'paid')
+            ->selectRaw('invoice_id, SUM(amount) as paid_sum')
+            ->groupBy('invoice_id')
+            ->pluck('paid_sum', 'invoice_id');
+
+        $overdueBalanceTzs = 0.0;
+        $overdueUnitsMap = [];
+
+        foreach ($overdueInvoices as $inv) {
+            $gross = (float) $inv->items->sum('total');
+            $paid = (float) ($paidByInvoice[$inv->id] ?? 0);
+            $outstanding = max(0, round($gross - $paid, 2));
+            if ($outstanding <= 0) {
+                continue;
+            }
+
+            $currency = $inv->currency ?? 'TZS';
+            if ($currency === 'TZS') {
+                $overdueBalanceTzs += $outstanding;
+            } else {
+                $rate = !empty($inv->exchange_rate)
+                    ? (float) $inv->exchange_rate
+                    : ExchangeRate::getLiveRate($currency, 'TZS');
+                $overdueBalanceTzs += $outstanding * $rate;
+            }
+
+            $unitKey = $inv->unit_ref ?: ($inv->lease?->unit_id ? 'u-' . $inv->lease->unit_id : 'inv-' . $inv->id);
+            $overdueUnitsMap[$unitKey] = true;
+        }
+
+        // Also include any legacy overdue payment records (if any exist)
+        $legacyOverduePaymentSum = Payment::where('status', 'overdue')
             ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
             ->get(['amount', 'currency', 'amount_in_base'])
             ->sum(function ($payment) {
-                // amount_in_base is pre-converted TZS stored at payment time — use it when present
                 if ($payment->amount_in_base !== null) {
                     return (float) $payment->amount_in_base;
                 }
                 $amount = (float) $payment->amount;
                 $currency = $payment->currency ?? 'TZS';
-                if ($currency === 'TZS') {
-                    return $amount;
-                }
+                if ($currency === 'TZS') return $amount;
                 return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
             });
+        $overdueBalanceTzs += $legacyOverduePaymentSum;
+
+        $overdueUnits = max(
+            (clone $unitsBaseQuery)->where('status', 'overdue')->count(),
+            count($overdueUnitsMap)
+        );
 
         $recentPayments = Payment::with(['tenant', 'unit'])
             ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
