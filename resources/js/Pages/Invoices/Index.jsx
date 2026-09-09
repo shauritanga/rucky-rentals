@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
+import useExchangeRate, { formatExchangeRate } from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 const VAT_RATE = 0.18;
@@ -150,6 +151,20 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
         <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
         <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{vatLabel}</span><span>{formatMoney(vatAmount, currency)}</span></div>
         <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(grandTotal, currency)}</span></div>
+        {currency === 'USD' && (inv.exchange_rate || inv.total_in_base) && (
+          <div style={{marginTop:10,paddingTop:10,borderTop:'1px dashed var(--border)',fontSize:12.5}}>
+            {inv.exchange_rate && (
+              <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',marginBottom:4}}>
+                <span>Exchange Rate (USD → TZS)</span>
+                <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(inv.exchange_rate)} TZS</span>
+              </div>
+            )}
+            <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,color:'var(--accent)'}}>
+              <span>Total Due in TZS</span>
+              <span>TZS {Math.round(inv.total_in_base || (grandTotal * Number(inv.exchange_rate))).toLocaleString()}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -158,6 +173,7 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
 export default function InvoicesIndex({ invoices, leases, tenants, flash = {} }) {
   const { props } = usePage();
   const flashData = props.flash ?? {};
+  const { rate: liveFxRate } = useExchangeRate();
   const [toast, setToast] = useState({ msg: '', type: '' });
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -168,12 +184,27 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const [invType, setInvType] = useState('proforma');
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
 
-  const { data, setData, post, patch, processing, reset, transform } = useForm({ type:'invoice', lease_id:'', tenant_name:'', tenant_email:'', unit_ref:'', issued_date:'', due_date:'', period:'', notes:'', items:[] });
+  const { data, setData, post, patch, processing, reset, transform, errors } = useForm({
+    type: 'invoice',
+    lease_id: '',
+    currency: 'USD',
+    exchange_rate: '',
+    tenant_name: '',
+    tenant_email: '',
+    unit_ref: '',
+    issued_date: '',
+    due_date: '',
+    period: '',
+    notes: '',
+    items: [],
+  });
 
   const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
 
   const selectedLease = leases.find((l) => String(l.id) === String(data.lease_id));
-  const modalCurrency = normalizeCurrency(selectedLease?.currency || selectedLease?.unit?.currency);
+  const modalCurrency = selectedLease
+    ? normalizeCurrency(selectedLease?.currency || selectedLease?.unit?.currency)
+    : normalizeCurrency(data.currency);
 
   const filtered = invoices.filter(inv => {
     const matchFilter = filter === 'all'
@@ -349,6 +380,14 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     setEditingInvoice(null);
     setInvType('proforma');
     reset();
+    setData(d => ({
+      ...d,
+      type: 'invoice',
+      lease_id: '',
+      currency: 'USD',
+      exchange_rate: liveFxRate ? String(liveFxRate) : '',
+      items: [],
+    }));
     setItems([{ description: '', sub_description: '', quantity: 1, unit_price: 0 }]);
     setShowModal(true);
   };
@@ -356,9 +395,12 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const openEditInvoiceModal = (invoice) => {
     setEditingInvoice(invoice);
     setInvType(invoice.type || 'proforma');
+    const invCurrency = resolveInvoiceCurrency(invoice, leases);
     setData({
       type: invoice.type || 'proforma',
       lease_id: invoice.lease_id ? String(invoice.lease_id) : '',
+      currency: invCurrency,
+      exchange_rate: invoice.exchange_rate != null ? String(invoice.exchange_rate) : (invCurrency === 'USD' && liveFxRate ? String(liveFxRate) : ''),
       tenant_name: invoice.tenant_name || '',
       tenant_email: invoice.tenant_email || '',
       unit_ref: invoice.unit_ref || '',
@@ -379,8 +421,10 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   };
 
   const onLeaseChange = (leaseId) => {
-    setData('lease_id', leaseId);
-    if (!leaseId) return;
+    if (!leaseId) {
+      setData(d => ({ ...d, lease_id: '' }));
+      return;
+    }
 
     const l = leases.find((x) => String(x.id) === String(leaseId));
     if (!l) return;
@@ -389,11 +433,18 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const tenantEmail = getLeaseTenantEmail(l);
     const unitRef = getLeaseUnitRef(l);
     const billingPeriod = getNextBillingPeriod(l);
+    const lCurrency = normalizeCurrency(l.currency || l.unit?.currency);
 
-    setData('tenant_name', tenantName);
-    setData('tenant_email', tenantEmail);
-    setData('unit_ref', unitRef);
-    if (billingPeriod.text) setData('period', billingPeriod.text);
+    setData(d => ({
+      ...d,
+      lease_id: leaseId,
+      currency: lCurrency,
+      exchange_rate: lCurrency === 'USD' ? (l.exchange_rate ? String(l.exchange_rate) : (l.unit?.exchange_rate ? String(l.unit.exchange_rate) : (d.exchange_rate || (liveFxRate ? String(liveFxRate) : '')))) : '',
+      tenant_name: tenantName,
+      tenant_email: tenantEmail,
+      unit_ref: unitRef,
+      period: billingPeriod.text || d.period,
+    }));
 
     // All lease invoices are proforma by default (server enforces this too)
     setInvType('proforma');
@@ -407,8 +458,11 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     if (!selectedLease) return;
 
     const billingPeriod = getNextBillingPeriod(selectedLease);
+    const lCurrency = normalizeCurrency(selectedLease.currency || selectedLease.unit?.currency);
     setData(d => ({
       ...d,
+      currency: lCurrency,
+      exchange_rate: lCurrency === 'USD' ? (selectedLease.exchange_rate ? String(selectedLease.exchange_rate) : (selectedLease.unit?.exchange_rate ? String(selectedLease.unit.exchange_rate) : (d.exchange_rate || (liveFxRate ? String(liveFxRate) : '')))) : '',
       tenant_name: getLeaseTenantName(selectedLease),
       tenant_email: getLeaseTenantEmail(selectedLease),
       unit_ref: getLeaseUnitRef(selectedLease),
@@ -438,13 +492,15 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       );
 
       return {
-      ...form,
-      type: invType,
-      unit_ref: form.unit_ref?.trim() || '—',
-      tenant_email: form.tenant_email || matchedTenant?.email || null,
-      items,
-      notes: form.notes?.trim() || null,
-      ...(action === 'draft' ? { status: 'draft' } : {}),
+        ...form,
+        type: invType,
+        currency: modalCurrency,
+        exchange_rate: modalCurrency === 'USD' && form.exchange_rate ? Number(form.exchange_rate) : null,
+        unit_ref: form.unit_ref?.trim() || '—',
+        tenant_email: form.tenant_email || matchedTenant?.email || null,
+        items,
+        notes: form.notes?.trim() || null,
+        ...(action === 'draft' ? { status: 'draft' } : {}),
       };
     });
 
@@ -539,8 +595,14 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <td style={{fontWeight:500}}>{inv.tenant_name}</td>
                 <td style={{fontWeight:600,color:'var(--text-secondary)'}}>{inv.unit_ref}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{formatDisplayDate(inv.issued_date)}</td>
-                <td style={{fontSize:'12.5px',color:inv.status==='overdue'?'var(--red)':'var(--text-secondary)'}}>{formatDisplayDate(inv.due_date)}</td>
-                <td style={{fontWeight:700}}>{formatMoney(total(inv), resolveInvoiceCurrency(inv, leases))}</td>
+                <td style={{fontWeight:700}}>
+                  <div>{formatMoney(total(inv), resolveInvoiceCurrency(inv, leases))}</div>
+                  {resolveInvoiceCurrency(inv, leases) === 'USD' && (inv.exchange_rate || inv.total_in_base) && (
+                    <div style={{fontSize:11,fontWeight:500,color:'var(--text-muted)',marginTop:2}}>
+                      ≈ TZS {Math.round(inv.total_in_base || (total(inv) * Number(inv.exchange_rate))).toLocaleString()}
+                    </div>
+                  )}
+                </td>
                 <td><span className={`badge ${inv.type === 'proforma' ? (inv.approval_status || 'proforma') : inv.status}`}>{invoiceWorkflowLabel(inv)}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(inv)}}>···</button></td>
               </tr>
@@ -617,6 +679,44 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <div className="form-group"><label className="form-label">Period Covered</label><input className="form-input" value={data.period} onChange={e=>setData('period',e.target.value)} placeholder="e.g. Apr - Jun 2026" /></div>
               </div>
 
+              <div className="form-row">
+                {!data.lease_id ? (
+                  <div className="form-group">
+                    <label className="form-label">Currency *</label>
+                    <select className="form-input form-select" value={data.currency} onChange={e=>setData('currency', e.target.value)}>
+                      <option value="USD">USD ($)</option>
+                      <option value="TZS">TZS</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label className="form-label">Lease Currency</label>
+                    <input className="form-input" value={modalCurrency} readOnly style={{opacity:.85,cursor:'default',background:'var(--bg-surface)'}} />
+                  </div>
+                )}
+                {modalCurrency === 'USD' && (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <label className="form-label" style={{ marginBottom: 0 }}>Exchange Rate (USD → TZS) *</label>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Up to 4 decimals</span>
+                    </div>
+                    <input
+                      className="form-input"
+                      type="number"
+                      step="0.0001"
+                      min="0.0001"
+                      value={data.exchange_rate}
+                      onChange={e=>setData('exchange_rate', e.target.value)}
+                      placeholder={liveFxRate ? String(liveFxRate) : "e.g. 2650.0000"}
+                      required
+                    />
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                      Live rate: <strong>{formatExchangeRate(liveFxRate)}</strong>. Manual entry allowed.
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div style={{marginBottom:14}}>
                 <label className="form-label" style={{marginBottom:8,display:'block'}}>Line Items *</label>
                 {items.map((item,i)=>(
@@ -636,6 +736,18 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                     <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Subtotal</span><span>{formatMoney(modalSubtotal, modalCurrency)}</span></div>
                     <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>VAT (18%)</span><span>{formatMoney(modalVat, modalCurrency)}</span></div>
                     <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Due</span><span style={{color:'var(--accent)',fontWeight:700}}>{formatMoney(modalTotal, modalCurrency)}</span></div>
+                    {modalCurrency === 'USD' && (
+                      <div style={{marginTop:8,paddingTop:8,borderTop:'1px dashed var(--border)',fontSize:12.5}}>
+                        <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',marginBottom:3}}>
+                          <span>Exchange Rate</span>
+                          <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(data.exchange_rate || liveFxRate)} TZS</span>
+                        </div>
+                        <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,color:'var(--accent)'}}>
+                          <span>Total in TZS</span>
+                          <span>TZS {Math.round(modalTotal * Number(data.exchange_rate || liveFxRate || 1)).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

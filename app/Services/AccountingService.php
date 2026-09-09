@@ -96,20 +96,25 @@ class AccountingService
                 $fx = 1.0;
 
                 if ($currency !== 'TZS') {
-                    $rateDate = $invoice->issued_date ?? now();
+                    if (!empty($invoice->exchange_rate) && (float) $invoice->exchange_rate > 0) {
+                        $rate = round((float) $invoice->exchange_rate, 4);
+                    } else {
+                        $rateDate = $invoice->issued_date ?? now();
 
-                    $rate = ExchangeRate::getRate(
-                        propertyId: null,
-                        fromCurrency: $currency,
-                        toCurrency: 'TZS',
-                        date: $rateDate
-                    );
-
-                    if ($rate === null) {
-                        throw new \Exception(
-                            "Exchange rate not found for {$currency} to TZS on " .
-                                Carbon::parse($rateDate)->toDateString()
+                        $rate = ExchangeRate::getRate(
+                            propertyId: null,
+                            fromCurrency: $currency,
+                            toCurrency: 'TZS',
+                            date: $rateDate
                         );
+
+                        if ($rate === null) {
+                            throw new \Exception(
+                                "Exchange rate not found for {$currency} to TZS on " .
+                                    Carbon::parse($rateDate)->toDateString()
+                            );
+                        }
+                        $rate = round((float) $rate, 4);
                     }
 
                     $exchangeRate = $rate;
@@ -312,24 +317,31 @@ class AccountingService
                 $exchangeRate = 1.0;
 
                 if ($currency !== 'TZS') {
-                    $rateDate = $payment->paid_date ?? now();
+                    if (!empty($payment->exchange_rate) && (float) $payment->exchange_rate > 0) {
+                        $rate = round((float) $payment->exchange_rate, 4);
+                    } elseif ($linkedInvoice && !empty($linkedInvoice->exchange_rate) && (float) $linkedInvoice->exchange_rate > 0) {
+                        $rate = round((float) $linkedInvoice->exchange_rate, 4);
+                    } else {
+                        $rateDate = $payment->paid_date ?? now();
 
-                    $rate = ExchangeRate::getRate(
-                        propertyId: null,
-                        fromCurrency: $currency,
-                        toCurrency: 'TZS',
-                        date: $rateDate
-                    );
-
-                    if ($rate === null) {
-                        throw new \Exception(
-                            "Exchange rate not found for {$currency} to TZS on " .
-                                Carbon::parse($rateDate)->toDateString()
+                        $rate = ExchangeRate::getRate(
+                            propertyId: null,
+                            fromCurrency: $currency,
+                            toCurrency: 'TZS',
+                            date: $rateDate
                         );
+
+                        if ($rate === null) {
+                            throw new \Exception(
+                                "Exchange rate not found for {$currency} to TZS on " .
+                                    Carbon::parse($rateDate)->toDateString()
+                            );
+                        }
+                        $rate = round((float) $rate, 4);
                     }
 
                     $exchangeRate = $rate;
-                    $amountToPost = (float) $payment->amount * $exchangeRate;
+                    $amountToPost = round((float) $payment->amount * $exchangeRate, 2);
 
                     $payment->update([
                         'exchange_rate'  => $exchangeRate,

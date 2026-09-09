@@ -149,6 +149,8 @@ class InvoiceController extends Controller
             'due_date'     => 'nullable|date',
             'period'       => 'nullable|string',
             'notes'        => 'nullable|string',
+            'currency'      => 'nullable|string|in:USD,TZS',
+            'exchange_rate' => 'nullable|numeric|min:0.0001|max:999999.9999',
             'items'        => 'required|array|min:1',
             'items.*.description' => 'required|string',
             'items.*.quantity'    => 'required|integer|min:1',
@@ -200,28 +202,37 @@ class InvoiceController extends Controller
             ]);
             $createdInvoiceId = $invoice->id;
 
-            // Set currency from lease if invoice is lease-linked
+            // Set currency from lease if invoice is lease-linked, or from request
+            $currency = 'TZS';
+            $lease = null;
             if ($invoice->lease_id) {
                 $lease = Lease::find($invoice->lease_id);
                 if ($lease) {
                     $currency = $lease->currency ?? 'TZS';
-                    $invoice->update(['currency' => $currency]);
-
-                    // Pre-populate exchange rate for audit trail
-                    if ($currency !== 'TZS') {
-                        $rate = ExchangeRate::getRate(
-                            propertyId: null,
-                            fromCurrency: $currency,
-                            toCurrency: 'TZS',
-                            date: $invoice->issued_date ?? now()
-                        );
-
-                        if ($rate) {
-                            // Will be recalculated during postInvoice, but store for reference
-                            $invoice->update(['exchange_rate' => $rate]);
-                        }
-                    }
                 }
+            } elseif (!empty($data['currency'])) {
+                $currency = strtoupper($data['currency']);
+            }
+            $invoice->update(['currency' => $currency]);
+
+            // Pre-populate exchange rate for audit trail and GL posting
+            if ($currency !== 'TZS') {
+                $manualRate = !empty($data['exchange_rate']) && (float) $data['exchange_rate'] > 0
+                    ? round((float) $data['exchange_rate'], 4)
+                    : null;
+
+                $rate = $manualRate ?: ExchangeRate::getRate(
+                    propertyId: null,
+                    fromCurrency: $currency,
+                    toCurrency: 'TZS',
+                    date: $invoice->issued_date ?? now()
+                );
+
+                if ($rate) {
+                    $invoice->update(['exchange_rate' => round((float) $rate, 4)]);
+                }
+            } else {
+                $invoice->update(['exchange_rate' => 1.0]);
             }
 
             $invoiceTotal = 0.0;
@@ -244,6 +255,17 @@ class InvoiceController extends Controller
                     'total'           => $lineTotal,
                 ]);
             }
+
+            // Pre-calculate base currency amount
+            $vatRate = (float) ($lease?->vat_rate ?? 0);
+            $elecItemsVat = (float) $invoice->items()->where('item_type', 'electricity_vat')->sum('total');
+            $netItemsTotal = (float) $invoice->items()->get()->reject(fn($i) => in_array($i->item_type, ['electricity_charge', 'electricity_vat']))->sum('total');
+            $leaseVat = ($elecItemsVat > 0 || $vatRate <= 0) ? 0.0 : round($netItemsTotal * ($vatRate / 100), 2);
+            $grandTotal = $invoiceTotal + $leaseVat;
+            $fx = (float) ($invoice->exchange_rate ?? 1.0);
+            $invoice->updateQuietly([
+                'total_in_base' => round($grandTotal * $fx, 2),
+            ]);
 
             $this->attachInvoiceToInstallment($invoice);
 
@@ -583,6 +605,8 @@ class InvoiceController extends Controller
             'period'       => 'nullable|string',
             'notes'        => 'nullable|string',
             'status'       => 'nullable|in:draft',
+            'currency'      => 'nullable|string|in:USD,TZS',
+            'exchange_rate' => 'nullable|numeric|min:0.0001|max:999999.9999',
             'items'        => 'required|array|min:1',
             'items.*.description' => 'required|string',
             'items.*.quantity'    => 'required|integer|min:1',
@@ -592,6 +616,7 @@ class InvoiceController extends Controller
         ]);
 
         $propertyId = $invoice->property_id;
+        $lease = null;
         if (!empty($data['lease_id'])) {
             $lease = Lease::findOrFail($data['lease_id']);
             $propertyId = $lease->property_id;
@@ -603,10 +628,36 @@ class InvoiceController extends Controller
 
         $approvalStatus = ($data['status'] ?? null) === 'draft' ? 'draft' : 'pending_approval';
 
-        DB::transaction(function () use ($invoice, $data, $propertyId, $approvalStatus) {
+        DB::transaction(function () use ($invoice, $data, $propertyId, $lease, $approvalStatus) {
+            $currency = $invoice->currency ?? 'TZS';
+            if ($lease) {
+                $currency = $lease->currency ?? 'TZS';
+            } elseif (!empty($data['currency'])) {
+                $currency = strtoupper($data['currency']);
+            }
+
+            $exchangeRate = $invoice->exchange_rate;
+            if ($currency !== 'TZS') {
+                if (!empty($data['exchange_rate']) && (float) $data['exchange_rate'] > 0) {
+                    $exchangeRate = round((float) $data['exchange_rate'], 4);
+                } elseif (!$exchangeRate) {
+                    $rate = ExchangeRate::getRate(
+                        propertyId: null,
+                        fromCurrency: $currency,
+                        toCurrency: 'TZS',
+                        date: $data['issued_date'] ?? $invoice->issued_date ?? now()
+                    );
+                    $exchangeRate = $rate ? round((float) $rate, 4) : null;
+                }
+            } else {
+                $exchangeRate = 1.0;
+            }
+
             $invoice->update([
                 'property_id' => $propertyId,
                 'lease_id' => $data['lease_id'] ?? null,
+                'currency' => $currency,
+                'exchange_rate' => $exchangeRate,
                 'tenant_name' => $data['tenant_name'],
                 'tenant_email' => $data['tenant_email'] ?? null,
                 'unit_ref' => $data['unit_ref'],
@@ -624,8 +675,10 @@ class InvoiceController extends Controller
 
             $invoice->items()->delete();
 
+            $invoiceTotal = 0.0;
             foreach ($data['items'] as $item) {
                 $lineTotal = (float) $item['quantity'] * (float) $item['unit_price'];
+                $invoiceTotal += $lineTotal;
                 $itemType = $item['item_type']
                     ?? (stripos($item['description'] ?? '', 'service charge') !== false ? 'service_charge' : 'rent');
 
@@ -639,6 +692,17 @@ class InvoiceController extends Controller
                     'total'           => $lineTotal,
                 ]);
             }
+
+            // Recalculate total_in_base
+            $vatRate = (float) ($lease?->vat_rate ?? 0);
+            $elecItemsVat = (float) $invoice->items()->where('item_type', 'electricity_vat')->sum('total');
+            $netItemsTotal = (float) $invoice->items()->get()->reject(fn($i) => in_array($i->item_type, ['electricity_charge', 'electricity_vat']))->sum('total');
+            $leaseVat = ($elecItemsVat > 0 || $vatRate <= 0) ? 0.0 : round($netItemsTotal * ($vatRate / 100), 2);
+            $grandTotal = $invoiceTotal + $leaseVat;
+            $fx = (float) ($exchangeRate ?? 1.0);
+            $invoice->updateQuietly([
+                'total_in_base' => round($grandTotal * $fx, 2),
+            ]);
 
             $invoice->load('items');
         });

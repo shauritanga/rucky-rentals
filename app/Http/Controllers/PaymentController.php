@@ -173,6 +173,8 @@ class PaymentController extends Controller
             'issue_receipt' => 'nullable|boolean',
             'wht_confirmed' => 'nullable|boolean',
             'wht_reference' => 'nullable|string|max:255',
+            'currency'      => 'nullable|string|in:USD,TZS',
+            'exchange_rate' => 'nullable|numeric|min:0.0001|max:999999.9999',
         ]);
 
         $unit = Unit::findOrFail($data['unit_id']);
@@ -194,24 +196,39 @@ class PaymentController extends Controller
             if ($invoice) {
                 $data['currency'] = $invoice->currency ?? 'TZS';
             }
+        } elseif (!empty($request->input('currency'))) {
+            $data['currency'] = strtoupper($request->input('currency'));
         }
 
         if (($data['currency'] ?? 'TZS') !== 'TZS') {
-            $rate = ExchangeRate::getRate(
-                propertyId: null,
-                fromCurrency: $data['currency'],
-                toCurrency: 'TZS',
-                date: $data['paid_date'] ?? now()
-            );
+            $customRate = $request->filled('exchange_rate') ? (float) $request->input('exchange_rate') : null;
+            if ($customRate && $customRate > 0) {
+                $rate = round($customRate, 4);
+            } elseif ($invoice && !empty($invoice->exchange_rate) && (float) $invoice->exchange_rate > 0) {
+                $rate = round((float) $invoice->exchange_rate, 4);
+            } else {
+                $rate = ExchangeRate::getRate(
+                    propertyId: null,
+                    fromCurrency: $data['currency'],
+                    toCurrency: 'TZS',
+                    date: $data['paid_date'] ?? now()
+                );
+                if ($rate) {
+                    $rate = round((float) $rate, 4);
+                }
+            }
 
             if ($rate === null) {
                 return back()->withErrors([
-                    'amount' => 'Exchange rate not found for ' . $data['currency'] . ' to TZS.',
+                    'exchange_rate' => 'Exchange rate not found for ' . $data['currency'] . ' to TZS.',
                 ]);
             }
 
             $data['exchange_rate'] = $rate;
-            $data['amount_in_base'] = (float) $data['amount'] * (float) $rate;
+            $data['amount_in_base'] = round((float) $data['amount'] * (float) $rate, 2);
+        } else {
+            $data['exchange_rate'] = 1.0;
+            $data['amount_in_base'] = (float) $data['amount'];
         }
 
         $issueReceipt = (bool) ($data['issue_receipt'] ?? false);

@@ -151,7 +151,7 @@
     <tr>
         <td class="def-num">1.6</td>
         <td class="def-label">Rent:</td>
-        <td>Monthly rent of {{ $currency }} {{ number_format((float)$lease->monthly_rent, 2) }} VAT exclusive during the Initial Term, thereafter subject to review.</td>
+        <td>Monthly rent of {{ $currency }} {{ number_format((float)$lease->monthly_rent, 2) }} VAT exclusive during the Initial Term, thereafter subject to review.@if ($currency === 'USD' && !empty($lease->exchange_rate)) (Agreed exchange rate: 1 USD = {{ rtrim(rtrim(number_format((float)$lease->exchange_rate, 4, '.', ','), '0'), '.') }} TZS for local currency conversions and invoice calculations).@endif</td>
     </tr>
     <tr>
         <td class="def-num">1.7</td>

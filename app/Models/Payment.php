@@ -37,6 +37,8 @@ class Payment extends Model
         'breakdown_rent' => 'float',
         'breakdown_service_charge' => 'float',
         'breakdown_electricity' => 'float',
+        'exchange_rate' => 'float',
+        'amount_in_base' => 'float',
     ];
 
     public function property()

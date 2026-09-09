@@ -1,10 +1,31 @@
 import { useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 
+export function ensureOtherAtEnd(list = []) {
+  if (!Array.isArray(list)) return ['Other'];
+  const withoutOther = [];
+  let otherLabel = 'Other';
+
+  for (const item of list) {
+    if (!item || typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    if (trimmed.toLowerCase() === 'other') {
+      otherLabel = trimmed;
+    } else if (!withoutOther.some(existing => existing.toLowerCase() === trimmed.toLowerCase())) {
+      withoutOther.push(trimmed);
+    }
+  }
+
+  return [...withoutOther, otherLabel];
+}
+
 /**
  * Creatable dropdown: pick an existing option, or type a new value and
  * explicitly confirm to save it as a new option (persisted server-side,
  * scoped to the current property, via POST /units/types).
+ * "Other" option is guaranteed to always remain at the end, even when
+ * new dynamic types are created.
  */
 export default function CreatableTypeSelect({ value, options = [], onChange, onOptionsChange, error, disabled = false }) {
   const [query, setQuery] = useState('');
@@ -12,13 +33,19 @@ export default function CreatableTypeSelect({ value, options = [], onChange, onO
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
+  const orderedOptions = useMemo(() => ensureOtherAtEnd(options), [options]);
   const normalizedQuery = query.trim().toLowerCase();
-  const filtered = useMemo(
-    () => options.filter(o => !normalizedQuery || o.toLowerCase().includes(normalizedQuery)),
-    [options, normalizedQuery],
-  );
-  const exactMatch = options.some(o => o.toLowerCase() === normalizedQuery);
-  const canOfferCreate = query.trim().length > 0 && !exactMatch;
+
+  const filtered = useMemo(() => {
+    const withoutOther = orderedOptions.filter(o => o.toLowerCase() !== 'other');
+    const matchedWithoutOther = withoutOther.filter(o => !normalizedQuery || o.toLowerCase().includes(normalizedQuery));
+    const matchesOther = !normalizedQuery || 'other'.includes(normalizedQuery);
+
+    return matchesOther ? [...matchedWithoutOther, 'Other'] : matchedWithoutOther;
+  }, [orderedOptions, normalizedQuery]);
+
+  const exactMatch = orderedOptions.some(o => o.toLowerCase() === normalizedQuery);
+  const canOfferCreate = query.trim().length > 0 && !exactMatch && normalizedQuery !== 'other';
 
   const pick = (opt) => {
     onChange(opt);
@@ -37,7 +64,8 @@ export default function CreatableTypeSelect({ value, options = [], onChange, onO
       preserveState: true,
       onSuccess: (page) => {
         const saved = page.props.flash?.newUnitType || newType;
-        onOptionsChange?.([...options, saved]);
+        const nextOptions = ensureOtherAtEnd([...orderedOptions.filter(o => o.toLowerCase() !== 'other'), saved]);
+        onOptionsChange?.(nextOptions);
         pick(saved);
       },
       onError: (errs) => setSaveError(errs.type || 'Could not save this type.'),

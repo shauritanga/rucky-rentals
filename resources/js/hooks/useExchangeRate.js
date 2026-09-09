@@ -93,6 +93,11 @@ export default function useExchangeRate() {
     return `${cur} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }, []);
 
+  // Format exchange rate up to 4 decimal places (minimum 2 decimals for standard currency quotes)
+  const formatRate = useCallback((fxRate) => {
+    return formatExchangeRate(fxRate);
+  }, []);
+
   const sourceLabel = useMemo(() => {
     if (source === 'live') return 'live';
     if (source === 'cached') return 'cached';
@@ -109,5 +114,16 @@ export default function useExchangeRate() {
     formatTzs,
     formatCompactTzs,
     formatMoney,
+    formatRate,
   };
 }
+
+export function formatExchangeRate(fxRate) {
+  if (fxRate == null || fxRate === '' || Number.isNaN(Number(fxRate))) return '—';
+  const num = Number(fxRate);
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+}
+

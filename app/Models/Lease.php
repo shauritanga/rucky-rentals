@@ -19,6 +19,7 @@ class Lease extends Model
         'duration_months',
         'payment_cycle',
         'currency',
+        'exchange_rate',
         'possession_date',
         'rent_start_date',
         'fitout_enabled',
@@ -35,6 +36,7 @@ class Lease extends Model
     ];
 
     protected $casts = [
+        'exchange_rate'  => 'float',
         'approval_log'   => 'array',
         'fitout_enabled' => 'boolean',
         'fitout_days'    => 'integer',

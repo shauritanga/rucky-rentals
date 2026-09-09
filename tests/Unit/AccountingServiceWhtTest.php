@@ -16,11 +16,12 @@ class AccountingServiceWhtTest extends TestCase
         AccountingService $service,
         float $amountToPost,
         float $paymentAmount,
-        float $whtRate,
+        float $rentWhtRate,
+        float $serviceChargeWhtRate,
         Invoice $invoice
     ): float {
         $method = new \ReflectionMethod($service, 'calculateWhtAmountFromInvoice');
-        return (float) $method->invoke($service, $amountToPost, $paymentAmount, $whtRate, $invoice);
+        return (float) $method->invoke($service, $amountToPost, $paymentAmount, $rentWhtRate, $serviceChargeWhtRate, $invoice);
     }
 
     private function makeInvoiceWithItems(): Invoice
@@ -42,7 +43,7 @@ class AccountingServiceWhtTest extends TestCase
         $invoice = $this->makeInvoiceWithItems();
 
         // Eligible gross = 1,180; VAT(18% inclusive) = 180; eligible net = 1,000; WHT 10% = 100.
-        $whtAmount = $this->invokeWhtCalculation($service, 1300, 1300, 10, $invoice);
+        $whtAmount = $this->invokeWhtCalculation($service, 1300, 1300, 10, 0, $invoice);
 
         $this->assertSame(100.0, $whtAmount);
     }
@@ -53,7 +54,7 @@ class AccountingServiceWhtTest extends TestCase
         $invoice = $this->makeInvoiceWithItems();
 
         // Half payment => half eligible net base => 50 WHT.
-        $whtAmount = $this->invokeWhtCalculation($service, 650, 650, 10, $invoice);
+        $whtAmount = $this->invokeWhtCalculation($service, 650, 650, 10, 0, $invoice);
 
         $this->assertSame(50.0, $whtAmount);
     }
@@ -65,7 +66,7 @@ class AccountingServiceWhtTest extends TestCase
 
         // Source currency payment: 1,300 @ fx 2,500 => base amount 3,250,000.
         // Eligible net source base: 1,000 => 2,500,000 in base; WHT 10% => 250,000.
-        $whtAmount = $this->invokeWhtCalculation($service, 3250000, 1300, 10, $invoice);
+        $whtAmount = $this->invokeWhtCalculation($service, 3250000, 1300, 10, 0, $invoice);
 
         $this->assertSame(250000.0, $whtAmount);
     }

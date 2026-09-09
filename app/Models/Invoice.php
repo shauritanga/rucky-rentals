@@ -37,6 +37,8 @@ class Invoice extends Model
         'approval_requested_at' => 'datetime',
         'approval_decided_at' => 'datetime',
         'sent_to_tenant_at' => 'datetime',
+        'exchange_rate' => 'float',
+        'total_in_base' => 'float',
     ];
 
     public function lease()

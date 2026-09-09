@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
+import useExchangeRate, { formatExchangeRate } from '@/hooks/useExchangeRate';
 
 // Sum of raw item amounts (net, VAT-exclusive)
 const invoiceItemsNet = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
@@ -62,6 +63,7 @@ const DEPOSIT_STATUS_META = {
 };
 
 export default function PaymentsIndex({ payments, invoices = [], tenants, units, deposits = [], depositRefunds = [] }) {
+  const { rate: liveFxRate } = useExchangeRate();
   const depositList = (deposits && deposits.length > 0) ? deposits : (depositRefunds || []);
 
   const normalizeCurrency = (value) => (String(value || '').toUpperCase() === 'TZS' ? 'TZS' : 'USD');
@@ -167,7 +169,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
     });
   }, [depositList, depositFilter, depositSearch]);
 
-  const { data, setData, post, processing, reset, errors, clearErrors } = useForm({
+  const { data, setData, post, processing, reset, transform, errors, clearErrors } = useForm({
     invoice_id: '',
     tenant_id: '',
     unit_id: '',
@@ -178,6 +180,8 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
     paid_date: '',
     reference: '',
     notes: '',
+    currency: 'TZS',
+    exchange_rate: '',
     issue_receipt: false,
     wht_confirmed: false,
     wht_reference: '',
@@ -234,7 +238,11 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
         unit,
         month: p.month || invoice?.period || '-',
         invoiceAmount,
+        invoiceExchangeRate: invoice?.exchange_rate,
+        invoiceTotalInBase: invoice?.total_in_base,
         amountPaid: paymentAmount,
+        exchangeRate: p.exchange_rate,
+        amountInBase: p.amount_in_base,
         variance: invoiceId ? variance : 0,
         currency,
         method: p.method || '—',
@@ -440,18 +448,34 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
     setShowModal(true);
     setSelectedInvoiceId('');
     reset();
-    setData('method', 'Bank Transfer');
-    setData('paid_date', today);
-    setData('status', 'paid');
-    setData('issue_receipt', false);
-    setData('wht_confirmed', false);
-    setData('wht_reference', '');
+    setData((prev) => ({
+      ...prev,
+      method: 'Bank Transfer',
+      paid_date: today,
+      status: 'paid',
+      currency: 'TZS',
+      exchange_rate: '',
+      issue_receipt: false,
+      wht_confirmed: false,
+      wht_reference: '',
+    }));
   };
 
   const onSelectInvoice = (invoiceId) => {
     setSelectedInvoiceId(invoiceId);
-    setData('invoice_id', invoiceId || '');
-    if (!invoiceId) return;
+    if (!invoiceId) {
+      setData((prev) => ({
+        ...prev,
+        invoice_id: '',
+        tenant_id: '',
+        unit_id: '',
+        amount: '',
+        reference: '',
+        currency: 'TZS',
+        exchange_rate: '',
+      }));
+      return;
+    }
 
     const inv = eligibleInvoices.find((x) => String(x.id) === String(invoiceId));
     if (!inv) return;
@@ -465,12 +489,24 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
     const invoicePaid = invoicePaidTotal(inv.id);
     const due = Math.max(invoiceTotal(inv) - invoicePaid - tenantCreditForInvoice(inv), 0);
+    const invUnit = unitFallback || resolveInvoiceUnit(inv);
+    const invCurrency = getInvoiceCurrency(inv, invUnit);
 
-    setData('tenant_id', String(inv.tenant_id || tenantFallback?.id || ''));
-    setData('unit_id', String(inv.unit_id || unitFallback?.id || ''));
-    setData('month', String(inv.period || 'Mar 2026'));
-    setData('amount', due > 0 ? String(due) : '');
-    setData('reference', inv.invoice_number || '');
+    const defaultRate = inv.exchange_rate != null
+      ? String(inv.exchange_rate)
+      : (liveFxRate ? String(liveFxRate) : '');
+
+    setData((prev) => ({
+      ...prev,
+      invoice_id: invoiceId,
+      tenant_id: String(inv.tenant_id || tenantFallback?.id || ''),
+      unit_id: String(inv.unit_id || unitFallback?.id || ''),
+      month: String(inv.period || 'Mar 2026'),
+      amount: due > 0 ? String(due) : '',
+      reference: inv.invoice_number || '',
+      currency: invCurrency,
+      exchange_rate: invCurrency === 'USD' ? defaultRate : '',
+    }));
   };
 
   const submit = (e) => {
@@ -492,6 +528,11 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
         )
       : null;
 
+    const effCurrency = selectedInvoiceCurrency || data.currency || 'TZS';
+    const rateNum = effCurrency === 'USD' && data.exchange_rate
+      ? Number(data.exchange_rate)
+      : (effCurrency === 'USD' && selectedInv?.exchange_rate ? Number(selectedInv.exchange_rate) : null);
+
     const payload = {
       ...data,
       status: 'paid',
@@ -500,6 +541,8 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
       unit_id: data.unit_id || selectedInv?.unit_id || unitFallback?.id || '',
       month: data.month || selectedInv?.period || 'Mar 2026',
       reference: data.reference || selectedInv?.invoice_number || '',
+      currency: effCurrency,
+      exchange_rate: rateNum,
     };
 
     if (data.issue_receipt && receiptValidationError) {
@@ -507,8 +550,9 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
       return;
     }
 
+    transform(() => payload);
+
     post('/payments', {
-      data: payload,
       preserveScroll: true,
       onSuccess: () => {
         setSubmitMessage({ type: 'success', text: 'Payment recorded successfully.' });
@@ -673,8 +717,35 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                         </td>
                         <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontWeight: 600 }}>{row.unit?.unit_number || '—'}</td>
                         <td style={{ padding: '11px 14px', fontSize: 12.5, verticalAlign: 'middle', color: 'var(--accent)', fontWeight: 500, cursor: 'pointer' }}>{row.invoiceNumber}</td>
-                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums' }}>{formatAmount(row.invoiceAmount, row.currency)}</td>
-                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatAmount(row.amountPaid, row.currency)}</td>
+                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontVariantNumeric: 'tabular-nums' }}>
+                          {formatAmount(row.invoiceAmount, row.currency)}
+                          {row.currency === 'USD' && (
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                              {row.invoiceTotalInBase
+                                ? `≈ TZS ${Number(row.invoiceTotalInBase).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                : (row.invoiceExchangeRate
+                                    ? `≈ TZS ${Math.round(row.invoiceAmount * row.invoiceExchangeRate).toLocaleString('en-US')}`
+                                    : (liveFxRate ? `≈ TZS ${Math.round(row.invoiceAmount * liveFxRate).toLocaleString('en-US')}` : null))}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                          {formatAmount(row.amountPaid, row.currency)}
+                          {row.currency === 'USD' && (
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>
+                              {row.amountInBase
+                                ? `≈ TZS ${Number(row.amountInBase).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                : (row.exchangeRate
+                                    ? `≈ TZS ${Math.round(row.amountPaid * row.exchangeRate).toLocaleString('en-US')}`
+                                    : (liveFxRate ? `≈ TZS ${Math.round(row.amountPaid * liveFxRate).toLocaleString('en-US')}` : null))}
+                              {row.exchangeRate ? (
+                                <span style={{ marginLeft: 4, fontSize: 10, color: 'var(--text-muted)' }}>
+                                  (@ {formatExchangeRate(row.exchangeRate)})
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle', color: varianceColor, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{varianceText}</td>
                         <td style={{ padding: '11px 14px', fontSize: 12.5, verticalAlign: 'middle', color: 'var(--text-secondary)' }}>{row.method}</td>
                         <td style={{ padding: '11px 14px', fontSize: 13.5, verticalAlign: 'middle' }}>
@@ -1043,6 +1114,55 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 </div>
               </div>
 
+              {selectedInvoiceCurrency === 'USD' && (
+                <div className="form-row" style={{ marginTop: -4, marginBottom: 8 }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                      <label className="form-label" style={{ margin: 0 }}>Exchange Rate (USD → TZS)</label>
+                      {liveFxRate ? (
+                        <button
+                          type="button"
+                          onClick={() => setData('exchange_rate', String(liveFxRate))}
+                          style={{
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            color: 'var(--accent)',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Use live rate ({formatExchangeRate(liveFxRate)})
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      className="form-input"
+                      type="number"
+                      step="0.0001"
+                      min="0.0001"
+                      value={data.exchange_rate}
+                      onChange={(e) => setData('exchange_rate', e.target.value)}
+                      placeholder={liveFxRate ? String(liveFxRate) : 'e.g. 2650.0000'}
+                    />
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                      {Number(data.exchange_rate) > 0 ? (
+                        <span>
+                          Recorded rate: <strong>1 USD = {formatExchangeRate(Number(data.exchange_rate))} TZS</strong>
+                          {received > 0 ? (
+                            <> · Converted: <strong>TZS {Math.round(received * Number(data.exchange_rate)).toLocaleString('en-US')}</strong></>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span>Enter manual exchange rate (up to 4 decimal places). Will default to invoice rate or live rate if empty.</span>
+                      )}
+                    </div>
+                    {errors.exchange_rate && <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)' }}>{errors.exchange_rate}</div>}
+                  </div>
+                </div>
+              )}
+
               <div className="form-group">
                 <label className="form-label">Reference / Transaction ID</label>
                 <input className="form-input" type="text" value={data.reference} onChange={(e) => setData('reference', e.target.value)} placeholder="Bank ref, M-Pesa code, etc." />
@@ -1095,6 +1215,14 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                     {selectedTenantCredit > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--green)' }}>Less: credit on account</span><span style={{ color: 'var(--green)' }}>({formatAmount(selectedTenantCredit, selectedInvoiceCurrency)})</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Balance due</span><span>{formatAmount(selectedBalanceDue, selectedInvoiceCurrency)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Amount received</span><span>{formatAmount(received, selectedInvoiceCurrency)}</span></div>
+                    {selectedInvoiceCurrency === 'USD' && Number(data.exchange_rate) > 0 && received > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
+                        <span>TZS equivalent (@ {formatExchangeRate(Number(data.exchange_rate))})</span>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          TZS {Math.round(received * Number(data.exchange_rate)).toLocaleString('en-US')}
+                        </span>
+                      </div>
+                    )}
                     <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2, display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700 }}>
                       <span>{reconcileVariance > 0 ? 'Overpayment' : reconcileVariance < 0 ? 'Shortfall' : 'Variance'}</span>
                       <span style={{ color: reconcileVariance > 0 ? '#a78bfa' : reconcileVariance < 0 ? 'var(--red)' : 'var(--green)' }}>{reconcileVariance === 0 ? `Exact — ${selectedInvoiceCurrency} 0` : fmtVariance(reconcileVariance, (value) => formatAmount(value, selectedInvoiceCurrency))}</span>

@@ -130,6 +130,7 @@ class LeaseController extends Controller
             'payment_cycle'   => 'required|integer|in:3,4,6,12',
             'monthly_rent'    => 'required|numeric',
             'deposit'         => 'nullable|numeric',
+            'exchange_rate'   => 'nullable|numeric|min:0.0001|max:999999.9999',
             'terms'           => 'nullable|string',
         ]);
 
@@ -214,6 +215,9 @@ class LeaseController extends Controller
             'duration_months' => $validated['duration_months'],
             'payment_cycle' => $validated['payment_cycle'],
             'currency' => $unit->currency ?: 'USD',
+            'exchange_rate' => ($unit->currency ?: 'USD') === 'USD'
+                ? (!empty($validated['exchange_rate']) ? round((float) $validated['exchange_rate'], 4) : (!empty($unit->exchange_rate) ? round((float) $unit->exchange_rate, 4) : null))
+                : null,
             'possession_date' => $validated['possession_date'] ?? $validated['start_date'],
             'rent_start_date' => $validated['rent_start_date'] ?? $validated['start_date'],
             'fitout_enabled' => (bool) ($validated['fitout_enabled'] ?? false),
@@ -382,6 +386,7 @@ class LeaseController extends Controller
                 'wht_rate'        => 'nullable|numeric|min:0|max:100',
                 'service_charge_rate' => 'nullable|numeric|min:0|max:100',
                 'vat_rate'        => 'nullable|numeric|min:0|max:100',
+                'exchange_rate'   => 'nullable|numeric|min:0.0001|max:999999.9999',
                 'terms'           => 'nullable|string',
             ]);
 
@@ -392,6 +397,15 @@ class LeaseController extends Controller
                 $newUnitId     = $editData['unit_id'];
                 $oldDeposit    = (float) $lease->deposit;
                 $wasActive     = in_array($lease->status, ['active', 'expiring', 'overdue']);
+
+                $targetCurrency = $lease->currency ?: 'USD';
+                if ($targetCurrency === 'USD') {
+                    $editData['exchange_rate'] = !empty($editData['exchange_rate'])
+                        ? round((float) $editData['exchange_rate'], 4)
+                        : null;
+                } else {
+                    $editData['exchange_rate'] = null;
+                }
 
                 $lease->update($editData);
 

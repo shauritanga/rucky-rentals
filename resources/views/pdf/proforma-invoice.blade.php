@@ -393,6 +393,24 @@
                     <td>Invoice Total {{ $currency }}</td>
                     <td class="right">{{ number_format($grandTotal, 2) }}</td>
                 </tr>
+                @if($currency !== 'TZS' && !empty($invoice->exchange_rate))
+                @php
+                    $rawRate = (float) $invoice->exchange_rate;
+                    $formattedRate = number_format($rawRate, 4, '.', ',');
+                    $formattedRate = preg_replace('/(\.\d\d)00$/', '$1', $formattedRate);
+                    $tzsTotal = !empty($invoice->total_in_base)
+                        ? (float) $invoice->total_in_base
+                        : round($grandTotal * $rawRate, 2);
+                @endphp
+                <tr>
+                    <td style="color:#4b5563;font-size:10.5px;">Exchange Rate (1 {{ $currency }} &rarr; TZS)</td>
+                    <td class="right" style="color:#4b5563;font-size:10.5px;">{{ $formattedRate }} TZS</td>
+                </tr>
+                <tr class="total-row" style="border-top:1px solid #2563eb;background:rgba(37,99,235,.12);">
+                    <td>Total Due (TZS)</td>
+                    <td class="right">TZS {{ number_format($tzsTotal, 2) }}</td>
+                </tr>
+                @endif
             </table>
         </div>
     </div>

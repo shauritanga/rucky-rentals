@@ -3,7 +3,8 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { floorSortOrder } from '@/utils/floorConfig';
 import { formatDisplayDate } from '@/utils/dateFormat';
-import CreatableTypeSelect from '@/Components/CreatableTypeSelect';
+import CreatableTypeSelect, { ensureOtherAtEnd } from '@/Components/CreatableTypeSelect';
+import useExchangeRate, { formatExchangeRate } from '@/hooks/useExchangeRate';
 
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
@@ -80,7 +81,14 @@ function UnitCard({ unit, onClick }) {
         }
       </div>
       <div className="unit-card-foot">
-        <span className="unit-card-rent">{money(unit.rent, currency)}<span style={{fontSize:11,fontWeight:400,color:'var(--text-muted)'}}>/mo</span></span>
+        <div style={{display:'flex',flexDirection:'column'}}>
+          <span className="unit-card-rent">{money(unit.rent, currency)}<span style={{fontSize:11,fontWeight:400,color:'var(--text-muted)'}}>/mo</span></span>
+          {currency === 'USD' && unit.exchange_rate && (
+            <span style={{fontSize:'10.5px',color:'var(--text-muted)',fontWeight:400}}>
+              ≈ TZS {Math.round(Number(unit.rent || 0) * Number(unit.exchange_rate)).toLocaleString('en-US')}
+            </span>
+          )}
+        </div>
         <span style={{fontSize:'11.5px',color:'var(--text-muted)'}}>{sizeSqm.toFixed(1)} m²</span>
       </div>
     </div>
@@ -90,6 +98,7 @@ function UnitCard({ unit, onClick }) {
 export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], canCreateUnit = true, settings = {} }) {
   const { props, url } = usePage();
   const user = props?.auth?.user;
+  const { fxRate: liveFxRate } = useExchangeRate();
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
@@ -120,17 +129,17 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
     [availableFloors],
   );
 
-  const [availableTypes, setAvailableTypes] = useState(Array.isArray(unitTypes) ? unitTypes : []);
-  useEffect(() => { setAvailableTypes(Array.isArray(unitTypes) ? unitTypes : []); }, [unitTypes]);
+  const [availableTypes, setAvailableTypes] = useState(() => ensureOtherAtEnd(unitTypes));
+  useEffect(() => { setAvailableTypes(ensureOtherAtEnd(unitTypes)); }, [unitTypes]);
 
   // ── Create form ──────────────────────────────────────────────────────────
   const { data, setData, post, processing, reset, errors } = useForm({
-    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', electricity_type:'direct', notes:''
+    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', exchange_rate:'', electricity_type:'direct', notes:''
   });
 
   // ── Edit form ─────────────────────────────────────────────────────────────
   const { data: editData, setData: setEditData, patch: patchUnit, processing: editProcessing, reset: resetEdit, errors: editErrors } = useForm({
-    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', notes:''
+    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', exchange_rate:'', status:'vacant', electricity_type:'direct', notes:''
   });
 
   useEffect(() => {
@@ -208,6 +217,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
       rate_per_sqm:           unit.rate_per_sqm ?? unitRatePerSqm(unit),
       service_charge_per_sqm: unit.service_charge_per_sqm ?? (unitSizeSqm(unit) > 0 ? (Number(unit.service_charge ?? 0) / unitSizeSqm(unit)).toFixed(4) : ''),
       currency:               unit.currency ?? 'TZS',
+      exchange_rate:          unit.exchange_rate != null ? String(unit.exchange_rate) : (unit.currency === 'USD' && liveFxRate ? String(liveFxRate) : ''),
       status:                 unit.status ?? 'vacant',
       electricity_type:       unit.electricity_type ?? 'direct',
       notes:                  unit.notes ?? '',
@@ -334,7 +344,14 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                                 )}
                               </div>
                             </td>
-                            <td style={{fontWeight:600}}>{money(u.rent, unitCurrency(u))}</td>
+                            <td style={{fontWeight:600}}>
+                              {money(u.rent, unitCurrency(u))}
+                              {unitCurrency(u) === 'USD' && u.exchange_rate && (
+                                <div style={{fontSize:'10.5px',color:'var(--text-muted)',fontWeight:400,marginTop:2}}>
+                                  ≈ TZS {Math.round(Number(u.rent || 0) * Number(u.exchange_rate)).toLocaleString('en-US')}
+                                </div>
+                              )}
+                            </td>
                             <td style={{color:'var(--text-muted)'}}>{unitSizeSqm(u).toFixed(1)} m²</td>
                           </tr>
                         );
@@ -368,6 +385,24 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                   <div className="drawer-kv"><div className="drawer-kv-label">Size</div><div className="drawer-kv-value">{unitSizeSqm(selected).toFixed(1)} m²</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Rate per m²</div><div className="drawer-kv-value">{money(unitRatePerSqm(selected).toFixed(2), unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Currency</div><div className="drawer-kv-value">{unitCurrency(selected)}</div></div>
+                  {unitCurrency(selected) === 'USD' && (
+                    <>
+                      <div className="drawer-kv">
+                        <div className="drawer-kv-label">Exchange Rate</div>
+                        <div className="drawer-kv-value" style={{fontWeight:600}}>
+                          {selected.exchange_rate ? `1 USD = ${formatExchangeRate(selected.exchange_rate)} TZS` : '—'}
+                        </div>
+                      </div>
+                      {selected.exchange_rate ? (
+                        <div className="drawer-kv">
+                          <div className="drawer-kv-label">Rent in TZS</div>
+                          <div className="drawer-kv-value" style={{color:'var(--text-secondary)'}}>
+                            TZS {Math.round(Number(selected.rent || 0) * Number(selected.exchange_rate)).toLocaleString('en-US')}
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                   <div className="drawer-kv"><div className="drawer-kv-label">Security Deposit</div><div className="drawer-kv-value">{money(selected.deposit, unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Service Charge / mo</div><div className="drawer-kv-value">{money(selected.service_charge ?? 0, unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Electricity</div><div className="drawer-kv-value">{selected.electricity_type === 'submeter' ? 'Submeter' : 'Direct (Own Meter)'}</div></div>
@@ -493,7 +528,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                     options={availableTypes}
                     error={editErrors.type}
                     onChange={(v) => setEditData('type', v)}
-                    onOptionsChange={setAvailableTypes}
+                    onOptionsChange={(newTypes) => setAvailableTypes(ensureOtherAtEnd(newTypes))}
                   />
                 </div>
                 <div className="form-group">
@@ -504,7 +539,18 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Currency</label>
-                  <select className="form-input form-select" value={editData.currency} onChange={e => setEditData('currency', e.target.value)}>
+                  <select
+                    className="form-input form-select"
+                    value={editData.currency}
+                    onChange={e => {
+                      const c = e.target.value;
+                      setEditData(d => ({
+                        ...d,
+                        currency: c,
+                        exchange_rate: c === 'USD' ? (d.exchange_rate || (liveFxRate ? String(liveFxRate) : '')) : '',
+                      }));
+                    }}
+                  >
                     <option value="TZS">TZS</option>
                     <option value="USD">USD</option>
                   </select>
@@ -514,6 +560,52 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                   <input className="form-input" type="number" step="0.0001" min="0" value={editData.rate_per_sqm} onChange={e => setEditData('rate_per_sqm', e.target.value)} required />
                 </div>
               </div>
+              {editData.currency === 'USD' && (
+                <div className="form-row">
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                      <label className="form-label" style={{ margin: 0 }}>Exchange Rate (USD → TZS) *</label>
+                      {liveFxRate ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditData('exchange_rate', String(liveFxRate))}
+                          style={{
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            color: 'var(--accent)',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Use live rate ({formatExchangeRate(liveFxRate)})
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      className={`form-input${editErrors.exchange_rate ? ' input-error' : ''}`}
+                      type="number"
+                      step="0.0001"
+                      min="0.0001"
+                      value={editData.exchange_rate}
+                      onChange={(e) => setEditData('exchange_rate', e.target.value)}
+                      placeholder={liveFxRate ? String(liveFxRate) : 'e.g. 2650.0000'}
+                      required
+                    />
+                    {editErrors.exchange_rate && <div className="form-error">{editErrors.exchange_rate}</div>}
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                      {Number(editData.exchange_rate) > 0 ? (
+                        <span>
+                          Recorded unit rate: <strong>1 USD = {formatExchangeRate(Number(editData.exchange_rate))} TZS</strong>. Leases and invoices for this unit will inherit this rate.
+                        </span>
+                      ) : (
+                        <span>Enter manual rate (up to 4 decimals). Leases created for this unit will automatically inherit this rate.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Service Charge Rate per m² ({editData.currency})</label>
@@ -549,6 +641,28 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                   </select>
                 </div>
               </div>
+              {editData.currency === 'USD' && (Number(editData.exchange_rate) > 0 || liveFxRate) && editRent > 0 && (
+                <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '10px 14px', fontSize: 12.5, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginBottom: 4 }}>
+                    <span>Exchange Rate</span>
+                    <span style={{ fontWeight: 600 }}>1 USD = {formatExchangeRate(Number(editData.exchange_rate) || liveFxRate)} TZS</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginBottom: 3 }}>
+                    <span>Monthly Rent in TZS</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>TZS {Math.round(editRent * (Number(editData.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
+                  </div>
+                  {editSc > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginBottom: 3 }}>
+                      <span>Service Charge in TZS</span>
+                      <strong>TZS {Math.round(editSc * (Number(editData.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                    <span>Security Deposit in TZS</span>
+                    <strong style={{ color: 'var(--accent)' }}>TZS {Math.round(editDeposit * (Number(editData.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
+                  </div>
+                </div>
+              )}
               <div className="form-row">
                 <div className="form-group" style={{flex:1}}>
                   <label className="form-label">Notes</label>
@@ -653,7 +767,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                     options={availableTypes}
                     error={errors.type}
                     onChange={(v) => setData('type', v)}
-                    onOptionsChange={setAvailableTypes}
+                    onOptionsChange={(newTypes) => setAvailableTypes(ensureOtherAtEnd(newTypes))}
                   />
                 </div>
                 <div className="form-group">
@@ -665,7 +779,21 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Currency</label>
-                  <select className="form-input form-select" value={data.currency} onChange={e=>setData('currency',e.target.value)}><option value="TZS">TZS</option><option value="USD">USD</option></select>
+                  <select
+                    className="form-input form-select"
+                    value={data.currency}
+                    onChange={e => {
+                      const c = e.target.value;
+                      setData(d => ({
+                        ...d,
+                        currency: c,
+                        exchange_rate: c === 'USD' ? (d.exchange_rate || (liveFxRate ? String(liveFxRate) : '')) : '',
+                      }));
+                    }}
+                  >
+                    <option value="TZS">TZS</option>
+                    <option value="USD">USD</option>
+                  </select>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Rent Rate per m² ({data.currency})</label>
@@ -673,6 +801,52 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                   {errors.rate_per_sqm && <div className="form-error">{errors.rate_per_sqm}</div>}
                 </div>
               </div>
+              {data.currency === 'USD' && (
+                <div className="form-row">
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                      <label className="form-label" style={{ margin: 0 }}>Exchange Rate (USD → TZS) *</label>
+                      {liveFxRate ? (
+                        <button
+                          type="button"
+                          onClick={() => setData('exchange_rate', String(liveFxRate))}
+                          style={{
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            color: 'var(--accent)',
+                            fontSize: 11,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Use live rate ({formatExchangeRate(liveFxRate)})
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      className={`form-input${errors.exchange_rate ? ' input-error' : ''}`}
+                      type="number"
+                      step="0.0001"
+                      min="0.0001"
+                      value={data.exchange_rate}
+                      onChange={(e) => setData('exchange_rate', e.target.value)}
+                      placeholder={liveFxRate ? String(liveFxRate) : 'e.g. 2650.0000'}
+                      required
+                    />
+                    {errors.exchange_rate && <div className="form-error">{errors.exchange_rate}</div>}
+                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
+                      {Number(data.exchange_rate) > 0 ? (
+                        <span>
+                          Recorded unit rate: <strong>1 USD = {formatExchangeRate(Number(data.exchange_rate))} TZS</strong>. Leases and invoices for this unit will inherit this rate.
+                        </span>
+                      ) : (
+                        <span>Enter manual rate (up to 4 decimals). Leases created for this unit will automatically inherit this rate.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Service Charge Rate per m² ({data.currency})</label>
@@ -691,6 +865,28 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Computed Security Deposit</label><input className="form-input" type="text" value={computedDeposit > 0 ? money(computedDeposit.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>
               </div>
+              {data.currency === 'USD' && (Number(data.exchange_rate) > 0 || liveFxRate) && computedMonthlyRent > 0 && (
+                <div style={{ background: 'var(--bg-elevated)', borderRadius: 8, padding: '10px 14px', fontSize: 12.5, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginBottom: 4 }}>
+                    <span>Exchange Rate</span>
+                    <span style={{ fontWeight: 600 }}>1 USD = {formatExchangeRate(Number(data.exchange_rate) || liveFxRate)} TZS</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginBottom: 3 }}>
+                    <span>Monthly Rent in TZS</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>TZS {Math.round(computedMonthlyRent * (Number(data.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
+                  </div>
+                  {computedServiceCharge > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginBottom: 3 }}>
+                      <span>Service Charge in TZS</span>
+                      <strong>TZS {Math.round(computedServiceCharge * (Number(data.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                    <span>Security Deposit in TZS</span>
+                    <strong style={{ color: 'var(--accent)' }}>TZS {Math.round(computedDeposit * (Number(data.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>
