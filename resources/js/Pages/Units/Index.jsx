@@ -16,12 +16,13 @@ const APPROVAL_BADGE = {
 const fmt = (n) => Number(n).toLocaleString();
 const SQM_PER_SQFT = 0.09290304;
 
-// Unit number must be G.01–G.99, M.01–M.99, F1.01–F1.99 … F99.99, B1.01–B1.99 … B99.99
-const UNIT_NUMBER_RE = /^(G|M|F\d{1,2}|B\d{1,2})\.(?:0[1-9]|[1-9]\d)$/i;
+// Unit number must be P.01–P.99, G.01–G.99, M.01–M.99, F1.01–F1.99 … F99.99, B1.01–B1.99 … B99.99
+const UNIT_NUMBER_RE = /^(P|G|M|F\d{1,2}|B\d{1,2})\.(?:0[1-9]|[1-9]\d)$/i;
 
 /** Returns the floor ID that matches a given unit-number prefix, or null. */
 const guessFloorId = (unitNum) => {
   const u = String(unitNum).toUpperCase();
+  if (/^P/.test(u)) return 'P';
   if (/^G/.test(u)) return 'G';
   if (/^M/.test(u)) return 'M';
   const f = u.match(/^F(\d{1,2})/);
@@ -175,7 +176,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
 
   /** Handler for create-form unit number — enforces allowed chars and auto-selects floor */
   const onUnitNumberChange = (e) => {
-    const val = e.target.value.toUpperCase().replace(/[^GMFB0-9.]/g, '');
+    const val = e.target.value.toUpperCase().replace(/[^PGMFB0-9.]/g, '');
     const guessed = guessFloorId(val);
     if (guessed && availableFloors.some(f => f.id === guessed)) {
       setData({ ...data, unit_number: val, floor: guessed });
@@ -186,7 +187,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
 
   /** Handler for edit-form unit number — enforces allowed chars and auto-selects floor */
   const onEditUnitNumberChange = (e) => {
-    const val = e.target.value.toUpperCase().replace(/[^GMFB0-9.]/g, '');
+    const val = e.target.value.toUpperCase().replace(/[^PGMFB0-9.]/g, '');
     const guessed = guessFloorId(val);
     if (guessed && availableFloors.some(f => f.id === guessed)) {
       setEditData({ ...editData, unit_number: val, floor: guessed });
@@ -496,21 +497,18 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
             <div className="modal-body">
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">
-                    Unit Number
-                    <span style={{fontWeight:400,color:'var(--text-muted)',marginLeft:6,fontSize:11}}>G.01–G.99 · M.01 · F1.01 · B1.01</span>
-                  </label>
+                  <label className="form-label">Unit Number</label>
                   <input
                     className={`form-input${editErrors.unit_number || !editUnitNumberValid ? ' input-error' : ''}`}
                     value={editData.unit_number}
                     onChange={onEditUnitNumberChange}
-                    placeholder="e.g. G.01 or F1.05"
+                    placeholder="e.g. P.01 or F1.05"
                     maxLength={6}
                     required
                   />
                   {editErrors.unit_number && <div className="form-error">{editErrors.unit_number}</div>}
                   {!editErrors.unit_number && !editUnitNumberValid && (
-                    <div className="form-error">Invalid format — use G.01, M.03, F1.07, B1.02, etc.</div>
+                    <div className="form-error">Invalid format — use P.01, G.01, M.03, F1.07, B1.02, etc.</div>
                   )}
                 </div>
                 <div className="form-group">
@@ -736,21 +734,18 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
               )}
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">
-                    Unit Number
-                    <span style={{fontWeight:400,color:'var(--text-muted)',marginLeft:6,fontSize:11}}>G.01–G.99 · M.01 · F1.01 · B1.01</span>
-                  </label>
+                  <label className="form-label">Unit Number</label>
                   <input
                     className={`form-input${errors.unit_number || !unitNumberValid ? ' input-error' : ''}`}
                     value={data.unit_number}
                     onChange={onUnitNumberChange}
-                    placeholder="e.g. G.01 or F1.05"
+                    placeholder="e.g. P.01 or F1.05"
                     maxLength={6}
                     required
                   />
                   {errors.unit_number && <div className="form-error">{errors.unit_number}</div>}
                   {!errors.unit_number && !unitNumberValid && (
-                    <div className="form-error">Invalid format — use G.01, M.03, F1.07, B1.02, etc.</div>
+                    <div className="form-error">Invalid format — use P.01, G.01, M.03, F1.07, B1.02, etc.</div>
                   )}
                 </div>
                 <div className="form-group">

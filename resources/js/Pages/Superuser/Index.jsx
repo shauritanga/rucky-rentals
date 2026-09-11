@@ -29,6 +29,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [editingProperty, setEditingProperty] = useState(null);
   const [upperFloorsRaw, setUpperFloorsRaw] = useState('7');
   const [showManagerModal, setShowManagerModal] = useState(false);
   const [creatingManager, setCreatingManager] = useState(false);
@@ -53,7 +54,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     twoFA: 'yes',
   });
 
-  const { data, setData, post, processing, reset, errors } = useForm({
+  const { data, setData, post, patch, processing, reset, errors } = useForm({
     name: '',
     code: '',
     address: '',
@@ -66,6 +67,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     status: 'active',
     // floor config
     basements: 0,
+    has_parking_floor: false,
     has_ground_floor: false,
     has_mezzanine: false,
     upper_floors: 7,
@@ -82,25 +84,57 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     return { total, units, occupied, revenue };
   }, [effectiveProperties]);
 
+  const resetPropertyForm = () => {
+    reset();
+    setData({
+      name: '', code: '', address: '', city: 'Dar es Salaam', country: 'Tanzania',
+      bank_name: '', bank_account: '', bank_account_name: '', swift_code: '', status: 'active',
+      basements: 0, has_parking_floor: false, has_ground_floor: false, has_mezzanine: false, upper_floors: 7,
+    });
+    setUpperFloorsRaw('7');
+  };
+
+  const openCreatePropertyModal = () => {
+    setEditingProperty(null);
+    resetPropertyForm();
+    setShowModal(true);
+  };
+
+  const openEditPropertyModal = (property) => {
+    const floorConfig = property.floor_config || {};
+    setEditingProperty(property);
+    setData({
+      name: property.name || '', code: property.code || '', address: property.address || '',
+      city: property.city || '', country: property.country || 'Tanzania',
+      bank_name: property.bank_name || '', bank_account: property.bank_account || '',
+      bank_account_name: property.bank_account_name || '', swift_code: property.swift_code || '',
+      status: property.status || 'active',
+      basements: Number(floorConfig.basements || 0),
+      has_parking_floor: Boolean(floorConfig.has_parking_floor),
+      has_ground_floor: Boolean(floorConfig.has_ground_floor),
+      has_mezzanine: Boolean(floorConfig.has_mezzanine),
+      upper_floors: Number(floorConfig.upper_floors || property.total_floors || 7),
+    });
+    setUpperFloorsRaw(String(floorConfig.upper_floors || property.total_floors || 7));
+    setShowModal(true);
+  };
+
+  const closePropertyModal = () => {
+    if (processing) return;
+    setShowModal(false);
+    setEditingProperty(null);
+  };
+
   const submit = (e) => {
     e.preventDefault();
-    post('/superuser/properties', {
+    const submitRequest = editingProperty ? patch : post;
+    const url = editingProperty ? `/superuser/properties/${editingProperty.id}` : '/superuser/properties';
+    submitRequest(url, {
       preserveScroll: true,
       onSuccess: () => {
-        reset();
-        setData('city', 'Dar es Salaam');
-        setData('country', 'Tanzania');
-        setData('bank_name', '');
-        setData('bank_account', '');
-        setData('bank_account_name', '');
-        setData('swift_code', '');
-        setData('status', 'active');
-        setData('basements', 0);
-        setData('has_ground_floor', false);
-        setData('has_mezzanine', false);
-        setData('upper_floors', 7);
-        setUpperFloorsRaw('7');
+        resetPropertyForm();
         setShowModal(false);
+        setEditingProperty(null);
       },
     });
   };
@@ -114,7 +148,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
 
   const onAction = () => {
     if (activeView === 'overview' || activeView === 'properties') {
-      setShowModal(true);
+      openCreatePropertyModal();
       return;
     }
     if (activeView === 'managers') {
@@ -175,7 +209,8 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           setSearch={setSearch}
           status={status}
           setStatus={setStatus}
-          onOpenPropertyModal={() => setShowModal(true)}
+          onOpenPropertyModal={openCreatePropertyModal}
+          onEditProperty={openEditPropertyModal}
           onAssignManager={assignManager}
         />
       )}
@@ -186,9 +221,9 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage settings={settings} />}
 
-      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closePropertyModal()}>
         <div className="modal" style={{ width: 'min(640px, calc(100vw - 24px))', height: 'min(760px, 88dvh)', maxHeight: 'min(92vh, calc(100dvh - 20px))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div className="modal-header"><div className="modal-title">Add New Property</div><button className="modal-close" onClick={() => setShowModal(false)}>✕</button></div>
+          <div className="modal-header"><div className="modal-title">{editingProperty ? `Edit ${editingProperty.name}` : 'Add New Property'}</div><button type="button" className="modal-close" onClick={closePropertyModal} disabled={processing}>✕</button></div>
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
               <div className="form-row"><div className="form-group"><label className="form-label">Property Name *</label><input className="form-input" value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="e.g. Ruky Heights" required />{errors.name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.name}</div>}</div></div>
@@ -203,12 +238,16 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
                   Has Ground Floor
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+                  <input type="checkbox" checked={data.has_parking_floor} onChange={(e) => setData('has_parking_floor', e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                  Has Parking Floor
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
                   <input type="checkbox" checked={data.has_mezzanine} onChange={(e) => setData('has_mezzanine', e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
                   Has Mezzanine
                 </label>
               </div>
               {(() => {
-                const preview = generateFloors({ basements: data.basements, has_ground_floor: data.has_ground_floor, has_mezzanine: data.has_mezzanine, upper_floors: data.upper_floors });
+                const preview = generateFloors({ basements: data.basements, has_parking_floor: data.has_parking_floor, has_ground_floor: data.has_ground_floor, has_mezzanine: data.has_mezzanine, upper_floors: data.upper_floors });
                 return (
                   <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2, padding: '6px 10px', background: 'var(--surface-alt, rgba(0,0,0,0.03))', borderRadius: 6, lineHeight: 1.7 }}>
                     <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Floor preview: </span>
@@ -238,15 +277,15 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
               </div></div>
             </div>
             <div className="modal-footer" style={{ flexShrink: 0 }}>
-              <button type="button" className="btn-ghost" onClick={() => setShowModal(false)} disabled={processing}>Cancel</button>
+              <button type="button" className="btn-ghost" onClick={closePropertyModal} disabled={processing}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>
                 {processing ? (
                   <>
                     <span className="btn-spinner" aria-hidden="true"></span>
-                    <span>Adding Property...</span>
+                    <span>{editingProperty ? 'Saving Property...' : 'Adding Property...'}</span>
                   </>
                 ) : (
-                  <span>Add Property</span>
+                  <span>{editingProperty ? 'Save Changes' : 'Add Property'}</span>
                 )}
               </button>
             </div>

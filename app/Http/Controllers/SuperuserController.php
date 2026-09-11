@@ -194,6 +194,7 @@ class SuperuserController extends Controller
             'manager_user_id'  => 'nullable|exists:users,id',
             // floor config fields
             'basements'        => 'nullable|integer|min:0|max:10',
+            'has_parking_floor'=> 'nullable|boolean',
             'has_ground_floor' => 'nullable|boolean',
             'has_mezzanine'    => 'nullable|boolean',
             'upper_floors'     => 'required|integer|min:1|max:100',
@@ -202,11 +203,12 @@ class SuperuserController extends Controller
         // Assemble floor_config and keep total_floors in sync for backward compat
         $floorConfig = [
             'basements'        => (int) ($data['basements'] ?? 0),
+            'has_parking_floor'=> (bool) ($data['has_parking_floor'] ?? false),
             'has_ground_floor' => (bool) ($data['has_ground_floor'] ?? false),
             'has_mezzanine'    => (bool) ($data['has_mezzanine'] ?? false),
             'upper_floors'     => (int) $data['upper_floors'],
         ];
-        unset($data['basements'], $data['has_ground_floor'], $data['has_mezzanine'], $data['upper_floors']);
+        unset($data['basements'], $data['has_parking_floor'], $data['has_ground_floor'], $data['has_mezzanine'], $data['upper_floors']);
         $data['floor_config'] = $floorConfig;
         $data['total_floors'] = $floorConfig['upper_floors'];
 
@@ -253,6 +255,51 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Property created successfully.');
+    }
+
+    public function updateProperty(Request $request, Property $property)
+    {
+        $data = $request->validate([
+            'name'              => 'required|string|max:120',
+            'address'           => 'nullable|string|max:255',
+            'city'              => 'nullable|string|max:120',
+            'country'           => 'nullable|string|max:120',
+            'bank_name'         => 'required|string|max:120',
+            'bank_account'      => 'required|string|max:60',
+            'bank_account_name' => 'required|string|max:120',
+            'swift_code'        => 'required|string|max:20',
+            'status'            => 'required|in:active,inactive',
+            'basements'         => 'nullable|integer|min:0|max:10',
+            'has_parking_floor' => 'nullable|boolean',
+            'has_ground_floor'  => 'nullable|boolean',
+            'has_mezzanine'     => 'nullable|boolean',
+            'upper_floors'      => 'required|integer|min:1|max:100',
+        ]);
+
+        $floorConfig = [
+            'basements'         => (int) ($data['basements'] ?? 0),
+            'has_parking_floor' => (bool) ($data['has_parking_floor'] ?? false),
+            'has_ground_floor'  => (bool) ($data['has_ground_floor'] ?? false),
+            'has_mezzanine'     => (bool) ($data['has_mezzanine'] ?? false),
+            'upper_floors'      => (int) $data['upper_floors'],
+        ];
+        unset($data['basements'], $data['has_parking_floor'], $data['has_ground_floor'], $data['has_mezzanine'], $data['upper_floors']);
+        $data['floor_config'] = $floorConfig;
+        $data['total_floors'] = $floorConfig['upper_floors'];
+        $data['country'] = $data['country'] ?: 'Tanzania';
+
+        $property->update($data);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Property updated',
+            resource: sprintf('%s (%s)', $property->name, $property->code),
+            propertyName: $property->name,
+            category: 'settings',
+            propertyId: (int) $property->id,
+        );
+
+        return back()->with('success', 'Property updated successfully. Unit names were not changed.');
     }
 
     public function assignManager(Request $request, Property $property)

@@ -20,6 +20,7 @@ class FloorConfig
 
         return [
             'basements'        => max(0, (int) ($raw['basements'] ?? 0)),
+            'has_parking_floor'=> (bool) ($raw['has_parking_floor'] ?? false),
             'has_ground_floor' => (bool) ($raw['has_ground_floor'] ?? false),
             'has_mezzanine'    => (bool) ($raw['has_mezzanine'] ?? false),
             'upper_floors'     => max(1, (int) ($raw['upper_floors'] ?? 7)),
@@ -49,6 +50,10 @@ class FloorConfig
                 'label'      => "Basement {$n}",
                 'sort_order' => $n * -100,
             ];
+        }
+
+        if ($config['has_parking_floor']) {
+            $floors[] = ['id' => 'P', 'label' => 'Parking Floor', 'sort_order' => -50];
         }
 
         if ($config['has_ground_floor']) {
@@ -81,6 +86,9 @@ class FloorConfig
         }
         if ($code === 'G') {
             return 0;
+        }
+        if ($code === 'P') {
+            return -50;
         }
         if ($code === 'M') {
             return 50;

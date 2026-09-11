@@ -815,6 +815,9 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .superuser-shell .prop-card.trial-prop::before{background:var(--amber)}
 .superuser-shell .prop-card.inactive-prop::before{background:var(--text-muted)}
 .superuser-shell .prop-card:hover{border-color:var(--accent);box-shadow:var(--shadow-card),0 0 0 1px var(--accent);transform:translateY(-1px)}
+.superuser-shell .prop-edit-button{position:absolute;top:14px;right:14px;width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);color:var(--text-secondary);cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.superuser-shell .prop-edit-button:hover{background:var(--bg-hover);color:var(--accent);border-color:var(--accent)}
+.superuser-shell .prop-edit-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .superuser-shell .prop-name{font-size:16px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
 .superuser-shell .prop-addr{font-size:12px;color:var(--text-muted);margin-bottom:14px}
 .superuser-shell .prop-kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}

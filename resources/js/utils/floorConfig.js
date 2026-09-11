@@ -3,6 +3,7 @@
  *
  * Floor code convention:
  *   B{n}  →  Basement n   (sort: n * -100)
+ *   P     →  Parking Floor (sort: -50)
  *   G     →  Ground Floor (sort: 0)
  *   M     →  Mezzanine    (sort: 50)
  *   {n}   →  Floor n      (sort: n * 100)
@@ -10,6 +11,7 @@
 
 export const DEFAULT_CONFIG = {
   basements: 0,
+  has_parking_floor: false,
   has_ground_floor: false,
   has_mezzanine: false,
   upper_floors: 7,
@@ -23,6 +25,7 @@ export function parseFloorConfig(raw) {
   const base = raw && typeof raw === 'object' ? raw : {};
   return {
     basements:        Math.max(0, parseInt(base.basements ?? 0, 10) || 0),
+    has_parking_floor:Boolean(base.has_parking_floor ?? false),
     has_ground_floor: Boolean(base.has_ground_floor ?? false),
     has_mezzanine:    Boolean(base.has_mezzanine ?? false),
     upper_floors:     Math.max(1, parseInt(base.upper_floors ?? 7, 10) || 1),
@@ -40,6 +43,10 @@ export function generateFloors(config) {
   // Basements deepest first (B2 before B1)
   for (let n = cfg.basements; n >= 1; n--) {
     floors.push({ id: `B${n}`, label: `Basement ${n}`, sortOrder: n * -100 });
+  }
+
+  if (cfg.has_parking_floor) {
+    floors.push({ id: 'P', label: 'Parking Floor', sortOrder: -50 });
   }
 
   if (cfg.has_ground_floor) {
@@ -64,6 +71,7 @@ export function generateFloors(config) {
 export function floorSortOrder(id) {
   if (!id) return Number.MAX_SAFE_INTEGER;
   if (id === 'G') return 0;
+  if (id === 'P') return -50;
   if (id === 'M') return 50;
   if (id.startsWith('B')) {
     const n = parseInt(id.slice(1), 10);
