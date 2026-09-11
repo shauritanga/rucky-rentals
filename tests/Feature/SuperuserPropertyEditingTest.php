@@ -26,11 +26,13 @@ class SuperuserPropertyEditingTest extends TestCase
             'address' => '1 Main Street',
             'city' => 'Dar es Salaam',
             'country' => 'Tanzania',
+            'phone' => '+255 700 000 000',
             'status' => 'active',
             'bank_name' => 'Test Bank',
             'bank_account' => '123456',
             'bank_account_name' => 'Rucky Heights',
             'swift_code' => 'TESTTZTZ',
+            'unit_types' => ['Retail'],
             'floor_config' => ['basements' => 0, 'has_ground_floor' => true, 'has_mezzanine' => false, 'upper_floors' => 2],
         ]);
         $unit = Unit::create([
@@ -52,6 +54,7 @@ class SuperuserPropertyEditingTest extends TestCase
                 'address' => '1 Main Street',
                 'city' => 'Dar es Salaam',
                 'country' => 'Tanzania',
+                'phone' => '+255 700 111 222',
                 'bank_name' => 'Test Bank',
                 'bank_account' => '123456',
                 'bank_account_name' => 'Rucky Heights',
@@ -68,6 +71,8 @@ class SuperuserPropertyEditingTest extends TestCase
         $property->refresh();
         $this->assertTrue($property->floor_config['has_parking_floor']);
         $this->assertSame(['P', 'G', '1', '2'], array_column($property->floorList(), 'id'));
+        $this->assertSame('+255 700 111 222', $property->phone);
+        $this->assertSame(['Retail'], $property->unit_types);
         $this->assertSame('A-101', $unit->fresh()->unit_number);
     }
 }
