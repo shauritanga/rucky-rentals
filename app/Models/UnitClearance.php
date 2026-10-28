@@ -27,6 +27,9 @@ class UnitClearance extends Model
         'shortfall_amount',
         'manager_notes',
         'cancelled_reason',
+        'termination_reason',
+        'submitted_for_review_at',
+        'submitted_by',
         'finalized_by',
         'finalized_at',
         'created_by',
@@ -36,6 +39,7 @@ class UnitClearance extends Model
         'inspection_checklist' => 'array',
         'inspected_at'         => 'datetime',
         'finalized_at'         => 'datetime',
+        'submitted_for_review_at' => 'datetime',
     ];
 
     public function property()

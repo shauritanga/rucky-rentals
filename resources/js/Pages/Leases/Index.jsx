@@ -879,8 +879,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   )}
                   <button className="btn-secondary" onClick={renewFromDrawer}>Renew</button>
                   <button className="btn-secondary" onClick={()=>window.open(`/leases/${selected.id}/pdf`, '_blank')}>Download Agreement</button>
-                  {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) > 0 && new Date(`${selected.end_date}T00:00:00`) <= new Date() && (user?.role === 'superuser' || user?.role === 'manager') && (
-                    <button className="btn-secondary" onClick={() => router.get('/clearance', { lease_id: selected.id })}>Start Clearance</button>
+                  {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) > 0 && (user?.role === 'superuser' || user?.role === 'manager') && (
+                    <button className="btn-secondary" onClick={() => router.get('/clearance', { lease_id: selected.id })}>{new Date(`${selected.end_date}T00:00:00`) > new Date() ? 'Terminate Early (Clearance)' : 'Start Clearance'}</button>
                   )}
                   {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) <= 0 && user?.role === 'superuser' && (
                     <button className="btn-secondary" onClick={() => setShowTerminateConfirm(true)}>Terminate</button>

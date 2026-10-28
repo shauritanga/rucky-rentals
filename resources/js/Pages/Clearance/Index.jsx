@@ -25,14 +25,18 @@ function formatMoney(amount, currency = CURRENCY_FALLBACK) {
 const STATUS_META = {
   scheduled:   { label: 'Scheduled',   bg: 'var(--bg-elevated)', color: 'var(--text-secondary)' },
   in_progress: { label: 'In Progress', bg: 'var(--accent-dim)',  color: 'var(--accent)'          },
+  awaiting_review: { label: 'Awaiting Review', bg: 'var(--amber-dim)', color: 'var(--amber)'    },
   completed:   { label: 'Completed',   bg: 'var(--green-dim)',   color: 'var(--green)'           },
   cancelled:   { label: 'Cancelled',   bg: 'var(--red-dim)',     color: 'var(--red)'              },
 };
+
+const clearanceStatus = (c) => (c.status === 'in_progress' && c.submitted_for_review_at ? 'awaiting_review' : c.status);
 
 const FILTERS = [
   ['all', 'All'],
   ['scheduled', 'Scheduled'],
   ['in_progress', 'In Progress'],
+  ['awaiting_review', 'Awaiting Review'],
   ['completed', 'Completed'],
   ['cancelled', 'Cancelled'],
 ];
@@ -68,7 +72,7 @@ const WIZARD_STEPS = [
 
 const EMPTY_ITEM_DRAFT = { category: DAMAGE_CATEGORIES[0], room: '', description: '', cost: '', responsible_party: 'tenant' };
 
-export default function ClearanceIndex({ clearances = [], eligibleLeases = [], canManage = false }) {
+export default function ClearanceIndex({ clearances = [], eligibleLeases = [], canManage = false, canFinalize = false }) {
   const { props } = usePage();
   const user = props?.auth?.user;
 
@@ -80,6 +84,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [wizardLeaseId, setWizardLeaseId] = useState('');
+  const [wizardReason, setWizardReason] = useState('');
   const [wizardScheduledDate, setWizardScheduledDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [wizardClearanceId, setWizardClearanceId] = useState(null);
   const [awaitingLeaseId, setAwaitingLeaseId] = useState(null);
@@ -94,6 +99,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
 
   const [confirmChecked, setConfirmChecked] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
@@ -145,15 +151,15 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   }, [wizardClearance?.id]);
 
   const counts = useMemo(() => {
-    const next = { all: clearances.length, scheduled: 0, in_progress: 0, completed: 0, cancelled: 0 };
-    clearances.forEach((c) => { if (next[c.status] !== undefined) next[c.status] += 1; });
+    const next = { all: clearances.length, scheduled: 0, in_progress: 0, awaiting_review: 0, completed: 0, cancelled: 0 };
+    clearances.forEach((c) => { const k = clearanceStatus(c); if (next[k] !== undefined) next[k] += 1; });
     return next;
   }, [clearances]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return clearances.filter((c) => {
-      const matchFilter = filter === 'all' || c.status === filter;
+      const matchFilter = filter === 'all' || clearanceStatus(c) === filter;
       const haystack = [c.clearance_number, c.tenant?.name, c.unit?.unit_number, c.property?.name].filter(Boolean).join(' ').toLowerCase();
       const matchSearch = !q || haystack.includes(q);
       return matchFilter && matchSearch;
@@ -188,6 +194,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const openNewWizard = () => {
     setWizardStep(1);
     setWizardLeaseId('');
+    setWizardReason('');
     setWizardClearanceId(null);
     setShowWizard(true);
   };
@@ -195,7 +202,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const openContinueWizard = (clearance) => {
     setWizardClearanceId(clearance.id);
     setWizardLeaseId(String(clearance.lease_id));
-    setWizardStep(clearance.status === 'scheduled' ? 2 : 3);
+    setWizardStep(clearance.status === 'scheduled' ? 2 : (canFinalize ? 4 : 3));
     setSelected(null);
     setShowWizard(true);
   };
@@ -203,7 +210,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const startClearance = () => {
     if (!wizardLeaseId) return;
     setCreating(true);
-    router.post('/clearance', { lease_id: wizardLeaseId, scheduled_date: wizardScheduledDate }, {
+    router.post('/clearance', { lease_id: wizardLeaseId, scheduled_date: wizardScheduledDate, termination_reason: wizardReason || null }, {
       onSuccess: () => setAwaitingLeaseId(Number(wizardLeaseId)),
       onError: () => setCreating(false),
     });
@@ -260,6 +267,15 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
     if (!wizardClearance) return;
     router.delete(`/clearance/${wizardClearance.id}/items/${itemId}`, {
       onSuccess: () => setSubmitMessage('Item removed.'),
+    });
+  };
+
+  const submitForReview = () => {
+    if (!wizardClearance) return;
+    setSubmittingReview(true);
+    router.post(`/clearance/${wizardClearance.id}/submit-review`, {}, {
+      onSuccess: () => setSubmitMessage('Clearance submitted. The superuser has been notified to review it.'),
+      onFinish: () => setSubmittingReview(false),
     });
   };
 
@@ -344,7 +360,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
 
       {canManage && !eligibleLeases.length && (
         <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 9, padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
-          No leases are currently eligible for clearance — a lease must have reached its end date, carry a deposit, and have no clearance already open.
+          No leases are currently eligible for clearance — a lease must be active, carry a deposit, and have no clearance already open.
         </div>
       )}
 
@@ -366,7 +382,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
           <tbody>
             {filtered.length === 0 && <tr><td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>No clearances match your filters</td></tr>}
             {filtered.map((c) => {
-              const meta = STATUS_META[c.status] || STATUS_META.scheduled;
+              const meta = STATUS_META[clearanceStatus(c)] || STATUS_META.scheduled;
               return (
                 <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => setSelected(c)}>
                   <td style={{ fontWeight: 700, color: 'var(--accent)', fontSize: 12.5 }}>{c.clearance_number}</td>
@@ -389,7 +405,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
       <div className={`drawer-overlay ${selected ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setSelected(null)}>
         <div className="drawer">
           {selected && (() => {
-            const meta = STATUS_META[selected.status] || STATUS_META.scheduled;
+            const meta = STATUS_META[clearanceStatus(selected)] || STATUS_META.scheduled;
             const docs = selected.documents || [];
             return (
               <>
@@ -468,7 +484,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
 
                 <div className="drawer-footer">
                   {['scheduled', 'in_progress'].includes(selected.status) && canManage && (
-                    <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => openContinueWizard(selected)}>Continue Inspection</button>
+                    <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => openContinueWizard(selected)}>{canFinalize && selected.status === 'in_progress' ? 'Review & Terminate' : 'Continue Inspection'}</button>
                   )}
                   {selected.status === 'completed' && (
                     <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => window.open(`/clearance/${selected.id}/pdf`, '_blank')}>Download Certificate</button>
@@ -531,6 +547,10 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                     <div className="form-group">
                       <label className="form-label">Scheduled Inspection Date</label>
                       <input className="form-input" type="date" value={wizardScheduledDate} onChange={(e) => setWizardScheduledDate(e.target.value)} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Reason for termination</label>
+                      <input className="form-input" type="text" maxLength={500} value={wizardReason} onChange={(e) => setWizardReason(e.target.value)} placeholder="Optional, e.g. non-payment or breach of lease terms (leave blank for normal lease end)" />
                     </div>
                     {wizardLeaseId && (() => {
                       const lease = eligibleLeases.find((l) => String(l.id) === String(wizardLeaseId));
@@ -707,6 +727,28 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                       </div>
                     )}
 
+                    {!canFinalize && (
+                      <div style={{ background: 'var(--bg-elevated)', borderRadius: 9, padding: '12px 14px', fontSize: 13, color: 'var(--text-secondary)' }}>
+                        {wizardClearance.submitted_for_review_at ? (
+                          <>Submitted for review. The <strong>superuser</strong> has been notified and will terminate the lease once satisfied that the process was followed.</>
+                        ) : (
+                          <>Once the inspection and deductions are complete, submit this clearance so the <strong>superuser</strong> can review it and terminate the lease.</>
+                        )}
+                        {!wizardClearance.submitted_for_review_at && (
+                          <button
+                            className="btn-primary"
+                            style={{ width: '100%', justifyContent: 'center', marginTop: 12 }}
+                            disabled={submittingReview || wizardClearance.status !== 'in_progress'}
+                            onClick={submitForReview}
+                          >
+                            {submittingReview ? 'Submitting…' : 'Submit for Superuser Review'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {canFinalize && (
+                    <>
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13, background: 'var(--bg-elevated)', borderRadius: 9, padding: '12px 13px', cursor: 'pointer' }}>
                       <input type="checkbox" checked={confirmChecked} onChange={(e) => setConfirmChecked(e.target.checked)} style={{ marginTop: 2 }} />
                       <span>I confirm the inspection is complete and the figures above are correct. Finalizing will <strong>terminate the lease</strong> and post the deposit settlement — this cannot be undone.</span>
@@ -720,6 +762,8 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                     >
                       {finalizing ? 'Finalizing…' : 'Finalize & Terminate Lease'}
                     </button>
+                    </>
+                    )}
                   </>
                 )}
               </div>

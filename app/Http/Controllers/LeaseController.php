@@ -354,6 +354,7 @@ class LeaseController extends Controller
                 app(\App\Services\AccountingService::class)->postDepositRefund($lease);
 
                 $lease->update(['status' => 'terminated', 'approval_log' => json_encode($log)]);
+                app(\App\Services\LeaseBillingCloser::class)->closeFutureBilling($lease);
 
                 if ($lease->unit_id) {
                     $unit = Unit::find($lease->unit_id);

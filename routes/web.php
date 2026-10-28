@@ -57,6 +57,7 @@ Route::middleware('auth')->group(function () {
         Route::post('clearance/{clearance}/items', [ClearanceController::class, 'storeItem'])->name('clearance.items.store');
         Route::patch('clearance/{clearance}/items/{item}', [ClearanceController::class, 'updateItem'])->name('clearance.items.update');
         Route::delete('clearance/{clearance}/items/{item}', [ClearanceController::class, 'destroyItem'])->name('clearance.items.destroy');
+        Route::post('clearance/{clearance}/submit-review', [ClearanceController::class, 'submitForReview'])->name('clearance.submit-review');
         Route::post('clearance/{clearance}/finalize', [ClearanceController::class, 'finalize'])->name('clearance.finalize');
         Route::get('clearance/{clearance}/pdf', [ClearanceController::class, 'downloadCertificate'])->name('clearance.pdf');
         Route::resource('scheduled-maintenance', ScheduledMaintenanceController::class)->only(['store', 'update', 'destroy']);

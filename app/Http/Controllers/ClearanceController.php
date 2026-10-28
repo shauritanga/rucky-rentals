@@ -8,12 +8,15 @@ use App\Models\Property;
 use App\Models\Unit;
 use App\Models\UnitClearance;
 use App\Models\UnitClearanceItem;
+use App\Models\User;
+use App\Notifications\ClearanceReviewNotification;
 use App\Services\AccountingService;
 use App\Support\AccountingAutoPoster;
 use App\Traits\LogsAudit;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 
 class ClearanceController extends Controller
@@ -34,7 +37,6 @@ class ClearanceController extends Controller
         $eligibleLeasesQuery = Lease::with(['tenant', 'unit', 'property'])
             ->whereIn('status', ['active', 'expiring', 'overdue'])
             ->where('deposit', '>', 0)
-            ->where('end_date', '<=', now()->toDateString())
             ->whereDoesntHave('clearances', fn ($q) => $q->whereIn('status', ['scheduled', 'in_progress']))
             ->orderBy('lease_number');
         $this->scopeByUserProperty($eligibleLeasesQuery, $request);
@@ -44,6 +46,7 @@ class ClearanceController extends Controller
             'clearances'     => $clearances,
             'eligibleLeases' => $eligibleLeases,
             'canManage'      => in_array($user?->role, self::MANAGING_ROLES, true),
+            'canFinalize'    => $user?->role === 'superuser',
         ]);
     }
 
@@ -55,6 +58,7 @@ class ClearanceController extends Controller
         $data = $request->validate([
             'lease_id'       => ['required', 'exists:leases,id'],
             'scheduled_date' => ['nullable', 'date'],
+            'termination_reason' => ['nullable', 'string', 'max:500'],
         ]);
 
         $lease = Lease::with(['unit', 'tenant'])->findOrFail($data['lease_id']);
@@ -65,11 +69,6 @@ class ClearanceController extends Controller
         }
 
         abort_if(!in_array($lease->status, ['active', 'expiring', 'overdue']), 422, 'Only an active lease can be cleared.');
-        abort_if(
-            \Carbon\Carbon::parse($lease->end_date)->startOfDay()->gt(\Carbon\Carbon::today()),
-            422,
-            'This lease has not reached its end date yet. Clearance can only start once the lease term has ended.'
-        );
         abort_if((float) $lease->deposit <= 0, 422, 'This lease has no deposit on file.');
         abort_if(
             $lease->clearances()->whereIn('status', ['scheduled', 'in_progress'])->exists(),
@@ -86,6 +85,7 @@ class ClearanceController extends Controller
             'tenant_id'            => $lease->tenant_id,
             'clearance_number'     => 'CLR-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT),
             'status'               => 'scheduled',
+            'termination_reason'   => $data['termination_reason'] ?? null,
             'scheduled_date'       => $data['scheduled_date'] ?? now()->toDateString(),
             'currency'             => $lease->currency ?: 'TZS',
             'deposit_amount'       => (float) $lease->deposit,
@@ -229,12 +229,49 @@ class ClearanceController extends Controller
         return back()->with('success', 'Item removed.');
     }
 
+    public function submitForReview(Request $request, UnitClearance $clearance)
+    {
+        $this->authorizeClearanceProperty($request, $clearance);
+        $user = $request->user();
+        abort_if(!in_array($user?->role, self::MANAGING_ROLES, true), 403, 'Only a manager or superuser can submit a clearance for review.');
+        abort_if($clearance->status !== 'in_progress', 422, 'Save the inspection before submitting the clearance for review.');
+        abort_if($clearance->submitted_for_review_at !== null, 422, 'This clearance has already been submitted for review.');
+
+        $clearance->update([
+            'submitted_for_review_at' => now(),
+            'submitted_by'            => $user?->name,
+        ]);
+
+        $clearance->loadMissing(['tenant', 'unit']);
+        $propertyName = Property::where('id', $clearance->property_id)->value('name');
+
+        try {
+            Notification::send(
+                User::query()->where('role', 'superuser')->get(),
+                new ClearanceReviewNotification($clearance, $user?->name ?? 'System', $propertyName)
+            );
+        } catch (\Throwable $e) {
+            report($e); // a mail failure must not block the submission
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: 'Clearance submitted for review',
+            resource: $clearance->clearance_number,
+            propertyName: $propertyName,
+            category: 'clearance',
+            propertyId: (int) $clearance->property_id,
+        );
+
+        return back()->with('success', 'Clearance submitted. The superuser has been notified to review it.');
+    }
+
     public function finalize(Request $request, UnitClearance $clearance, AccountingService $accountingService)
     {
         $this->authorizeClearanceProperty($request, $clearance);
 
         $user = $request->user();
-        abort_if(!in_array($user?->role, self::MANAGING_ROLES, true), 403, 'Only a manager or superuser can finalize a clearance.');
+        abort_if($user?->role !== 'superuser', 403, 'Only a superuser can finalize a clearance and terminate the lease.');
         abort_if($clearance->status === 'completed', 422, 'This clearance has already been finalized.');
         abort_if($clearance->status === 'cancelled', 422, 'This clearance was cancelled.');
         $request->validate(['confirm' => 'required|accepted']);
@@ -251,9 +288,11 @@ class ClearanceController extends Controller
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = [
                 'step' => 0, 'action' => 'terminated', 'by' => $user->name, 'date' => now()->toDateString(),
-                'text' => 'Lease terminated via clearance ' . $clearance->clearance_number,
+                'text' => 'Lease terminated via clearance ' . $clearance->clearance_number
+                    . ($clearance->termination_reason ? ' — ' . $clearance->termination_reason : ''),
             ];
             $lease->update(['status' => 'terminated', 'approval_log' => json_encode($log)]);
+            app(\App\Services\LeaseBillingCloser::class)->closeFutureBilling($lease);
 
             if ($lease->unit_id) {
                 $unit = Unit::find($lease->unit_id);

@@ -99,9 +99,13 @@ function NotificationBell({ onNavigate }) {
         setLocalUnread(0);
     };
 
-    const handleItemClick = () => {
+    const handleItemClick = (data) => {
         handleMarkAllRead();
         setOpen(false);
+        if (data?.type === 'clearance_review_request') {
+            router.visit('/clearance');
+            return;
+        }
         onNavigate?.('approvals');
     };
 
@@ -128,6 +132,13 @@ function NotificationBell({ onNavigate }) {
                 </svg>
             );
         }
+        if (data?.type === 'clearance_review_request') {
+            return (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--amber)' }}>
+                    <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                </svg>
+            );
+        }
         return (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0, color: 'var(--amber)' }}>
                 <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
@@ -139,6 +150,7 @@ function NotificationBell({ onNavigate }) {
         if (data?.type === 'lease_approval_request') return 'Lease Approval Request';
         if (data?.type === 'team_approval_request') return 'Team Approval Request';
         if (data?.type === 'unit_approval_request') return 'Unit Approval Request';
+        if (data?.type === 'clearance_review_request') return 'Clearance Awaiting Review';
         if (data?.stage === 'submitted') return 'Maintenance Request';
         if (data?.stage === 'pending_manager') return 'Maintenance Pending Review';
         return 'New Request';
@@ -148,6 +160,7 @@ function NotificationBell({ onNavigate }) {
         if (data?.type === 'lease_approval_request') return [data.tenant, data.property].filter(Boolean).join(' · ');
         if (data?.type === 'team_approval_request') return [data.name, data.property || data.role_label].filter(Boolean).join(' · ');
         if (data?.type === 'unit_approval_request') return [data.unit_number, data.property || data.unit_type].filter(Boolean).join(' · ');
+        if (data?.type === 'clearance_review_request') return [data.clearance_number, data.tenant, data.unit_number].filter(Boolean).join(' · ');
         if (data?.title) return [data.ticket_number, data.priority].filter(Boolean).join(' · ');
         return '';
     };
@@ -222,7 +235,7 @@ function NotificationBell({ onNavigate }) {
                                 <button
                                     key={n.id}
                                     type="button"
-                                    onClick={handleItemClick}
+                                    onClick={() => handleItemClick(n.data)}
                                     style={{
                                         display: 'flex', alignItems: 'flex-start', gap: 10,
                                         width: '100%', textAlign: 'left', padding: '11px 16px',
