@@ -404,7 +404,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
       }));
   }, [paymentRows]);
 
-  const eligibleInvoices = invoices.filter((i) => ['unpaid', 'overdue', 'partially_paid'].includes(i.status) && i.type !== 'proforma');
+  const eligibleInvoices = invoices.filter((i) =>  i.type == 'proforma' && ['proforma', 'unpaid', 'overdue', 'partially_paid'].includes(i.status));
   const selectedInvoice = eligibleInvoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
   const selectedInvoiceUnit = useMemo(() => resolveInvoiceUnit(selectedInvoice), [selectedInvoice, units]);
   const selectedInvoiceCurrency = useMemo(() => getInvoiceCurrency(selectedInvoice, selectedInvoiceUnit), [selectedInvoice, selectedInvoiceUnit]);
@@ -685,7 +685,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 </thead>
                 <tbody>
                   {filteredRows.map((row) => {
-                    const variance = row.amountPaid - row.invoiceAmount;
+                    const variance = row.variance;
                     const varianceColor = variance > 0 ? 'var(--green)' : variance < 0 ? 'var(--red)' : 'var(--text-muted)';
                     const varianceText = variance > 0 ? `+${formatAmount(variance, row.currency)}` : variance < 0 ? `(${formatAmount(Math.abs(variance), row.currency)})` : '—';
                     const statusInfo = PAY_STATUS[row.status] || PAY_STATUS.pending;
@@ -694,7 +694,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                     
                     let statusDisplay = statusInfo.label;
                     if (row.status === 'partially_paid') {
-                      const shortfall = Math.max(0, row.invoiceAmount - row.amountPaid);
+                      const shortfall = Math.max(0, -row.variance);
                       statusDisplay = `${statusInfo.label} — ${formatAmount(shortfall, row.currency, { compact: true })} short`;
                     }
 
@@ -1047,9 +1047,9 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Invoice *</label>
+                  <label className="form-label">Proforma *</label>
                   <select className="form-input form-select" value={selectedInvoiceId} onChange={(e) => onSelectInvoice(e.target.value)} required>
-                    <option value="">Select invoice...</option>
+                    <option value="">Select proforma...</option>
                     {eligibleInvoices.map((inv) => {
                       const invoiceCurrency = getInvoiceCurrency(inv);
                       const total = invoiceTotal(inv);

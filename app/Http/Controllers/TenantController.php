@@ -54,6 +54,7 @@ class TenantController extends Controller
             'city'                => 'nullable|string|max:120',
             'country'             => 'nullable|string|max:120',
             'notes'               => 'nullable|string',
+            'invoice_code'        => ['nullable', 'alpha_num', 'max:12', 'unique:tenants,invoice_code'],
         ]);
 
         if ($data['tenant_type'] === 'company') {
@@ -130,6 +131,7 @@ class TenantController extends Controller
             'city'                => 'nullable|string|max:120',
             'country'             => 'nullable|string|max:120',
             'notes'               => 'nullable|string',
+            'invoice_code'        => ['nullable', 'alpha_num', 'max:12', 'unique:tenants,invoice_code,' . $tenant->id],
         ]);
 
         if ($data['tenant_type'] === 'company') {

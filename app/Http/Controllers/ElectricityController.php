@@ -766,7 +766,7 @@ class ElectricityController extends Controller
 
         if (! $invoice) {
             $invoice = Invoice::create(array_merge($invoiceData, [
-                'invoice_number' => $this->invoiceNumberService->generateNumber('PF'),
+                'invoice_number' => $this->invoiceNumberService->generateForTenant($tenant, $tenant?->name, $reading->reading_date),
             ]));
         } else {
             if (!in_array($invoice->status, ['draft', 'proforma'])) {
@@ -809,7 +809,7 @@ class ElectricityController extends Controller
         $vatPct  = number_format((float) $submeterSettings['vat_percent'], 2, '.', '');
 
         $invoice = Invoice::create([
-            'invoice_number' => $this->invoiceNumberService->generateNumber('ELEC'),
+            'invoice_number' => $this->invoiceNumberService->generateForTenant($tenant, $tenant?->name, $sale->created_at),
             'type'           => 'invoice',
             'property_id'    => $sale->property_id,
             'lease_id'       => $lease->id,

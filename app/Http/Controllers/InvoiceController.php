@@ -12,7 +12,7 @@ use App\Models\Payment;
 use App\Models\Property;
 use App\Models\Tenant;
 use App\Models\Unit;
-use App\Models\ExchangeRate;
+use Illuminate\Validation\ValidationException;
 use App\Services\InvoiceNumberService;
 use App\Services\PaymentReceiptService;
 use App\Support\MockRentalData;
@@ -187,13 +187,13 @@ class InvoiceController extends Controller
         $createdInvoiceId = null;
 
         DB::transaction(function () use ($request, $data, $propertyId, $status, $approvalStatus, &$createdInvoiceId) {
-            $prefix = $data['type'] === 'proforma' ? 'PF' : 'INV';
+            $leaseTenant = !empty($data['lease_id']) ? Lease::with('tenant')->find($data['lease_id'])?->tenant : null;
 
             $invoice = Invoice::create([
                 ...$data,
                 'property_id'    => $propertyId,
                 'requested_by_user_id' => $request->user()?->id,
-                'invoice_number' => $this->invoiceNumberService->generateNumber($prefix),
+                'invoice_number' => $this->invoiceNumberService->generateForTenant($leaseTenant, $data['tenant_name'] ?? null, $data['issued_date'] ?? null),
                 'status'         => $status,
                 'approval_status' => $approvalStatus,
                 'approval_requested_at' => $approvalStatus === 'pending_approval' ? now() : null,
@@ -217,20 +217,13 @@ class InvoiceController extends Controller
 
             // Pre-populate exchange rate for audit trail and GL posting
             if ($currency !== 'TZS') {
-                $manualRate = !empty($data['exchange_rate']) && (float) $data['exchange_rate'] > 0
-                    ? round((float) $data['exchange_rate'], 4)
-                    : null;
-
-                $rate = $manualRate ?: ExchangeRate::getRate(
-                    propertyId: null,
-                    fromCurrency: $currency,
-                    toCurrency: 'TZS',
-                    date: $invoice->issued_date ?? now()
-                );
-
-                if ($rate) {
-                    $invoice->update(['exchange_rate' => round((float) $rate, 4)]);
+                // Rate is entered manually on the proforma/invoice; no unit, lease or live fallback.
+                if (empty($data['exchange_rate']) || (float) $data['exchange_rate'] <= 0) {
+                    throw ValidationException::withMessages([
+                        'exchange_rate' => 'Enter the current USD → TZS exchange rate for this invoice.',
+                    ]);
                 }
+                $invoice->update(['exchange_rate' => round((float) $data['exchange_rate'], 4)]);
             } else {
                 $invoice->update(['exchange_rate' => 1.0]);
             }
@@ -311,24 +304,10 @@ class InvoiceController extends Controller
             'status' => 'required|in:draft,proforma,unpaid,partially_paid,paid,overdue',
         ]);
 
-        $original = $invoice->getOriginal();
-
-        if ($invoice->type === 'proforma' && ($data['status'] ?? '') === 'paid') {
-            abort(422, 'Proforma invoices cannot be directly marked as paid. Convert to a tax invoice first.');
-        }
-
-        // Promote type proforma→invoice in the SAME update so the observer sees type='invoice'
-        // when postInvoice() is called (postInvoice skips type='proforma')
-        if (
-            ($original['status'] ?? '') === 'proforma' &&
-            ($data['status'] ?? '') !== 'proforma' &&
-            $invoice->type === 'proforma'
-        ) {
-            abort_if($invoice->approval_status !== 'approved', 422, 'Only approved proforma invoices can be converted to tax invoices.');
-            $data['type'] = 'invoice';
-            if (str_starts_with((string) $invoice->invoice_number, 'PF-')) {
-                $data['invoice_number'] = $this->invoiceNumberService->generateNumber('INV');
-            }
+        // A proforma becomes a tax invoice only automatically, once fully paid
+        // (PaymentController::reconcileInvoiceStatus). No manual conversion.
+        if ($invoice->type === 'proforma' && !in_array($data['status'] ?? '', ['draft', 'proforma'], true)) {
+            abort(422, 'A proforma converts to a tax invoice automatically once it is fully paid.');
         }
 
         $invoice->update($data);
@@ -508,7 +487,7 @@ class InvoiceController extends Controller
             'invoice', 'items', 'invoiceLabel',
         )))->setPaper('a4', 'portrait')->output();
 
-        $filename    = $invoice->invoice_number . '.pdf';
+        $filename    = str_replace('/', '-', $invoice->invoice_number) . '.pdf';
         $storagePath = 'documents/' . $filename;
 
         Storage::disk('public')->put($storagePath, $pdfContent);
@@ -641,13 +620,9 @@ class InvoiceController extends Controller
                 if (!empty($data['exchange_rate']) && (float) $data['exchange_rate'] > 0) {
                     $exchangeRate = round((float) $data['exchange_rate'], 4);
                 } elseif (!$exchangeRate) {
-                    $rate = ExchangeRate::getRate(
-                        propertyId: null,
-                        fromCurrency: $currency,
-                        toCurrency: 'TZS',
-                        date: $data['issued_date'] ?? $invoice->issued_date ?? now()
-                    );
-                    $exchangeRate = $rate ? round((float) $rate, 4) : null;
+                    throw ValidationException::withMessages([
+                        'exchange_rate' => 'Enter the current USD → TZS exchange rate for this invoice.',
+                    ]);
                 }
             } else {
                 $exchangeRate = 1.0;

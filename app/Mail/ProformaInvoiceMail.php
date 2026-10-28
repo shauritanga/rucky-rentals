@@ -38,7 +38,7 @@ class ProformaInvoiceMail extends Mailable
     {
         try {
             $pdfContent = $this->generatePdf();
-            $filename   = $this->invoice->invoice_number . '.pdf';
+            $filename   = str_replace('/', '-', $this->invoice->invoice_number) . '.pdf';
 
             return [
                 \Illuminate\Mail\Mailables\Attachment::fromData(

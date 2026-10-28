@@ -35,6 +35,7 @@ export default function TenantsIndex({ tenants }) {
     nok_name: '', nok_phone: '', nok_relation: '',
     company_name: '', registration_number: '', tin: '', vrn: '', contact_person: '',
     notes: '',
+    invoice_code: '',
   });
 
   const totalRent = (t) => (t.leases||[]).reduce((s,l)=>s+Number(l.monthly_rent),0);
@@ -109,6 +110,7 @@ export default function TenantsIndex({ tenants }) {
       company_name: tenant.company_name || '', registration_number: tenant.registration_number || '',
       tin: tenant.tin || '', vrn: tenant.vrn || '', contact_person: tenant.contact_person || '',
       notes: tenant.notes || '',
+      invoice_code: tenant.invoice_code || '',
     });
     setSubmitError('');
     setSelected(null);
@@ -543,6 +545,21 @@ export default function TenantsIndex({ tenants }) {
                   </div>
                 </>
               )}
+
+              {/* Invoice code */}
+              <div className="form-group">
+                <label className="form-label">Invoice Code</label>
+                <input
+                  className="form-input"
+                  value={data.invoice_code}
+                  onChange={e=>setData('invoice_code', e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())}
+                  maxLength={12}
+                  placeholder="Auto from initials, e.g. TIA"
+                />
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                  Used in invoice numbers: {(data.invoice_code || 'CODE')}/01/{new Date().getFullYear()}. Leave blank to generate from the name.
+                </div>
+              </div>
 
               {/* Notes */}
               <div className="form-group">

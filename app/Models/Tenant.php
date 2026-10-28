@@ -15,6 +15,7 @@ class Tenant extends Model
         'phone',
         'national_id',
         'initials',
+        'invoice_code',
         'color',
         'text_color',
         'nok_name',
@@ -38,7 +39,38 @@ class Tenant extends Model
             if ($tenant->tenant_type === 'individual' && ($tenant->isDirty('first_name') || $tenant->isDirty('last_name'))) {
                 $tenant->name = trim(($tenant->first_name ?? '') . ' ' . ($tenant->last_name ?? ''));
             }
+
+            if (empty($tenant->invoice_code)) {
+                $tenant->invoice_code = static::generateInvoiceCode(
+                    $tenant->company_name ?: (string) $tenant->name,
+                    $tenant->id
+                );
+            }
         });
+    }
+
+    /**
+     * Short, unique invoice code from a tenant name's initials
+     * (TANZANIA INSTITUTE OF ARBITRATORS => TIA). Duplicates get a numeric suffix.
+     */
+    public static function generateInvoiceCode(string $name, ?int $ignoreId = null): string
+    {
+        $skip = ['OF', 'AND', 'THE', 'FOR', '&'];
+        $words = preg_split('/[^A-Za-z0-9]+/', strtoupper($name), -1, PREG_SPLIT_NO_EMPTY);
+        $words = array_values(array_filter($words, fn ($w) => !in_array($w, $skip, true)));
+
+        $base = count($words) > 1
+            ? implode('', array_map(fn ($w) => $w[0], $words))
+            : substr($words[0] ?? 'TNT', 0, 4);
+        $base = substr($base, 0, 8) ?: 'TNT';
+
+        $code = $base;
+        $n = 2;
+        while (static::where('invoice_code', $code)->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))->exists()) {
+            $code = $base . $n++;
+        }
+
+        return $code;
     }
 
     public function leases()

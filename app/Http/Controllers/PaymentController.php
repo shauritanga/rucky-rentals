@@ -355,17 +355,25 @@ class PaymentController extends Controller
         $invoice = Invoice::with(['items', 'lease:id,vat_rate'])->find($invoiceId);
         if (!$invoice) return;
 
-        // Convert proforma to tax invoice on first payment.
-        // Step A: updateQuietly() changes type + number without firing the observer
+        $invoiceTotal = $this->invoiceGrossTotalInBase($invoice);
+        $paidTotal = (float) Payment::where('invoice_id', $invoice->id)
+            ->where('status', 'paid')
+            ->sum(DB::raw('COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))'));
+        $fullyPaid = $invoiceTotal > 0 && $paidTotal + 0.01 >= $invoiceTotal;
+
+        // A proforma stays a proforma until the full amount (WHT included) is paid.
+        // Step A: updateQuietly() changes type without firing the observer
         //         (avoids a premature postInvoice() while status is still 'proforma').
         // Step B: $invoice->save() fires InvoiceObserver::updated() which sees the
-        //         status transition from 'proforma' → paid/unpaid and calls postInvoice().
+        //         status transition from 'proforma' → paid and calls postInvoice().
         if ($invoice->type === 'proforma' || $invoice->status === 'proforma') {
+            if (!$fullyPaid) {
+                return;
+            }
+
             DB::transaction(function () use ($invoice) {
-                $invoice->updateQuietly([
-                    'invoice_number' => $this->invoiceNumberService->generateNumber('INV'),
-                    'type'           => 'invoice',
-                ]);
+                // Number is kept: the tax invoice is the same bill as the proforma.
+                $invoice->updateQuietly(['type' => 'invoice']);
             });
             $invoice->refresh();
         }
@@ -382,16 +390,12 @@ class PaymentController extends Controller
             $this->attachInvoiceToInstallment($invoice);
         }
 
-        $invoiceTotal = $this->invoiceGrossTotalInBase($invoice);
-        $paidTotal = (float) Payment::where('invoice_id', $invoice->id)
-            ->where('status', 'paid')
-            ->sum(DB::raw('COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))'));
-        $paidTotalSource = (float) Payment::where('invoice_id', $invoice->id)
+        $paidTotalSource =(float) Payment::where('invoice_id', $invoice->id)
             ->where('status', 'paid')
             ->sum('amount');
         $invoiceTotalSource = $this->invoiceGrossTotal($invoice);
 
-        if ($invoiceTotal > 0 && $paidTotal + 0.01 >= $invoiceTotal) {
+        if ($fullyPaid) {
             $invoice->status = 'paid';
         } elseif ($paidTotal > 0) {
             $invoice->status = 'partially_paid';
