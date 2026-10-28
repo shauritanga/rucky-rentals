@@ -385,7 +385,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       type: 'invoice',
       lease_id: '',
       currency: 'USD',
-      exchange_rate: liveFxRate ? String(liveFxRate) : '',
+      exchange_rate: '',
       items: [],
     }));
     setItems([{ description: '', sub_description: '', quantity: 1, unit_price: 0 }]);
@@ -400,7 +400,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       type: invoice.type || 'proforma',
       lease_id: invoice.lease_id ? String(invoice.lease_id) : '',
       currency: invCurrency,
-      exchange_rate: invoice.exchange_rate != null ? String(invoice.exchange_rate) : (invCurrency === 'USD' && liveFxRate ? String(liveFxRate) : ''),
+      exchange_rate: invoice.exchange_rate != null && invCurrency === 'USD' ? String(invoice.exchange_rate) : '',
       tenant_name: invoice.tenant_name || '',
       tenant_email: invoice.tenant_email || '',
       unit_ref: invoice.unit_ref || '',
@@ -439,7 +439,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       ...d,
       lease_id: leaseId,
       currency: lCurrency,
-      exchange_rate: lCurrency === 'USD' ? (l.exchange_rate ? String(l.exchange_rate) : (l.unit?.exchange_rate ? String(l.unit.exchange_rate) : (d.exchange_rate || (liveFxRate ? String(liveFxRate) : '')))) : '',
+      exchange_rate: lCurrency === 'USD' ? (d.exchange_rate || '') : '',
       tenant_name: tenantName,
       tenant_email: tenantEmail,
       unit_ref: unitRef,
@@ -462,7 +462,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     setData(d => ({
       ...d,
       currency: lCurrency,
-      exchange_rate: lCurrency === 'USD' ? (selectedLease.exchange_rate ? String(selectedLease.exchange_rate) : (selectedLease.unit?.exchange_rate ? String(selectedLease.unit.exchange_rate) : (d.exchange_rate || (liveFxRate ? String(liveFxRate) : '')))) : '',
+      exchange_rate: lCurrency === 'USD' ? (d.exchange_rate || '') : '',
       tenant_name: getLeaseTenantName(selectedLease),
       tenant_email: getLeaseTenantEmail(selectedLease),
       unit_ref: getLeaseUnitRef(selectedLease),
@@ -633,7 +633,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:8,flexShrink:0,background:'var(--bg-surface)'}}>
               {selected.type === 'invoice' && (selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
-              {selected.type === 'proforma' && selected.status==='proforma' && selected.approval_status === 'approved' && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>router.patch(`/invoices/${selected.id}`,{status:'unpaid'},{onSuccess:()=>setSelected(null)})}>Convert to Invoice</button>}
               {selected.status==='paid' && <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>window.location.href=`/invoices/${selected.id}/pdf`}>Save PDF</button>}
               {canEditProforma(selected) && <button className="btn-secondary" onClick={()=>openEditInvoiceModal(selected)}>Edit</button>}
               {selected.type === 'proforma' && selected.approval_status === 'rejected' && !selected.sent_to_tenant_at && (
@@ -711,7 +710,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                       required
                     />
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
-                      Live rate: <strong>{formatExchangeRate(liveFxRate)}</strong>. Manual entry allowed.
+                      Enter the current rate manually. Reference live rate: <strong>{formatExchangeRate(liveFxRate)}</strong>.
                     </div>
                   </div>
                 )}
@@ -740,11 +739,11 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                       <div style={{marginTop:8,paddingTop:8,borderTop:'1px dashed var(--border)',fontSize:12.5}}>
                         <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',marginBottom:3}}>
                           <span>Exchange Rate</span>
-                          <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(data.exchange_rate || liveFxRate)} TZS</span>
+                          <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(data.exchange_rate)} TZS</span>
                         </div>
                         <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,color:'var(--accent)'}}>
                           <span>Total in TZS</span>
-                          <span>TZS {Math.round(modalTotal * Number(data.exchange_rate || liveFxRate || 1)).toLocaleString()}</span>
+                          <span>TZS {Math.round(modalTotal * Number(data.exchange_rate || 0)).toLocaleString()}</span>
                         </div>
                       </div>
                     )}

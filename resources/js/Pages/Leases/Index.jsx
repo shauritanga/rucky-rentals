@@ -323,7 +323,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       .filter(l => !l.status || ['active', 'expiring', 'overdue'].includes(l.status))
       .reduce((sum, lease) => {
         const currency = resolveCurrency(lease.currency || lease.unit?.currency);
-        const rate = Number(lease.exchange_rate || lease.unit?.exchange_rate || liveFxRate || 1);
+        const rate = Number(lease.exchange_rate || liveFxRate || 1);
         const rentTzs = currency === 'USD' ? Number(lease.monthly_rent || 0) * rate : Number(lease.monthly_rent || 0);
         return sum + rentTzs;
       }, 0);
@@ -447,7 +447,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       const splitServiceCharge = u ? (u.service_charge ?? 0) / shares : 0;
       const autoDeposit = u ? (splitRent * depositRentMonths) + (splitServiceCharge * depositScMonths) : '';
       const nextRate = uCurrency === 'USD'
-        ? (u?.exchange_rate ? String(u.exchange_rate) : (d.exchange_rate || (liveFxRate ? String(liveFxRate) : '')))
+        ? (d.exchange_rate || (liveFxRate ? String(liveFxRate) : ''))
         : '';
       return {
         ...d,
@@ -1109,23 +1109,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
                       <label className="form-label" style={{ margin: 0 }}>Exchange Rate (USD → TZS) *</label>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                        {selectedUnit?.exchange_rate ? (
-                          <button
-                            type="button"
-                            onClick={() => setData('exchange_rate', String(selectedUnit.exchange_rate))}
-                            style={{
-                              border: 'none',
-                              background: 'none',
-                              padding: 0,
-                              color: 'var(--accent)',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              textDecoration: 'underline',
-                            }}
-                          >
-                            Unit rate ({formatExchangeRate(selectedUnit.exchange_rate)})
-                          </button>
-                        ) : null}
                         {liveFxRate ? (
                           <button
                             type="button"
@@ -1152,19 +1135,16 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                       min="0.0001"
                       value={data.exchange_rate}
                       onChange={(e) => setData('exchange_rate', e.target.value)}
-                      placeholder={selectedUnit?.exchange_rate ? String(selectedUnit.exchange_rate) : (liveFxRate ? String(liveFxRate) : 'e.g. 2650.0000')}
+                      placeholder={liveFxRate ? String(liveFxRate) : 'e.g. 2650.0000'}
                       required
                     />
                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
                       {Number(data.exchange_rate) > 0 ? (
                         <span>
                           Agreed lease rate: <strong>1 USD = {formatExchangeRate(Number(data.exchange_rate))} TZS</strong> (up to 4 decimals)
-                          {selectedUnit?.exchange_rate && Number(data.exchange_rate) === Number(selectedUnit.exchange_rate) && (
-                            <span style={{ color: 'var(--green)', marginLeft: 6 }}>· Reflected from unit</span>
-                          )}
                         </span>
                       ) : (
-                        <span>Agreed exchange rate for this lease (auto-filled from unit). Invoices created from this lease will use this rate.</span>
+                        <span>Agreed exchange rate for this lease. Invoices created from this lease will use this rate.</span>
                       )}
                     </div>
                   </div>

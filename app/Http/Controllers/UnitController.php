@@ -95,14 +95,9 @@ class UnitController extends Controller
             'rate_per_sqm'           => 'required|numeric|min:0',
             'service_charge_per_sqm' => 'nullable|numeric|min:0',
             'currency'               => 'required|in:TZS,USD',
-            'exchange_rate'          => 'nullable|numeric|min:0.0001|max:999999.9999',
             'electricity_type'       => 'nullable|in:direct,submeter',
             'notes'                  => 'nullable|string',
         ]);
-
-        $data['exchange_rate']          = $data['currency'] === 'USD' && !empty($data['exchange_rate'])
-            ? round((float) $data['exchange_rate'], 4)
-            : null;
         $data['size_sqm']               = (float) $data['size_sqm'];
         $data['rate_per_sqm']           = (float) $data['rate_per_sqm'];
         $data['size_sqft']              = (int) round($data['size_sqm'] / self::SQM_PER_SQFT);
@@ -196,15 +191,10 @@ class UnitController extends Controller
             'rate_per_sqm'           => 'required|numeric|min:0',
             'service_charge_per_sqm' => 'nullable|numeric|min:0',
             'currency'               => 'required|in:TZS,USD',
-            'exchange_rate'          => 'nullable|numeric|min:0.0001|max:999999.9999',
             'status'                 => 'required|in:occupied,vacant,overdue,maintenance',
             'electricity_type'       => 'nullable|in:direct,submeter',
             'notes'                  => 'nullable|string',
         ]);
-
-        $data['exchange_rate']          = $data['currency'] === 'USD' && !empty($data['exchange_rate'])
-            ? round((float) $data['exchange_rate'], 4)
-            : null;
         $data['size_sqm']               = (float) $data['size_sqm'];
         $data['rate_per_sqm']           = (float) $data['rate_per_sqm'];
         $data['size_sqft']              = (int) round($data['size_sqm'] / self::SQM_PER_SQFT);

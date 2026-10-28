@@ -216,7 +216,7 @@ class LeaseController extends Controller
             'payment_cycle' => $validated['payment_cycle'],
             'currency' => $unit->currency ?: 'USD',
             'exchange_rate' => ($unit->currency ?: 'USD') === 'USD'
-                ? (!empty($validated['exchange_rate']) ? round((float) $validated['exchange_rate'], 4) : (!empty($unit->exchange_rate) ? round((float) $unit->exchange_rate, 4) : null))
+                ? (!empty($validated['exchange_rate']) ? round((float) $validated['exchange_rate'], 4) : null)
                 : null,
             'possession_date' => $validated['possession_date'] ?? $validated['start_date'],
             'rent_start_date' => $validated['rent_start_date'] ?? $validated['start_date'],
