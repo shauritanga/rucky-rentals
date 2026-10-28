@@ -51,6 +51,7 @@ Route::middleware('auth')->group(function () {
         Route::resource('tenants', TenantController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('leases', LeaseController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::get('leases/{lease}/pdf', [LeaseController::class, 'downloadAgreement'])->name('leases.pdf');
+        Route::post('leases/{lease}/deposit-invoice', [LeaseController::class, 'issueDeposit'])->name('leases.deposit-invoice');
         Route::resource('payments', PaymentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('maintenance', MaintenanceController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('clearance', ClearanceController::class)->only(['index', 'store', 'update', 'destroy']);

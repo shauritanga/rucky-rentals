@@ -97,6 +97,8 @@ const approvalStatusLabel = (status = '') => {
 };
 
 const invoiceWorkflowLabel = (invoice) => {
+  // A deposit proforma stays a proforma but shows its payment status once money arrives.
+  if (invoice?.kind === 'deposit' && ['paid', 'partially_paid'].includes(invoice?.status)) return invoiceStatusLabel(invoice.status);
   if (invoice?.type === 'proforma') {
     if (invoice?.sent_to_tenant_at) return 'Sent';
     return approvalStatusLabel(invoice?.approval_status || 'pending_approval');
@@ -120,7 +122,8 @@ function InvoiceDoc({ inv, currency = 'TZS', lease = null }) {
   const subtotal     = lineItems.reduce((s, i) => s + Number(i.total || 0), 0);
   const vatFromItems = vatItems.reduce((s, i) => s + Number(i.total || 0), 0);
   const vatRate      = Number(lease?.vat_rate ?? 18);
-  const vatAmount    = vatFromItems > 0 ? vatFromItems : Math.round(subtotal * vatRate / 100);
+  const isDeposit    = inv.kind === 'deposit';
+  const vatAmount    = isDeposit ? 0 : (vatFromItems > 0 ? vatFromItems : Math.round(subtotal * vatRate / 100));
   const vatLabel     = `VAT (${vatRate}%)`;
   const grandTotal   = subtotal + vatAmount;
   const isPaid = inv.status === 'paid';
@@ -135,7 +138,7 @@ function InvoiceDoc({ inv, currency = 'TZS', lease = null }) {
           <div><div style={{fontSize:17,fontWeight:700}}>Mwamba Properties</div><div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>Dar es Salaam, Tanzania · info@mwambaproperties.co.tz</div></div>
         </div>
         <div style={{textAlign:'right'}}>
-          <div style={{fontSize:22,fontWeight:800,letterSpacing:'-.5px',color:inv.type==='proforma'?'var(--amber)':'var(--accent)',textTransform:'uppercase'}}>{inv.type==='proforma'?'PROFORMA INVOICE':'TAX INVOICE'}</div>
+          <div style={{fontSize:22,fontWeight:800,letterSpacing:'-.5px',color:inv.type==='proforma'?'var(--amber)':'var(--accent)',textTransform:'uppercase'}}>{isDeposit?'PROFORMA – SECURITY DEPOSIT':(inv.type==='proforma'?'PROFORMA INVOICE':'TAX INVOICE')}</div>
           <div style={{fontSize:13,color:'var(--text-muted)',fontWeight:500}}>{inv.invoice_number}</div>
         </div>
       </div>
@@ -174,7 +177,9 @@ function InvoiceDoc({ inv, currency = 'TZS', lease = null }) {
       </table>
       <div style={{marginLeft:'auto',width:320}}>
         <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
-        <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{vatLabel}</span><span>{formatMoney(vatAmount, currency)}</span></div>
+        {isDeposit
+          ? <div style={{padding:'5px 0',fontSize:12,color:'var(--text-muted)',borderTop:'1px solid var(--border-subtle)'}}>Refundable security deposit — no VAT. A receipt is issued on payment.</div>
+          : <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{vatLabel}</span><span>{formatMoney(vatAmount, currency)}</span></div>}
         <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(grandTotal, currency)}</span></div>
         {inv.usd_rate && (
           <div style={{marginTop:10,paddingTop:10,borderTop:'1px dashed var(--border)',fontSize:12.5,color:'var(--text-muted)',display:'flex',justifyContent:'space-between'}}>
@@ -336,9 +341,9 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
   const buildLeaseInvoiceItems = (lease) => {
     const unitRef = getLeaseUnitRef(lease);
-    const monthlyRent = Number(lease.monthly_rent ?? lease.rent ?? 0) || 0;
+    const monthlyRent = Number(lease.billing_rent ?? lease.monthly_rent ?? lease.rent ?? 0) || 0;
     const paymentCycle = Number(lease.payment_cycle ?? 1) || 1;
-    const unitServiceCharge = Number(lease.monthly_service_charge ?? lease.unit?.service_charge ?? 0);
+    const unitServiceCharge = Number(lease.billing_service_charge ?? lease.monthly_service_charge ?? lease.unit?.service_charge ?? 0);
     const vatRate = Number(lease.vat_rate ?? VAT_RATE * 100) || 0;
     const possessionDate = lease.possession_date || lease.start_date || '';
     const rentStartDate = lease.rent_start_date || lease.start_date || '';
@@ -629,7 +634,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
             {filtered.map(inv => (
               <tr key={inv.id} onClick={()=>setSelected(inv)}>
                 <td style={{fontWeight:700,color:'var(--accent)'}}>{inv.invoice_number}</td>
-                <td><span style={{fontSize:'11.5px',fontWeight:600,padding:'3px 9px',borderRadius:20,background:inv.type==='proforma'?'var(--amber-dim)':'var(--accent-dim)',color:inv.type==='proforma'?'var(--amber)':'var(--accent)'}}>{inv.type==='proforma'?'Proforma':'Tax Invoice'}</span></td>
+                <td><span style={{fontSize:'11.5px',fontWeight:600,padding:'3px 9px',borderRadius:20,background:inv.type==='proforma'?'var(--amber-dim)':'var(--accent-dim)',color:inv.type==='proforma'?'var(--amber)':'var(--accent)'}}>{inv.kind==='deposit'?'Deposit Proforma':(inv.type==='proforma'?'Proforma':'Tax Invoice')}</span></td>
                 <td style={{fontWeight:500}}>{inv.tenant_name}</td>
                 <td style={{fontWeight:600,color:'var(--text-secondary)'}}>{inv.unit_ref}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{formatDisplayDate(inv.issued_date)}</td>
@@ -637,7 +642,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <td style={{fontWeight:700}}>
                   <div>{formatMoney(total(inv))}</div>
                 </td>
-                <td><span className={`badge ${inv.type === 'proforma' ? (inv.approval_status || 'proforma') : inv.status}`}>{invoiceWorkflowLabel(inv)}</span></td>
+                <td><span className={`badge ${inv.kind === 'deposit' && ['paid', 'partially_paid'].includes(inv.status) ? inv.status : (inv.type === 'proforma' ? (inv.approval_status || 'proforma') : inv.status)}`}>{invoiceWorkflowLabel(inv)}</span></td>
                 <td><TrackBadge status={inv.receipt_status} labels={RECEIPT_LABELS} /></td>
                 <td><TrackBadge status={inv.wht_status} labels={WHT_LABELS} /></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(inv)}}>···</button></td>
@@ -665,7 +670,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                   <span><strong>Sent:</strong> {selected.sent_to_tenant_at ? formatDisplayDate(selected.sent_to_tenant_at) : 'Not sent'}</span>
                 </div>
               )}
-              {selected.type === 'invoice' && (selected.receipt_status === 'not_issued' || selected.wht_status === 'pending') && (
+              {(selected.type === 'invoice' || selected.kind === 'deposit') && (selected.receipt_status === 'not_issued' || selected.wht_status === 'pending') && (
                 <div style={{marginBottom:14,padding:'12px 14px',background:'var(--bg-elevated)',borderRadius:9,fontSize:12.5,display:'flex',flexDirection:'column',gap:10}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
                     <span><strong>WHT:</strong> <TrackBadge status={selected.wht_status} labels={WHT_LABELS} /></span>

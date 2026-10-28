@@ -47,6 +47,7 @@ class SuperuserController extends Controller
                 // Revenue = TZS collected this month (payments are always TZS).
                 $property->monthly_revenue_tzs = (float) Payment::where('status', 'paid')
                     ->where('property_id', $property->id)
+                    ->where(fn ($q) => $q->whereNull('invoice_id')->orWhereNotIn('invoice_id', Invoice::where('kind', 'deposit')->select('id')))
                     ->whereRaw('COALESCE(paid_date, DATE(created_at)) BETWEEN ? AND ?', [
                         now()->startOfMonth()->toDateString(),
                         now()->endOfMonth()->toDateString(),
@@ -528,6 +529,7 @@ class SuperuserController extends Controller
         $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
 
         app(LeaseController::class)->ensureInstallmentsGenerated($lease->fresh());
+        app(LeaseController::class)->issueDepositInvoice($lease->fresh());
         app(LeaseController::class)->rebalanceUnit($lease->fresh());
 
         // Notify the property manager

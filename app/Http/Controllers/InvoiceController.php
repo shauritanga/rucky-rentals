@@ -70,7 +70,7 @@ class InvoiceController extends Controller
                 default => 'na',
             });
             $invoice->setAttribute('wht_status', match (true) {
-                !$hasLeaseRelated || $paid->isEmpty() => 'na',
+                $invoice->kind === 'deposit' || !$hasLeaseRelated || $paid->isEmpty() => 'na',
                 $paid->contains(fn ($p) => $p->wht_confirmed) => 'paid',
                 default => 'pending',
             });
@@ -97,6 +97,7 @@ class InvoiceController extends Controller
         $in7Days = $today->copy()->addDays(7);
 
         $query = Invoice::with('items')
+            ->where('kind', '!=', 'deposit')
             ->whereNotIn('status', ['draft', 'proforma', 'paid'])
             ->where('due_date', '<=', $in7Days)
             ->orderBy('due_date');
@@ -476,7 +477,9 @@ class InvoiceController extends Controller
         $invoice->load('items');
 
         $items        = $invoice->items;
-        $invoiceLabel = $invoice->type === 'proforma' ? 'PROFORMA INVOICE' : 'TAX INVOICE';
+        $invoiceLabel = $invoice->kind === 'deposit'
+            ? 'PROFORMA – SECURITY DEPOSIT'
+            : ($invoice->type === 'proforma' ? 'PROFORMA INVOICE' : 'TAX INVOICE');
 
         // ── Company/property/tenant/unit details (mirrors ProformaInvoiceMail::generatePdf) ──
         $viewData   = $invoice->buildPdfViewData($items);
@@ -650,7 +653,20 @@ class InvoiceController extends Controller
             ->orderBy('id')
             ->pluck('usd_rate', 'lease_id'); // later rows overwrite earlier ones => latest wins
 
-        $leases->each(fn ($lease) => $lease->setAttribute('reference_rate', $rates[$lease->id] ?? null));
+        $rebalancer = app(\App\Services\LeaseShareRebalancer::class);
+
+        $leases->each(function ($lease) use ($rates, $rebalancer) {
+            $lease->setAttribute('reference_rate', $rates[$lease->id] ?? null);
+
+            // Rent/service charge for the next unbilled period (a co-tenant's share can change over the lease).
+            $next = \App\Models\LeaseInstallment::where('lease_id', $lease->id)
+                ->whereNull('invoice_id')->orderBy('sequence')->first();
+            $share = $next
+                ? $rebalancer->monthlyShareFor($lease, Carbon::parse($next->period_start), Carbon::parse($next->period_end)->addDay())
+                : null;
+            $lease->setAttribute('billing_rent', $share['rent'] ?? null);
+            $lease->setAttribute('billing_service_charge', $share['service_charge'] ?? null);
+        });
     }
 
     /**
@@ -860,7 +876,7 @@ class InvoiceController extends Controller
     private function isLeaseVatEligibleItem($item): bool
     {
         $itemType = strtolower((string) ($item->item_type ?? 'other'));
-        if (in_array($itemType, ['electricity_charge', 'electricity', 'electricity_vat'], true)) {
+        if (in_array($itemType, ['electricity_charge', 'electricity', 'electricity_vat', 'security_deposit'], true)) {
             return false;
         }
 

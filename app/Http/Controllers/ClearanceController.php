@@ -72,6 +72,11 @@ class ClearanceController extends Controller
         abort_if(!in_array($lease->status, ['active', 'expiring', 'overdue']), 422, 'Only an active lease can be cleared.');
         abort_if((float) $lease->deposit <= 0, 422, 'This lease has no deposit on file.');
         abort_if(
+            \App\Models\Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->where('status', '!=', 'paid')->exists(),
+            422,
+            'The security deposit has not been paid in full, so there is no deposit to settle yet.'
+        );
+        abort_if(
             $lease->clearances()->whereIn('status', ['scheduled', 'in_progress'])->exists(),
             422,
             'This lease already has an open clearance.'

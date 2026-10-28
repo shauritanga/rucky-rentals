@@ -264,10 +264,12 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const rent = Number(data.monthly_rent) || 0;
     const cycle = Number(data.payment_cycle) || 0;
     const duration = Number(data.duration_months) || 0;
+    // Only co-tenants still running when this lease's rent starts share the unit with it.
     const coTenantCount = leases.filter(l =>
       String(l.unit_id) === String(data.unit_id)
       && ['active', 'expiring', 'overdue'].includes(l.status)
       && String(l.id) !== String(editingLeaseId)
+      && (!rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate)
     ).length;
     const shares = coTenantCount + 1;
     const serviceCharge = (units.find(u => String(u.id) === String(data.unit_id))?.service_charge ?? 0) / shares;
@@ -451,7 +453,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const u = units.find(x => String(x.id) === String(unitId));
     const uCurrency = resolveCurrency(u?.currency);
     setData(d => {
-      const coTenantCount = (activeLeasesByUnit[String(unitId)] || []).length;
+      const coTenantCount = (activeLeasesByUnit[String(unitId)] || []).filter(l => !rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate).length;
       const shares = coTenantCount + 1;
       const splitRent = u ? u.rent / shares : '';
       const splitServiceCharge = u ? (u.service_charge ?? 0) / shares : 0;
@@ -464,6 +466,18 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       };
     });
   };
+
+  // The share depends on who is still in the unit when this lease starts, so re-split when the date changes.
+  useEffect(() => {
+    if (editingLeaseId || !data.unit_id) return;
+    const u = units.find(x => String(x.id) === String(data.unit_id));
+    if (!u) return;
+    const shares = (activeLeasesByUnit[String(data.unit_id)] || [])
+      .filter(l => !rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate).length + 1;
+    const rent = u.rent / shares;
+    const sc = (u.service_charge ?? 0) / shares;
+    setData(d => ({ ...d, monthly_rent: rent, deposit: (rent * depositRentMonths) + (sc * depositScMonths) }));
+  }, [rentStartDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [depositRate, setDepositRate] = useState('');
   const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action, deposit_rate: depositRate || null }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
@@ -863,6 +877,12 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   )}
                   <button className="btn-secondary" onClick={renewFromDrawer}>Renew</button>
                   <button className="btn-secondary" onClick={()=>window.open(`/leases/${selected.id}/pdf`, '_blank')}>Download Agreement</button>
+                  {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) > 0 && !selected.deposit_invoice && (user?.role === 'superuser' || user?.role === 'manager') && (
+                    <button className="btn-secondary" onClick={() => router.post(`/leases/${selected.id}/deposit-invoice`, { deposit_rate: depositRate || null }, { preserveScroll: true })}>Issue Deposit Proforma</button>
+                  )}
+                  {selected.deposit_invoice && (
+                    <span style={{fontSize:12,color:'var(--text-muted)',alignSelf:'center'}}>Deposit proforma {selected.deposit_invoice.invoice_number} · {String(selected.deposit_invoice.status).replace('_',' ')}</span>
+                  )}
                   {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) > 0 && (user?.role === 'superuser' || user?.role === 'manager') && (
                     <button className="btn-secondary" onClick={() => router.get('/clearance', { lease_id: selected.id })}>{new Date(`${selected.end_date}T00:00:00`) > new Date() ? 'Terminate Early (Clearance)' : 'Start Clearance'}</button>
                   )}
@@ -1079,7 +1099,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
               {data.unit_id && summary.coTenantCount > 0 && (
                 <div style={{marginBottom:12,padding:'10px 12px',border:'1px solid var(--accent)',borderRadius:8,background:'rgba(59,130,246,.08)',color:'var(--accent)',fontSize:12.5}}>
-                  This unit already has {summary.coTenantCount} co-tenant{summary.coTenantCount > 1 ? 's' : ''}. Splitting rent into {summary.shares} equal shares of {formatMoney(summary.rent, selectedUnitCurrency)} each.
+                  This unit already has {summary.coTenantCount} co-tenant{summary.coTenantCount > 1 ? 's' : ''}. Splitting rent into {summary.shares} equal shares of {formatMoney(summary.rent, selectedUnitCurrency)} each while they overlap; once a co-tenant's lease ends, this lease's share goes back up automatically.
                 </div>
               )}
               <div className="form-row">
@@ -1087,7 +1107,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <div className="form-group"><label className="form-label">{selectedUnitCurrency === 'USD' ? 'Security Deposit (unit rate basis)' : 'Security Deposit (TZS)'}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
                 {selectedUnitCurrency === 'USD' && (
                   <div style={{ fontSize: 11.5, color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
-                    This unit is priced in USD. The lease is shown in TZS once a proforma is created with the day's exchange rate.
+                    This unit is priced in USD. The lease is shown in TZS once a proforma is created with the day's exchange rate. The refundable security deposit is billed on a separate non-tax proforma when the lease is approved.
                   </div>
                 )}
               </div>

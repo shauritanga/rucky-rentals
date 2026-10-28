@@ -82,6 +82,9 @@ class LeaseController extends Controller
         $this->scopeByUserProperty($unitsQuery, $request, 'property_id');
 
         $leases   = $leasesQuery->get();
+        $depositInvoices = \App\Models\Invoice::where('kind', 'deposit')->whereIn('lease_id', $leases->pluck('id'))
+            ->get(['id', 'lease_id', 'invoice_number', 'status'])->keyBy('lease_id');
+        $leases->each(fn ($l) => $l->setAttribute('deposit_invoice', $depositInvoices[$l->id] ?? null));
         $tenants  = $tenantsQuery->get();
         $units    = $unitsQuery->get();
         $settings = SystemSetting::pluck('value', 'key');
@@ -222,7 +225,7 @@ class LeaseController extends Controller
             'service_charge_rate' => (float) ($validated['service_charge_rate'] ?? 5),
             'vat_rate' => (float) ($validated['vat_rate'] ?? 18),
             'monthly_rent' => $validated['monthly_rent'],
-            'service_charge' => round((float) ($unit->service_charge ?? 0) / (Lease::where('unit_id', $unit->id)->whereIn('status', ['active', 'expiring', 'overdue'])->count() + 1), 2),
+            'service_charge' => round((float) ($unit->service_charge ?? 0) / (Lease::where('unit_id', $unit->id)->whereIn('status', ['active', 'expiring', 'overdue'])->whereDate('end_date', '>', $validated['rent_start_date'] ?? $validated['start_date'])->count() + 1), 2),
             'deposit' => $validated['deposit'] ?? (function () use ($validated, $unit) {
                 $rentMonths = (float) SystemSetting::get('deposit_rent_months', 1);
                 $scMonths   = (float) SystemSetting::get('deposit_service_charge_months', 1);
@@ -242,7 +245,7 @@ class LeaseController extends Controller
             // If auto-approved, generate installments and post deposit GL entry
             if ($lease->status === 'active') {
                 $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->postDepositEntry($lease->fresh());
+                $this->issueDepositInvoice($lease->fresh());
                 $this->rebalanceUnit($lease->fresh());
             }
         });
@@ -300,7 +303,7 @@ class LeaseController extends Controller
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->postDepositEntry($lease->fresh());
+                $this->issueDepositInvoice($lease->fresh());
                 $this->rebalanceUnit($lease->fresh());
             });
         } elseif ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
@@ -312,7 +315,7 @@ class LeaseController extends Controller
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->postDepositEntry($lease->fresh());
+                $this->issueDepositInvoice($lease->fresh());
                 $this->rebalanceUnit($lease->fresh());
             });
         } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
@@ -324,7 +327,7 @@ class LeaseController extends Controller
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->postDepositEntry($lease->fresh());
+                $this->issueDepositInvoice($lease->fresh());
                 $this->rebalanceUnit($lease->fresh());
             });
         } elseif ($action === 'reject') {
@@ -416,8 +419,7 @@ class LeaseController extends Controller
                 // If lease is active and deposit amount changed, re-post the deposit GL entry
                 $newDeposit = (float) ($editData['deposit'] ?? $oldDeposit);
                 if ($wasActive && abs($newDeposit - $oldDeposit) > 0.01) {
-                    $this->voidDepositEntry($lease);
-                    $this->postDepositEntry($lease->fresh());
+                    $this->resyncDeposit($lease->fresh());
                 }
             });
         } elseif ($action === 'update_fitout') {
@@ -602,6 +604,44 @@ class LeaseController extends Controller
         }
 
         $lease->update(['exchange_rate' => round((float) $typedRate, 4)]);
+    }
+
+    /** Manually issue the deposit proforma (leases approved before deposits were billed). */
+    public function issueDeposit(Request $request, Lease $lease)
+    {
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $lease->property_id !== $effectiveId, 403);
+        }
+        abort_if(!in_array($lease->status, ['active', 'expiring', 'overdue']), 422, 'Only a running lease can have a deposit proforma issued.');
+        abort_if((float) $lease->deposit <= 0, 422, 'This lease has no deposit.');
+
+        $this->requireDepositRate($lease, $request->input('deposit_rate'));
+        $invoice = app(\App\Services\DepositInvoiceService::class)->issueFor($lease->fresh(), $request->user()?->id);
+
+        return back()->with('success', 'Deposit proforma ' . $invoice->invoice_number . ' issued.');
+    }
+
+    /** Request the refundable deposit with a non-tax proforma; cash is booked when it is paid. */
+    public function issueDepositInvoice(Lease $lease): void
+    {
+        app(\App\Services\DepositInvoiceService::class)->issueFor($lease, auth()->id());
+    }
+
+    /** A changed deposit on an active lease: reprice an unpaid deposit proforma, else re-book the legacy entry. */
+    private function resyncDeposit(Lease $lease): void
+    {
+        $invoice = \App\Models\Invoice::with('items')->where('lease_id', $lease->id)->where('kind', 'deposit')->first();
+        if (!$invoice) {
+            $this->voidDepositEntry($lease);
+            $this->postDepositEntry($lease);
+            return;
+        }
+
+        abort_if($invoice->payments()->exists(), 422, 'The deposit proforma already has payments; it cannot be changed.');
+        $invoice->items()->delete();
+        $invoice->delete();
+        $this->issueDepositInvoice($lease);
     }
 
     private function postDepositEntry(Lease $lease): void

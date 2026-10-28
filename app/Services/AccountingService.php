@@ -294,6 +294,14 @@ class AccountingService
         DB::transaction(function () use ($payment) {
             $reference = 'PAY-' . $payment->id;
 
+            // Older leases booked the deposit at approval (DEP-{lease}); don't book it a second time on payment.
+            $depositLeaseId = $payment->invoice_id
+                ? Invoice::where('id', $payment->invoice_id)->where('kind', 'deposit')->value('lease_id')
+                : null;
+            if ($depositLeaseId && JournalEntry::where('reference', 'DEP-' . $depositLeaseId)->where('status', 'posted')->exists()) {
+                return;
+            }
+
             try {
                 // Determine credit account and WHT rates based on invoice link
                 $creditAccountCode = '4000'; // Default: Revenue (cash-basis)
@@ -304,7 +312,9 @@ class AccountingService
                 if ($payment->invoice_id) {
                     $linkedInvoice = Invoice::with(['lease', 'items'])->find($payment->invoice_id);
                     $invoice = $linkedInvoice;
-                    if ($invoice && $invoice->type === 'invoice') {
+                    if ($invoice && $invoice->kind === 'deposit') {
+                        $creditAccountCode = '2100'; // Refundable deposit: a liability, no revenue/VAT/WHT
+                    } elseif ($invoice && $invoice->type === 'invoice') {
                         $creditAccountCode = '1100'; // Receivable (accrual-aware)
                         $rentWhtRate = (float) ($invoice->lease->wht_rate ?? 0);
                         $serviceChargeWhtRate = (float) ($invoice->lease->service_charge_rate ?? 5);
@@ -813,7 +823,10 @@ class AccountingService
         $originalExists = JournalEntry::query()
             ->where('reference', 'DEP-' . $lease->id)
             ->where('property_id', $lease->property_id)
-            ->exists();
+            ->exists()
+            || Payment::where('status', 'paid')
+                ->whereIn('invoice_id', Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->select('id'))
+                ->exists();
 
         if (!$originalExists) {
             return;

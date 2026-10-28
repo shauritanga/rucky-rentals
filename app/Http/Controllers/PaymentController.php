@@ -42,6 +42,8 @@ class PaymentController extends Controller
         $activeLeasesQuery = Lease::with(['tenant', 'unit', 'property'])
             ->where('deposit', '>', 0)
             ->whereNotIn('id', $clearedLeaseIds)
+            // A deposit counts as held only once its proforma is paid.
+            ->whereNotIn('id', Invoice::where('kind', 'deposit')->where('status', '!=', 'paid')->whereNotNull('lease_id')->select('lease_id'))
             ->orderByDesc('created_at');
         $this->scopeByUserProperty($activeLeasesQuery, $request, 'property_id');
         $activeLeases = $activeLeasesQuery->get();
@@ -340,6 +342,13 @@ class PaymentController extends Controller
         //         (avoids a premature postInvoice() while status is still 'proforma').
         // Step B: $invoice->save() fires InvoiceObserver::updated() which sees the
         //         status transition from 'proforma' → paid and calls postInvoice().
+        // A security-deposit proforma never becomes a tax invoice: it is just marked paid (a receipt is issued).
+        if ($invoice->kind === 'deposit') {
+            $invoice->status = $fullyPaid ? 'paid' : ($paidTotal > 0 ? 'partially_paid' : 'proforma');
+            $invoice->save();
+            return;
+        }
+
         if ($invoice->type === 'proforma' || $invoice->status === 'proforma') {
             if (!$fullyPaid) {
                 return;
@@ -444,7 +453,7 @@ class PaymentController extends Controller
     private function isLeaseVatEligibleItem($item): bool
     {
         $itemType = strtolower((string) ($item->item_type ?? 'other'));
-        if (in_array($itemType, ['electricity_charge', 'electricity', 'electricity_vat'], true)) {
+        if (in_array($itemType, ['electricity_charge', 'electricity', 'electricity_vat', 'security_deposit'], true)) {
             return false;
         }
 

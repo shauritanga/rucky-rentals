@@ -376,7 +376,12 @@
                     <td>Sub Total</td>
                     <td class="right">{{ number_format($subtotal, 2) }}</td>
                 </tr>
-                @if($vatAmount > 0)
+                @if(($invoice->kind ?? 'rent') === 'deposit')
+                <tr>
+                    <td>VAT</td>
+                    <td class="right">Not applicable (refundable deposit)</td>
+                </tr>
+                @elseif($vatAmount > 0)
                 <tr>
                     <td>VAT (18%)</td>
                     <td class="right">{{ number_format($vatAmount, 2) }}</td>

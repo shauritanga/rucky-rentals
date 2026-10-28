@@ -74,6 +74,7 @@ class DashboardController extends Controller
         // Revenue = TZS actually collected in the month (payments are always TZS).
         $collectedBetween = fn ($from, $to) => (float) Payment::where('status', 'paid')
             ->whereIn('unit_id', $unitIdsQuery)
+            ->where(fn ($q) => $q->whereNull('invoice_id')->orWhereNotIn('invoice_id', Invoice::where('kind', 'deposit')->select('id'))) // deposits are not income
             ->whereRaw('COALESCE(paid_date, DATE(created_at)) BETWEEN ? AND ?', [$from->toDateString(), $to->toDateString()])
             ->sum('amount_in_base');
 
@@ -86,6 +87,7 @@ class DashboardController extends Controller
         // Calculate real overdue rent from unpaid/overdue invoices past their due date.
         $today = Carbon::today();
         $overdueInvoicesQuery = Invoice::with(['items', 'lease'])
+            ->where('kind', '!=', 'deposit')
             ->whereNotIn('status', ['draft', 'proforma', 'paid'])
             ->where(function ($q) use ($today) {
                 $q->where('status', 'overdue')

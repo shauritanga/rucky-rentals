@@ -64,7 +64,7 @@ class ProformaInvoiceMail extends Mailable
         unset($viewData['tenantId']);
 
         $data = array_merge($viewData, compact('invoice', 'items'));
-        $data['invoiceLabel'] = 'PROFORMA INVOICE';
+        $data['invoiceLabel'] = ($this->invoice->kind ?? 'rent') === 'deposit' ? 'PROFORMA – SECURITY DEPOSIT' : 'PROFORMA INVOICE';
 
         $pdf = Pdf::loadView('pdf.proforma-invoice', $data)
             ->setPaper('a4', 'portrait');

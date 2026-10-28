@@ -7,13 +7,16 @@ use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Unit;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 class LeaseShareRebalancer
 {
+    private const RUNNING = ['active', 'expiring', 'overdue'];
+
     /**
-     * Re-split a unit's rent and service charge equally across its running leases.
-     * Only installments that are not invoiced, unpaid and not yet started are repriced,
-     * so anything already billed or paid keeps its amount.
+     * Price every unbilled installment of a unit's running leases by how many leases share
+     * the unit in each month, so a tenant's share returns to 100% once a co-tenant's lease
+     * ends. Installments already invoiced, paid or past are never touched.
      *
      * @return array{updated: string[], skipped: string[], proformas: string[]}
      */
@@ -21,43 +24,119 @@ class LeaseShareRebalancer
     {
         $result = ['updated' => [], 'skipped' => [], 'proformas' => []];
 
-        $leases = $unit->leases()->whereIn('status', ['active', 'expiring', 'overdue'])->get();
-        $n = $leases->count();
-        if ($n === 0) {
+        $leases = $this->runningLeases($unit);
+        if ($leases->isEmpty()) {
             return $result;
         }
 
-        $targetRent = round((float) $unit->rent / $n, 2);
-        $targetSc   = round((float) $unit->service_charge / $n, 2);
+        $today = Carbon::today();
 
         foreach ($leases as $lease) {
-            $isActivating = $activating && $lease->id === $activating->id;
-
-            if (!$isActivating && !$this->isEvenShare($lease, $unit, $n)) {
+            if (!$this->isEvenShare($lease, $unit, $leases->count())) {
                 $result['skipped'][] = $lease->lease_number;
                 continue;
             }
 
-            $currentSc = $lease->service_charge ?? (float) $unit->service_charge;
-            if (abs((float) $lease->monthly_rent - $targetRent) < 0.01 && abs($currentSc - $targetSc) < 0.01) {
-                continue;
+            $changed = false;
+
+            LeaseInstallment::where('lease_id', $lease->id)
+                ->whereNull('invoice_id')
+                ->where('paid_amount', '<=', 0)
+                ->whereDate('period_end', '>=', $today)
+                ->orderBy('sequence')
+                ->get()
+                ->each(function (LeaseInstallment $installment) use ($unit, $leases, &$changed) {
+                    $amount = $this->periodAmount(
+                        $unit,
+                        $leases,
+                        Carbon::parse($installment->period_start),
+                        Carbon::parse($installment->period_end)->addDay()
+                    );
+                    if (abs($amount - (float) $installment->amount) >= 0.01) {
+                        $installment->update(['amount' => $amount]);
+                        $changed = true;
+                    }
+                });
+
+            // Keep the lease's own headline figures at today's share.
+            $n = $this->shareCount($leases, max($today, Carbon::parse($lease->rent_start_date ?: $lease->start_date)));
+            $rent = round((float) $unit->rent / $n, 2);
+            $sc   = round((float) $unit->service_charge / $n, 2);
+            if (abs((float) $lease->monthly_rent - $rent) >= 0.01 || abs($lease->monthly_service_charge - $sc) >= 0.01) {
+                $lease->update(['monthly_rent' => $rent, 'service_charge' => $sc]);
+                $changed = true;
             }
 
-            $lease->update(['monthly_rent' => $targetRent, 'service_charge' => $targetSc]);
-            $this->repriceFutureInstallments($lease, $targetRent + $targetSc);
-            $result['updated'][] = $lease->lease_number;
-
-            $proformas = Invoice::where('lease_id', $lease->id)
-                ->where('type', 'proforma')
-                ->whereDate('due_date', '>=', Carbon::today())
-                ->whereDoesntHave('payments')
-                ->pluck('invoice_number');
-            foreach ($proformas as $number) {
-                $result['proformas'][] = $number;
+            if ($changed) {
+                $result['updated'][] = $lease->lease_number;
+                Invoice::where('lease_id', $lease->id)
+                    ->where('type', 'proforma')
+                    ->whereDate('due_date', '>=', $today)
+                    ->whereDoesntHave('payments')
+                    ->pluck('invoice_number')
+                    ->each(function ($number) use (&$result) {
+                        $result['proformas'][] = $number;
+                    });
             }
         }
 
         return $result;
+    }
+
+    /** Per-month rent and service charge for a lease over a period, or null for a custom-rent lease. */
+    public function monthlyShareFor(Lease $lease, Carbon $start, Carbon $close): ?array
+    {
+        $unit = $lease->unit;
+        if (!$unit) {
+            return null;
+        }
+
+        $leases = $this->runningLeases($unit);
+        if (!$leases->contains('id', $lease->id)) {
+            $leases->push($lease);
+        }
+        if (!$this->isEvenShare($lease, $unit, $leases->count())) {
+            return null;
+        }
+
+        $months = max(1, (int) floor($start->diffInMonths($close)));
+        $rent = $sc = 0.0;
+        for ($i = 0; $i < $months; $i++) {
+            $n = $this->shareCount($leases, $start->copy()->addMonths($i));
+            $rent += (float) $unit->rent / $n;
+            $sc   += (float) $unit->service_charge / $n;
+        }
+
+        return ['rent' => round($rent / $months, 2), 'service_charge' => round($sc / $months, 2)];
+    }
+
+    private function runningLeases(Unit $unit): Collection
+    {
+        return $unit->leases()->whereIn('status', self::RUNNING)->get();
+    }
+
+    /** Leases covering the unit on a date (at least 1, so a lone tenant pays in full). */
+    private function shareCount(Collection $leases, Carbon $date): int
+    {
+        $n = $leases->filter(fn (Lease $l) =>
+            Carbon::parse($l->rent_start_date ?: $l->start_date)->lte($date)
+            && Carbon::parse($l->end_date)->gt($date)
+        )->count();
+
+        return max(1, $n);
+    }
+
+    /** Sum of each month's share of (rent + service charge) over [start, close). */
+    private function periodAmount(Unit $unit, Collection $leases, Carbon $start, Carbon $close): float
+    {
+        $monthly = (float) $unit->rent + (float) $unit->service_charge;
+        $months  = max(1, (int) floor($start->diffInMonths($close)));
+        $total   = 0.0;
+        for ($i = 0; $i < $months; $i++) {
+            $total += $monthly / $this->shareCount($leases, $start->copy()->addMonths($i));
+        }
+
+        return round($total, 2);
     }
 
     /** True when the lease's rent is the unit rent divided by a whole number of tenants (not hand-negotiated). */
@@ -70,20 +149,5 @@ class LeaseShareRebalancer
         }
 
         return false;
-    }
-
-    private function repriceFutureInstallments(Lease $lease, float $monthlyTotal): void
-    {
-        LeaseInstallment::where('lease_id', $lease->id)
-            ->whereNull('invoice_id')
-            ->where('paid_amount', '<=', 0)
-            ->whereDate('period_end', '>=', Carbon::today())
-            ->get()
-            ->each(function (LeaseInstallment $installment) use ($monthlyTotal) {
-                $start  = Carbon::parse($installment->period_start);
-                $close  = Carbon::parse($installment->period_end)->addDay();
-                $months = max(1, (int) floor($start->diffInMonths($close)));
-                $installment->update(['amount' => round($monthlyTotal * $months, 2)]);
-            });
     }
 }

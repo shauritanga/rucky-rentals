@@ -13,7 +13,8 @@ class PaymentReceiptService
 {
     public function buildPaymentBreakdown(?Invoice $invoice, float $paymentAmount): array
     {
-        if (!$invoice) {
+        // A refundable security deposit is not rent, service charge or electricity.
+        if (!$invoice || $invoice->kind === 'deposit') {
             return [
                 'rent' => 0.0,
                 'service_charge' => 0.0,
