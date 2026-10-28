@@ -73,6 +73,11 @@ class ReportBuilderController extends Controller
             ->where($field, '!=', '')
             ->distinct();
 
+        $search = trim((string) $request->query('q', ''));
+        if ($search !== '') {
+            $query->where($field, 'like', '%' . $search . '%');
+        }
+
         $propertyId = $this->resolvePropertyId($request);
         if ($propertyId !== null && !empty($entity['property_key'])) {
             $query->where($entity['property_key'], $propertyId);

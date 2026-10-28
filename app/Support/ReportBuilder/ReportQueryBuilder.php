@@ -98,6 +98,7 @@ class ReportQueryBuilder
         }
 
         $tree = $this->bfs($primary);
+        [$tree, $selectedEntities] = $this->anchorPaymentsToLease($tree, $selectedEntities);
         foreach ($selectedEntities as $entityKey) {
             if ($entityKey !== $primary && !isset($tree[$entityKey])) {
                 $primaryLabel = $this->entities[$primary]['label'];
@@ -143,7 +144,13 @@ class ReportQueryBuilder
             $parent = $tree[$node]['parent'];
 
             if (!$edge['custom']) {
-                $query->leftJoin($toTable, "{$parent}.{$edge['local']}", '=', "{$node}.{$edge['foreign']}");
+                $tenantGuard = !empty($tree[$node]['tenant_guard']);
+                $query->leftJoin($toTable, function ($join) use ($parent, $node, $edge, $tenantGuard) {
+                    $join->on("{$parent}.{$edge['local']}", '=', "{$node}.{$edge['foreign']}");
+                    if ($tenantGuard) {
+                        $join->on("{$node}.tenant_id", '=', 'tenants.id');
+                    }
+                });
             } else {
                 $closure = $edge['closure'];
                 if ($edge['direction'] === 'forward') {
@@ -233,9 +240,61 @@ class ReportQueryBuilder
                     if (!empty($filter['in']) && is_array($filter['in'])) {
                         $query->whereIn($column, $filter['in']);
                     }
+                    // Saved templates from when this column was free text still filter.
+                    if (!empty($filter['contains'])) {
+                        $query->where($column, 'like', '%' . $filter['contains'] . '%');
+                    }
                     break;
             }
         }
+    }
+
+    /**
+     * Payments hang off tenants directly (payments.tenant_id), so a tenant with several
+     * leases would pair every lease with every payment. When a lease-side entity
+     * (invoices/units/leases) is in the report, join payments through that entity
+     * instead (and still require the same tenant) so each payment lands on its own lease.
+     *
+     * @return array{0: array, 1: array} the adjusted tree and selected entities
+     */
+    private function anchorPaymentsToLease(array $tree, array $selectedEntities): array
+    {
+        if (($tree['payments']['parent'] ?? null) !== 'tenants' || !isset($tree['tenants'])) {
+            return [$tree, $selectedEntities];
+        }
+
+        $anchor = null;
+        if (in_array('invoices', $selectedEntities, true)) {
+            $anchor = 'invoices';
+        } elseif (in_array('units', $selectedEntities, true) || in_array('leases', $selectedEntities, true)) {
+            $anchor = 'units';
+            if (!in_array('units', $selectedEntities, true)) {
+                $selectedEntities[] = 'units';
+            }
+        }
+        if ($anchor === null || !isset($tree[$anchor])) {
+            return [$tree, $selectedEntities];
+        }
+
+        $edge = null;
+        foreach ($this->adjacency()[$anchor] ?? [] as $candidate) {
+            if ($candidate['to'] === 'payments' && !$candidate['custom']) {
+                $edge = $candidate;
+                break;
+            }
+        }
+        if ($edge === null) {
+            return [$tree, $selectedEntities];
+        }
+
+        $tree['payments'] = [
+            'parent' => $anchor,
+            'edge' => $edge,
+            'distance' => max($tree[$anchor]['distance'], $tree['tenants']['distance']) + 1,
+            'tenant_guard' => true,
+        ];
+
+        return [$tree, $selectedEntities];
     }
 
     /**

@@ -10,7 +10,6 @@ use App\Models\LeaseInstallment;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\UnitClearance;
-use App\Models\ExchangeRate;
 use App\Services\AccountingService;
 use App\Services\InvoiceNumberService;
 use App\Services\PaymentReceiptService;
@@ -63,7 +62,7 @@ class PaymentController extends Controller
                 'tenant'         => $c->tenant,
                 'unit'           => $c->unit,
                 'property'       => $c->property,
-                'currency'       => $c->currency ?: ($c->lease?->currency ?: 'TZS'),
+                'currency'       => 'TZS',
                 'deposit_amount' => $dep,
                 'clearance_ref'  => $c->clearance_number,
                 'clearance_date' => $c->finalized_at?->toDateString() ?: $c->scheduled_date,
@@ -83,12 +82,12 @@ class PaymentController extends Controller
                 'tenant'         => $l->tenant,
                 'unit'           => $l->unit,
                 'property'       => $l->property,
-                'currency'       => $l->currency ?: 'TZS',
-                'deposit_amount' => (float) $l->deposit,
+                'currency'       => 'TZS',
+                'deposit_amount' => $this->depositInTzs($l),
                 'clearance_ref'  => null,
                 'clearance_date' => null,
                 'deductions'     => 0,
-                'final_amount'   => (float) $l->deposit,
+                'final_amount'   => $this->depositInTzs($l),
                 'status'         => 'held',
                 'notes'          => null,
             ]);
@@ -173,8 +172,6 @@ class PaymentController extends Controller
             'issue_receipt' => 'nullable|boolean',
             'wht_confirmed' => 'nullable|boolean',
             'wht_reference' => 'nullable|string|max:255',
-            'currency'      => 'nullable|string|in:USD,TZS',
-            'exchange_rate' => 'nullable|numeric|min:0.0001|max:999999.9999',
         ]);
 
         $unit = Unit::findOrFail($data['unit_id']);
@@ -190,46 +187,10 @@ class PaymentController extends Controller
 
         $data['property_id'] = $propertyId;
 
-        // Resolve currency/rate before create so observer posts with correct values.
+        // Payments are always TZS (invoices are TZS; USD lives only on units).
         $data['currency'] = 'TZS';
-        if (!empty($data['invoice_id'])) {
-            if ($invoice) {
-                $data['currency'] = $invoice->currency ?? 'TZS';
-            }
-        } elseif (!empty($request->input('currency'))) {
-            $data['currency'] = strtoupper($request->input('currency'));
-        }
-
-        if (($data['currency'] ?? 'TZS') !== 'TZS') {
-            $customRate = $request->filled('exchange_rate') ? (float) $request->input('exchange_rate') : null;
-            if ($customRate && $customRate > 0) {
-                $rate = round($customRate, 4);
-            } elseif ($invoice && !empty($invoice->exchange_rate) && (float) $invoice->exchange_rate > 0) {
-                $rate = round((float) $invoice->exchange_rate, 4);
-            } else {
-                $rate = ExchangeRate::getRate(
-                    propertyId: null,
-                    fromCurrency: $data['currency'],
-                    toCurrency: 'TZS',
-                    date: $data['paid_date'] ?? now()
-                );
-                if ($rate) {
-                    $rate = round((float) $rate, 4);
-                }
-            }
-
-            if ($rate === null) {
-                return back()->withErrors([
-                    'exchange_rate' => 'Exchange rate not found for ' . $data['currency'] . ' to TZS.',
-                ]);
-            }
-
-            $data['exchange_rate'] = $rate;
-            $data['amount_in_base'] = round((float) $data['amount'] * (float) $rate, 2);
-        } else {
-            $data['exchange_rate'] = 1.0;
-            $data['amount_in_base'] = (float) $data['amount'];
-        }
+        $data['exchange_rate'] = 1.0;
+        $data['amount_in_base'] = (float) $data['amount'];
 
         $issueReceipt = (bool) ($data['issue_receipt'] ?? false);
         $whtConfirmed = (bool) ($data['wht_confirmed'] ?? false);
@@ -346,6 +307,19 @@ class PaymentController extends Controller
         );
 
         return back()->with('success', 'Payment deleted.');
+    }
+
+    /**
+     * Held deposit in TZS: USD-unit leases use the rate typed at approval (display rate as fallback).
+     */
+    private function depositInTzs(\App\Models\Lease $lease): float
+    {
+        $deposit = (float) $lease->deposit;
+        if (strtoupper((string) $lease->currency) !== 'USD') {
+            return $deposit;
+        }
+
+        return round($deposit * (float) ($lease->exchange_rate ?: ($lease->display_rate ?? 0)), 2);
     }
 
     private function reconcileInvoiceStatus(?int $invoiceId): void

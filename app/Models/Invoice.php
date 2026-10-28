@@ -30,6 +30,7 @@ class Invoice extends Model
         'notes',
         'currency',
         'exchange_rate',
+        'usd_rate',
         'total_in_base',
     ];
 
@@ -38,6 +39,7 @@ class Invoice extends Model
         'approval_decided_at' => 'datetime',
         'sent_to_tenant_at' => 'datetime',
         'exchange_rate' => 'float',
+        'usd_rate' => 'float',
         'total_in_base' => 'float',
     ];
 

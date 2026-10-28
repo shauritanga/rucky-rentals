@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
 use App\Services\AccountingService;
-use App\Models\ExchangeRate;
 use App\Models\FuelLog;
 use App\Models\Invoice;
 use App\Models\Payment;
@@ -42,37 +41,20 @@ class SuperuserController extends Controller
                 'units as unit_count_live' => fn($q) => $q->where('approval_status', 'approved'),
                 'units as occupied_units_live' => fn($q) => $q->where('approval_status', 'approved')->whereIn('units.status', ['occupied', 'overdue']),
             ])
-            ->withSum(
-                ['leases as revenue_tzs' => fn($q) => $q
-                    ->whereIn('leases.status', ['active', 'expiring', 'overdue'])
-                    ->where('leases.currency', 'TZS')],
-                'monthly_rent'
-            )
-            ->withSum(
-                ['leases as revenue_usd' => fn($q) => $q
-                    ->whereIn('leases.status', ['active', 'expiring', 'overdue'])
-                    ->where('leases.currency', 'USD')],
-                'monthly_rent'
-            )
             ->orderBy('name')
             ->get()
             ->map(function ($property) {
-                $revTzs = (float) ($property->revenue_tzs ?? 0);
-                $revUsd = (float) ($property->revenue_usd ?? 0);
-
-                // Convert USD portion using the live display rate — same cache key as the
-                // UI header rate badge, so every view of this property shows the same figure.
-                // DO NOT use ExchangeRate::getRate() here — it reads the DB first, which may
-                // contain a stale manually-entered rate that differs from the live rate.
-                $usdRate = ($revUsd > 0) ? ExchangeRate::getLiveRate('USD', 'TZS') : 0;
-
-                $property->monthly_revenue_tzs = $revTzs + ($revUsd * $usdRate);
+                // Revenue = TZS collected this month (payments are always TZS).
+                $property->monthly_revenue_tzs = (float) Payment::where('status', 'paid')
+                    ->where('property_id', $property->id)
+                    ->whereRaw('COALESCE(paid_date, DATE(created_at)) BETWEEN ? AND ?', [
+                        now()->startOfMonth()->toDateString(),
+                        now()->endOfMonth()->toDateString(),
+                    ])
+                    ->sum('amount_in_base');
 
                 $property->unit_count     = (int) ($property->unit_count_live    ?? 0);
                 $property->occupied_units = (int) ($property->occupied_units_live ?? 0);
-
-                // Remove raw currency parts — frontend must never convert financial amounts
-                unset($property->revenue_tzs, $property->revenue_usd);
 
                 return $property;
             });
@@ -542,9 +524,11 @@ class SuperuserController extends Controller
             'date'    => now()->format('d M Y'),
             'text'    => $message,
         ];
+        app(LeaseController::class)->requireDepositRate($lease, $request->input('deposit_rate'));
         $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
 
         app(LeaseController::class)->ensureInstallmentsGenerated($lease->fresh());
+        app(LeaseController::class)->rebalanceUnit($lease->fresh());
 
         // Notify the property manager
         $manager = $lease->unit?->property?->manager;

@@ -34,7 +34,9 @@ function MultiSelectDropdown({ options: staticOptions, entity, field, selected, 
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState(staticOptions ?? null);
   const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
   const ref = useRef(null);
+  const searchSeq = useRef(0);
 
   useEffect(() => {
     function onClickOutside(e) {
@@ -47,7 +49,8 @@ function MultiSelectDropdown({ options: staticOptions, entity, field, selected, 
   async function handleToggle() {
     const next = !open;
     setOpen(next);
-    if (next && options === null) {
+    if (next) setSearch('');
+    if (next && (options === null || !staticOptions)) {
       setLoading(true);
       try {
         const { data } = await axios.get(route('reports.builder.column-options'), { params: { entity, field } });
@@ -59,6 +62,27 @@ function MultiSelectDropdown({ options: staticOptions, entity, field, selected, 
       }
     }
   }
+
+  // Static option lists (e.g. statuses) filter client-side; DB-backed lists are re-queried so
+  // values beyond the first page of results can still be found by typing.
+  async function handleSearch(text) {
+    setSearch(text);
+    if (staticOptions) return;
+    const seq = ++searchSeq.current;
+    setLoading(true);
+    try {
+      const { data } = await axios.get(route('reports.builder.column-options'), { params: { entity, field, q: text } });
+      if (seq === searchSeq.current) setOptions(data.options || []);
+    } catch {
+      if (seq === searchSeq.current) setOptions([]);
+    } finally {
+      if (seq === searchSeq.current) setLoading(false);
+    }
+  }
+
+  const visibleOptions = staticOptions && search
+    ? (options ?? []).filter((o) => String(o).toLowerCase().includes(search.toLowerCase()))
+    : (options ?? []);
 
   function toggleOption(opt) {
     onChange(selected.includes(opt) ? selected.filter((o) => o !== opt) : [...selected, opt]);
@@ -85,9 +109,17 @@ function MultiSelectDropdown({ options: staticOptions, entity, field, selected, 
             boxShadow: 'var(--shadow-float)', maxHeight: 200, overflowY: 'auto', padding: 6,
           }}
         >
+          <input
+            className="form-input"
+            style={{ marginBottom: 6 }}
+            placeholder="Search…"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            autoFocus
+          />
           {loading && <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 6px' }}>Loading…</div>}
-          {!loading && (options ?? []).length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 6px' }}>No values found.</div>}
-          {!loading && (options ?? []).map((opt) => (
+          {!loading && visibleOptions.length === 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 6px' }}>No values found.</div>}
+          {!loading && visibleOptions.map((opt) => (
             <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '4px 6px', cursor: 'pointer' }}>
               <input type="checkbox" checked={selected.includes(opt)} onChange={() => toggleOption(opt)} />
               {opt}

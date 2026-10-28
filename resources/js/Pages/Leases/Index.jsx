@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
-import useExchangeRate, { formatExchangeRate } from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 const CURRENCY_FALLBACK = 'USD';
@@ -38,9 +37,16 @@ function resolveCurrency(currency) {
   return ['USD', 'TZS'].includes(normalized) ? normalized : CURRENCY_FALLBACK;
 }
 
+// USD exists only on the unit. Where a lease form shows the unit's USD basis it has no symbol;
+// everything else shows TZS via leaseTzs() below.
+const plainBasis = (amount) => Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const leaseIsUsd = (lease) => resolveCurrency(lease?.currency || lease?.unit?.currency) === 'USD';
+
 function formatMoney(amount, currency = CURRENCY_FALLBACK) {
   if (amount == null || Number.isNaN(Number(amount))) return '—';
   const code = resolveCurrency(currency);
+  if (code === 'USD') return plainBasis(amount);
   const noDecimals = code === 'TZS';
 
   return new Intl.NumberFormat('en-US', {
@@ -58,6 +64,7 @@ function formatMoney(amount, currency = CURRENCY_FALLBACK) {
 function formatMoneyPrecise(amount, currency = CURRENCY_FALLBACK) {
   if (amount == null || Number.isNaN(Number(amount))) return '—';
   const code = resolveCurrency(currency);
+  if (code === 'USD') return plainBasis(amount);
 
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -78,6 +85,15 @@ function formatCompactMoney(amount, currency = CURRENCY_FALLBACK) {
   if (abs >= 1_000) return `${code} ${(value / 1_000).toFixed(0)}k`;
 
   return formatMoney(value, code);
+}
+
+// A lease amount in TZS. A USD-unit lease uses the rate typed on its latest proforma (or the
+// deposit rate typed at approval); until one exists there is no TZS figure to show.
+function leaseTzs(amount, lease) {
+  if (amount == null || Number.isNaN(Number(amount))) return '—';
+  if (!leaseIsUsd(lease)) return formatMoney(amount, 'TZS');
+  const rate = Number(lease?.display_rate);
+  return rate > 0 ? formatMoney(Number(amount) * rate, 'TZS') : '—';
 }
 
 function fmtDateShort(dateStr) {
@@ -139,7 +155,7 @@ function buildPaymentSchedule(lease, isPending) {
   const end = new Date(`${lease?.end_date}T00:00:00`);
   const cycle = Number(lease?.payment_cycle) || 3;
   const monthlyRent = Number(lease?.monthly_rent) || 0;
-  const unitServiceCharge = Number(lease?.unit?.service_charge) || 0;
+  const unitServiceCharge = Number(lease?.monthly_service_charge ?? lease?.unit?.service_charge) || 0;
   const monthlyTotal = monthlyRent + unitServiceCharge;
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
@@ -191,7 +207,6 @@ function buildPaymentSchedule(lease, isPending) {
 export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const { props } = usePage();
   const user = props?.auth?.user;
-  const { fxRate: liveFxRate } = useExchangeRate();
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
@@ -219,7 +234,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     possession_date:'2026-04-01', rent_start_date:'2026-04-01', fitout_enabled:false, fitout_to_date:'', fitout_days:0,
     wht_rate:10, service_charge_rate:5, vat_rate:LEASE_VAT_RATE,
-    exchange_rate:'',
   });
 
   useEffect(() => {
@@ -322,12 +336,10 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     return leases
       .filter(l => !l.status || ['active', 'expiring', 'overdue'].includes(l.status))
       .reduce((sum, lease) => {
-        const currency = resolveCurrency(lease.currency || lease.unit?.currency);
-        const rate = Number(lease.exchange_rate || liveFxRate || 1);
-        const rentTzs = currency === 'USD' ? Number(lease.monthly_rent || 0) * rate : Number(lease.monthly_rent || 0);
-        return sum + rentTzs;
+        const rate = leaseIsUsd(lease) ? Number(lease.display_rate) || 0 : 1;
+        return sum + Number(lease.monthly_rent || 0) * rate;
       }, 0);
-  }, [leases, liveFxRate]);
+  }, [leases]);
 
   const annualContractValueTzs = useMemo(() => monthlyRevenueTzs * 12, [monthlyRevenueTzs]);
 
@@ -390,7 +402,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       monthly_rent: '',
       deposit: '',
       terms: '',
-      exchange_rate: '',
     }));
     setEditingLeaseId(null);
     setShowModal(true);
@@ -426,7 +437,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       fitout_enabled: !!lease.fitout_enabled,
       fitout_to_date: lease.fitout_to_date || '',
       fitout_days: lease.fitout_days || 0,
-      exchange_rate: lease.exchange_rate != null ? String(lease.exchange_rate) : (leaseCurrency === 'USD' && liveFxRate ? String(liveFxRate) : ''),
     }));
     setShowModal(true);
   };
@@ -446,20 +456,17 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       const splitRent = u ? u.rent / shares : '';
       const splitServiceCharge = u ? (u.service_charge ?? 0) / shares : 0;
       const autoDeposit = u ? (splitRent * depositRentMonths) + (splitServiceCharge * depositScMonths) : '';
-      const nextRate = uCurrency === 'USD'
-        ? (d.exchange_rate || (liveFxRate ? String(liveFxRate) : ''))
-        : '';
       return {
         ...d,
         unit_id: unitId,
         monthly_rent: splitRent,
         deposit: autoDeposit,
-        exchange_rate: nextRate,
       };
     });
   };
 
-  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
+  const [depositRate, setDepositRate] = useState('');
+  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action, deposit_rate: depositRate || null }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
 
   const openFitoutEdit = () => {
     setFitoutEditEnabled(!!selected?.fitout_enabled);
@@ -497,9 +504,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       setTenantSearch('');
       setShowTenantDropdown(false);
     };
-    const rateNum = selectedUnitCurrency === 'USD' && data.exchange_rate
-      ? Number(data.exchange_rate)
-      : null;
     if (editingLeaseId) {
       router.patch(`/leases/${editingLeaseId}`, {
         action: 'edit',
@@ -520,7 +524,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
         vat_rate: LEASE_VAT_RATE,
         terms: data.terms,
-        exchange_rate: rateNum,
       }, { onSuccess: closeModal });
       return;
     }
@@ -535,7 +538,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       wht_rate: Number(rentWhtRate === '' ? 0 : rentWhtRate),
       service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
       vat_rate: LEASE_VAT_RATE,
-      exchange_rate: rateNum,
     }, { onSuccess: closeModal });
   };
 
@@ -562,7 +564,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       monthly_rent: lease.monthly_rent || '',
       deposit: lease.deposit || '',
       terms: lease.terms || '',
-      exchange_rate: lease.exchange_rate != null ? String(lease.exchange_rate) : (leaseCurrency === 'USD' && liveFxRate ? String(liveFxRate) : ''),
     }));
     setPossessionDate(lease.end_date || lease.start_date || '2026-04-01');
     setRentStartDate(lease.end_date || lease.start_date || '2026-04-01');
@@ -616,14 +617,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{formatDisplayDate(l.end_date)}</td>
                 <td><span className={`lease-cycle-pill c${l.payment_cycle}`}>{CYCLE_LABELS[l.payment_cycle]}</span></td>
                 <td style={{fontWeight:600}}>
-                  {formatMoney(l.monthly_rent, l.currency || l.unit?.currency)}
-                  {resolveCurrency(l.currency || l.unit?.currency) === 'USD' && l.exchange_rate && (
-                    <div style={{fontSize:'10.5px',color:'var(--text-muted)',fontWeight:400,marginTop:2}}>
-                      ≈ TZS {Math.round(Number(l.monthly_rent || 0) * Number(l.exchange_rate)).toLocaleString('en-US')}
-                    </div>
-                  )}
+                  {leaseTzs(l.monthly_rent, l)}
                 </td>
-                <td style={{fontWeight:600}}>{formatMoney(l.unit?.service_charge ?? 0, l.currency || l.unit?.currency)}</td>
+                <td style={{fontWeight:600}}>{leaseTzs(l.monthly_service_charge ?? l.unit?.service_charge ?? 0, l)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
                   {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':(l.status==='pending_accountant'||l.status==='pending_pm')?'⏳ Pending':l.status==='rejected'?'✕ Rejected':'—'}
                 </td>
@@ -676,6 +672,12 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                       <>
                         <div className="apv-banner-title">Awaiting Superuser Approval</div>
                         <div className="apv-banner-sub">This lease is pending approval. Only the superuser can approve or reject leases.</div>
+                        {user?.role === 'superuser' && leaseIsUsd(selected) && Number(selected.deposit) > 0 && (
+                          <div className="form-group" style={{ margin: '10px 0' }}>
+                            <label className="form-label">Exchange rate to book the security deposit (USD → TZS) *</label>
+                            <input className="form-input" type="number" step="0.0001" min="0.0001" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
+                          </div>
+                        )}
                         {user?.role === 'superuser' && (
                           <div className="apv-banner-actions">
                             <button className="apv-btn-approve" onClick={() => approve(selected, 'approve_superuser')}>Approve</button>
@@ -718,29 +720,11 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <div className="kv-grid ldr-kv-grid">
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Status</div><div className={`kv-value ldr-kv-value ${STATUS_KV_MAP[selected.status] || ''}`}>{STATUS_LABEL_MAP[selected.status] || selected.status}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Payment Cycle</div><div className="kv-value ldr-kv-value" style={{fontSize:'12.5px'}}>{CYCLE_PAYMENTS[selected.payment_cycle] || `${selected.payment_cycle} months`}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{formatMoney(selected.monthly_rent, selectedLeaseCurrency)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Service Charge</div><div className="kv-value ldr-kv-value">{formatMoney(selected.unit?.service_charge ?? 0, selectedLeaseCurrency)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{formatMoney((Number(selected.monthly_rent || 0) + Number(selected.unit?.service_charge || 0)) * Number(selected.payment_cycle || 1), selectedLeaseCurrency)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{formatMoney(selected.monthly_rent * 12, selectedLeaseCurrency)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{formatMoney(selected.deposit, selectedLeaseCurrency)}</div></div>
-                  {selectedLeaseCurrency === 'USD' && (
-                    <>
-                      <div className="kv ldr-kv">
-                        <div className="kv-label ldr-kv-label">Exchange Rate</div>
-                        <div className="kv-value ldr-kv-value" style={{fontWeight:600}}>
-                          {selected.exchange_rate ? `1 USD = ${formatExchangeRate(selected.exchange_rate)} TZS` : '—'}
-                        </div>
-                      </div>
-                      {selected.exchange_rate ? (
-                        <div className="kv ldr-kv">
-                          <div className="kv-label ldr-kv-label">Rent in TZS</div>
-                          <div className="kv-value ldr-kv-value" style={{color:'var(--text-secondary)'}}>
-                            TZS {Math.round(Number(selected.monthly_rent || 0) * Number(selected.exchange_rate)).toLocaleString('en-US')}
-                          </div>
-                        </div>
-                      ) : null}
-                    </>
-                  )}
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.monthly_rent, selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Service Charge</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.monthly_service_charge ?? selected.unit?.service_charge ?? 0, selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{leaseTzs((Number(selected.monthly_rent || 0) + Number(selected.monthly_service_charge ?? selected.unit?.service_charge ?? 0)) * Number(selected.payment_cycle || 1), selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.monthly_rent * 12, selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.deposit, selected)}</div></div>
                 </div>
               </div>
 
@@ -805,7 +789,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                           <td style={{color:'var(--text-muted)',fontSize:'12px'}}>{row.installNum}</td>
                           <td style={{fontWeight:600,fontSize:'13px'}}>{row.dueDate}</td>
                           <td style={{fontSize:'12px',color:'var(--text-muted)'}}>{row.period}</td>
-                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{formatMoney(row.amount, selectedLeaseCurrency)}</td>
+                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{leaseTzs(row.amount, selected)}</td>
                           <td>
                             <span style={{fontSize:'11.5px',fontWeight:600,color:row.status==='paid'?'var(--green)':row.status==='overdue'?'var(--red)':row.status==='partially_paid'?'var(--amber)':row.status==='upcoming'?'var(--amber)':row.status==='unpaid'?'var(--text-secondary)':'var(--text-muted)'}}>
                               {row.status === 'paid'
@@ -1099,57 +1083,15 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 </div>
               )}
               <div className="form-row">
-                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{`Monthly Rent (${selectedUnitCurrency}) *`} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><input className="form-input" type="number" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
-                <div className="form-group"><label className="form-label">{`Security Deposit (${selectedUnitCurrency})`}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
+                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{selectedUnitCurrency === 'USD' ? 'Monthly Rent (unit rate basis) *' : 'Monthly Rent (TZS) *'} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><input className="form-input" type="number" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
+                <div className="form-group"><label className="form-label">{selectedUnitCurrency === 'USD' ? 'Security Deposit (unit rate basis)' : 'Security Deposit (TZS)'}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
+                {selectedUnitCurrency === 'USD' && (
+                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
+                    This unit is priced in USD. The lease is shown in TZS once a proforma is created with the day's exchange rate.
+                  </div>
+                )}
               </div>
 
-              {selectedUnitCurrency === 'USD' && (
-                <div className="form-row">
-                  <div className="form-group" style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                      <label className="form-label" style={{ margin: 0 }}>Exchange Rate (USD → TZS) *</label>
-                      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                        {liveFxRate ? (
-                          <button
-                            type="button"
-                            onClick={() => setData('exchange_rate', String(liveFxRate))}
-                            style={{
-                              border: 'none',
-                              background: 'none',
-                              padding: 0,
-                              color: 'var(--accent)',
-                              fontSize: 11,
-                              cursor: 'pointer',
-                              textDecoration: 'underline',
-                            }}
-                          >
-                            Live rate ({formatExchangeRate(liveFxRate)})
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                    <input
-                      className="form-input"
-                      type="number"
-                      step="0.0001"
-                      min="0.0001"
-                      value={data.exchange_rate}
-                      onChange={(e) => setData('exchange_rate', e.target.value)}
-                      placeholder={liveFxRate ? String(liveFxRate) : 'e.g. 2650.0000'}
-                      required
-                    />
-                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
-                      {Number(data.exchange_rate) > 0 ? (
-                        <span>
-                          Agreed lease rate: <strong>1 USD = {formatExchangeRate(Number(data.exchange_rate))} TZS</strong> (up to 4 decimals)
-                        </span>
-                      ) : (
-                        <span>Agreed exchange rate for this lease. Invoices created from this lease will use this rate.</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Rent WHT (%)</label><input className="form-input" type="number" inputMode="decimal" min="0" max="100" value={rentWhtRate} onChange={e=>setRentWhtRate(e.target.value)} /></div>
@@ -1176,26 +1118,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                     <div className="nl-summary-row">
                       <span style={{color:'var(--amber)'}}>First invoice SC extra days</span>
                       <strong style={{color:'var(--amber)'}}>{`${summary.fitoutDays} days · SC ${formatMoneyPrecise(summary.fitoutExtraSC, selectedUnitCurrency)} + VAT ${formatMoneyPrecise(summary.fitoutExtraVAT, selectedUnitCurrency)}`}</strong>
-                    </div>
-                  )}
-                  {selectedUnitCurrency === 'USD' && (Number(data.exchange_rate) > 0 || liveFxRate) && (
-                    <div style={{marginTop:8,paddingTop:8,borderTop:'1px dashed var(--border)',fontSize:12.5}}>
-                      <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',marginBottom:4}}>
-                        <span>Exchange Rate</span>
-                        <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(Number(data.exchange_rate) || liveFxRate)} TZS</span>
-                      </div>
-                      <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-secondary)',marginBottom:3}}>
-                        <span>Monthly Net in TZS</span>
-                        <strong style={{color:'var(--text-primary)'}}>TZS {Math.round(summary.net * (Number(data.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
-                      </div>
-                      <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-secondary)',marginBottom:3}}>
-                        <span>Instalment in TZS ({summary.cycle} mo)</span>
-                        <strong style={{color:'var(--accent)'}}>TZS {Math.round(summary.instalment * (Number(data.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
-                      </div>
-                      <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-secondary)'}}>
-                        <span>Annual Value in TZS</span>
-                        <strong>TZS {Math.round(summary.annual * (Number(data.exchange_rate) || liveFxRate)).toLocaleString('en-US')}</strong>
-                      </div>
                     </div>
                   )}
                 </div>

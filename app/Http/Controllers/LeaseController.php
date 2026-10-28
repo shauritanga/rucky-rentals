@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ExchangeRate;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
@@ -130,7 +129,6 @@ class LeaseController extends Controller
             'payment_cycle'   => 'required|integer|in:3,4,6,12',
             'monthly_rent'    => 'required|numeric',
             'deposit'         => 'nullable|numeric',
-            'exchange_rate'   => 'nullable|numeric|min:0.0001|max:999999.9999',
             'terms'           => 'nullable|string',
         ]);
 
@@ -215,9 +213,6 @@ class LeaseController extends Controller
             'duration_months' => $validated['duration_months'],
             'payment_cycle' => $validated['payment_cycle'],
             'currency' => $unit->currency ?: 'USD',
-            'exchange_rate' => ($unit->currency ?: 'USD') === 'USD'
-                ? (!empty($validated['exchange_rate']) ? round((float) $validated['exchange_rate'], 4) : null)
-                : null,
             'possession_date' => $validated['possession_date'] ?? $validated['start_date'],
             'rent_start_date' => $validated['rent_start_date'] ?? $validated['start_date'],
             'fitout_enabled' => (bool) ($validated['fitout_enabled'] ?? false),
@@ -227,6 +222,7 @@ class LeaseController extends Controller
             'service_charge_rate' => (float) ($validated['service_charge_rate'] ?? 5),
             'vat_rate' => (float) ($validated['vat_rate'] ?? 18),
             'monthly_rent' => $validated['monthly_rent'],
+            'service_charge' => round((float) ($unit->service_charge ?? 0) / (Lease::where('unit_id', $unit->id)->whereIn('status', ['active', 'expiring', 'overdue'])->count() + 1), 2),
             'deposit' => $validated['deposit'] ?? (function () use ($validated, $unit) {
                 $rentMonths = (float) SystemSetting::get('deposit_rent_months', 1);
                 $scMonths   = (float) SystemSetting::get('deposit_service_charge_months', 1);
@@ -247,6 +243,7 @@ class LeaseController extends Controller
             if ($lease->status === 'active') {
                 $this->ensureInstallmentsGenerated($lease->fresh());
                 $this->postDepositEntry($lease->fresh());
+                $this->rebalanceUnit($lease->fresh());
             }
         });
 
@@ -276,7 +273,7 @@ class LeaseController extends Controller
             ? 'Lease created and approved.'
             : 'Lease created and submitted for approval.';
 
-        return back()->with('success', $message);
+        return back()->with('success', $message . $this->rebalanceNote);
     }
 
     public function update(Request $request, Lease $lease)
@@ -299,30 +296,36 @@ class LeaseController extends Controller
                 'date' => now()->toDateString(),
                 'text' => 'Approved by superuser.',
             ];
+            $this->requireDepositRate($lease, $request->input('deposit_rate'));
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
                 $this->postDepositEntry($lease->fresh());
+                $this->rebalanceUnit($lease->fresh());
             });
         } elseif ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
             // Only superuser can approve
             abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 1, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
+            $this->requireDepositRate($lease, $request->input('deposit_rate'));
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
                 $this->postDepositEntry($lease->fresh());
+                $this->rebalanceUnit($lease->fresh());
             });
         } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
             // Only superuser can approve
             abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 2, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
+            $this->requireDepositRate($lease, $request->input('deposit_rate'));
             DB::transaction(function () use ($lease, $log) {
                 $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
                 $this->ensureInstallmentsGenerated($lease->fresh());
                 $this->postDepositEntry($lease->fresh());
+                $this->rebalanceUnit($lease->fresh());
             });
         } elseif ($action === 'reject') {
             $log = json_decode($lease->approval_log, true) ?? [];
@@ -360,6 +363,8 @@ class LeaseController extends Controller
                     $unit = Unit::find($lease->unit_id);
                     if ($unit && !$unit->hasOtherActiveLeases()) {
                         $unit->update(['status' => 'vacant']);
+                    } elseif ($unit) {
+                        $this->rebalanceUnit(null, $unit);
                     }
                 }
             });
@@ -387,7 +392,6 @@ class LeaseController extends Controller
                 'wht_rate'        => 'nullable|numeric|min:0|max:100',
                 'service_charge_rate' => 'nullable|numeric|min:0|max:100',
                 'vat_rate'        => 'nullable|numeric|min:0|max:100',
-                'exchange_rate'   => 'nullable|numeric|min:0.0001|max:999999.9999',
                 'terms'           => 'nullable|string',
             ]);
 
@@ -398,15 +402,6 @@ class LeaseController extends Controller
                 $newUnitId     = $editData['unit_id'];
                 $oldDeposit    = (float) $lease->deposit;
                 $wasActive     = in_array($lease->status, ['active', 'expiring', 'overdue']);
-
-                $targetCurrency = $lease->currency ?: 'USD';
-                if ($targetCurrency === 'USD') {
-                    $editData['exchange_rate'] = !empty($editData['exchange_rate'])
-                        ? round((float) $editData['exchange_rate'], 4)
-                        : null;
-                } else {
-                    $editData['exchange_rate'] = null;
-                }
 
                 $lease->update($editData);
 
@@ -456,7 +451,7 @@ class LeaseController extends Controller
             propertyId: $lease->property_id ? (int) $lease->property_id : null,
         );
 
-        return back()->with('success', 'Lease updated.');
+        return back()->with('success', 'Lease updated.' . $this->rebalanceNote);
     }
 
     /**
@@ -565,6 +560,8 @@ class LeaseController extends Controller
                 $unit = \App\Models\Unit::find($unitId);
                 if ($unit && !$unit->hasOtherActiveLeases()) {
                     $unit->update(['status' => 'vacant']);
+                } elseif ($unit) {
+                    $this->rebalanceUnit(null, $unit);
                 }
             }
         });
@@ -578,7 +575,7 @@ class LeaseController extends Controller
             propertyId: $propertyId ? (int) $propertyId : null,
         );
 
-        return back()->with('success', 'Lease terminated.');
+        return back()->with('success', 'Lease terminated.' . $this->rebalanceNote);
     }
 
     private function voidDepositEntry(Lease $lease): void
@@ -589,20 +586,34 @@ class LeaseController extends Controller
         );
     }
 
+    /**
+     * A USD-unit lease needs the deposit's TZS rate typed at approval (stored on the lease).
+     */
+    public function requireDepositRate(Lease $lease, $typedRate): void
+    {
+        if (strtoupper((string) ($lease->currency ?? 'TZS')) !== 'USD' || (float) ($lease->deposit ?? 0) <= 0) {
+            return;
+        }
+
+        if (empty($typedRate) || (float) $typedRate <= 0) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'deposit_rate' => 'Enter the current USD → TZS rate to book this lease\'s security deposit.',
+            ]);
+        }
+
+        $lease->update(['exchange_rate' => round((float) $typedRate, 4)]);
+    }
+
     private function postDepositEntry(Lease $lease): void
     {
         $deposit = (float) ($lease->deposit ?? 0);
         if ($deposit <= 0) return;
 
-        $currency = strtoupper((string) ($lease->currency ?? 'TZS'));
-        $depositTzs = $currency === 'TZS'
-            ? $deposit
-            : round($deposit * ExchangeRate::getRate(
-                propertyId: null,
-                fromCurrency: $currency,
-                toCurrency: 'TZS',
-                date: $lease->start_date,
-              ), 2);
+        // USD-unit leases book the deposit in TZS at the rate typed at approval.
+        $isUsd = strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD';
+        $depositTzs = $isUsd
+            ? round($deposit * (float) $lease->exchange_rate, 2)
+            : $deposit;
 
         app(AccountingAutoPoster::class)->post(
             propertyId: $lease->property_id,
@@ -626,6 +637,30 @@ class LeaseController extends Controller
         $query->where($column, $propertyId);
     }
 
+    private ?string $rebalanceNote = null;
+
+    /** Re-split a unit's rent/service charge across its running leases and remember what changed. */
+    public function rebalanceUnit(?Lease $activating, ?Unit $unit = null): void
+    {
+        $unit ??= $activating?->unit;
+        if (!$unit) {
+            return;
+        }
+
+        $r = app(\App\Services\LeaseShareRebalancer::class)->rebalance($unit, $activating);
+        $parts = [];
+        if ($r['updated']) {
+            $parts[] = 'Shares rebalanced for ' . implode(', ', $r['updated']) . ' from the next unbilled installment.';
+        }
+        if ($r['skipped']) {
+            $parts[] = 'Not changed (custom rent): ' . implode(', ', $r['skipped']) . '.';
+        }
+        if ($r['proformas']) {
+            $parts[] = 'Re-issue proforma ' . implode(', ', $r['proformas']) . '.';
+        }
+        $this->rebalanceNote = $parts ? ' ' . implode(' ', $parts) : null;
+    }
+
     public function ensureInstallmentsGenerated(Lease $lease): void
     {
         if ($lease->installments()->exists()) {
@@ -635,7 +670,7 @@ class LeaseController extends Controller
         $lease->loadMissing('unit');
         $cycleMonths = (int) ($lease->payment_cycle ?: 1);
         $monthlyRent = (float) ($lease->monthly_rent ?: 0);
-        $monthlyServiceCharge = (float) ($lease->unit?->service_charge ?: 0);
+        $monthlyServiceCharge = (float) $lease->monthly_service_charge;
         $monthlyTotal = $monthlyRent + $monthlyServiceCharge;
         $currency = in_array(strtoupper((string) $lease->currency), ['USD', 'TZS'], true)
             ? strtoupper((string) $lease->currency)

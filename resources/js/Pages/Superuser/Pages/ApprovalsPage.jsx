@@ -19,6 +19,15 @@ function fmt(amount, currency = 'TZS') {
     return currency + ' ' + Number(amount).toLocaleString();
 }
 
+// USD exists only on the unit; a USD-unit lease is shown in TZS via the rate typed on its proformas.
+function fmtLease(amount, lease) {
+    if (amount == null) return '—';
+    const currency = String(lease?.currency || lease?.unit?.currency || 'TZS').toUpperCase();
+    if (currency !== 'USD') return fmt(amount, 'TZS');
+    const rate = Number(lease?.display_rate);
+    return rate > 0 ? fmt(Math.round(Number(amount) * rate), 'TZS') : '—';
+}
+
 function invoiceTotal(items = []) {
     return (items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
 }
@@ -190,13 +199,15 @@ function Detail({ label, value, sub }) {
     );
 }
 
-function DecisionModal({ open, action, subject, context, onClose, onConfirm, submitting }) {
+function DecisionModal({ open, action, subject, context, needsDepositRate = false, onClose, onConfirm, submitting }) {
     const [message, setMessage] = useState('');
+    const [depositRate, setDepositRate] = useState('');
     const isReject = action === 'reject';
-    const isValid = isReject ? message.trim().length >= 5 : true;
+    const rateOk = !needsDepositRate || isReject || Number(depositRate) > 0;
+    const isValid = (isReject ? message.trim().length >= 5 : true) && rateOk;
 
-    const handleClose = () => { setMessage(''); onClose(); };
-    const handleConfirm = () => { onConfirm(message.trim()); setMessage(''); };
+    const handleClose = () => { setMessage(''); setDepositRate(''); onClose(); };
+    const handleConfirm = () => { onConfirm(message.trim(), depositRate); setMessage(''); setDepositRate(''); };
 
     return (
         <div className={`modal-overlay ${open ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && handleClose()}>
@@ -212,6 +223,12 @@ function DecisionModal({ open, action, subject, context, onClose, onConfirm, sub
                             : <><strong style={{ color: 'var(--green)' }}>Approving</strong> {context}. The requester will be notified where notifications are configured.</>
                         }
                     </p>
+                    {needsDepositRate && !isReject && (
+                        <div className="form-group">
+                            <label className="form-label" style={{ marginBottom: 5 }}>Exchange rate to book the security deposit (USD → TZS) *</label>
+                            <input className="form-input" type="number" step="0.0001" min="0.0001" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
+                        </div>
+                    )}
                     <div className="form-group">
                         <label className="form-label" style={{ marginBottom: 5 }}>
                             {isReject ? 'Reason for rejection *' : 'Approval note (optional)'}
@@ -327,10 +344,10 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
                                     <Detail label="Payment Cycle" value={`${item.payment_cycle ?? '—'} month(s)`} />
                                     <Detail label="Duration" value={`${item.duration_months ?? '—'} months`} />
-                                    <Detail label="Monthly Rent" value={fmt(item.monthly_rent, leaseCurrency)} />
-                                    <Detail label="Instalment" value={fmt(leaseMoney.instalment, leaseCurrency)} sub={`Every ${item.payment_cycle ?? '—'} month(s)`} />
-                                    <Detail label="Annual Value" value={fmt(leaseMoney.annual, leaseCurrency)} sub="Including VAT" />
-                                    <Detail label="Security Deposit" value={item.deposit ? fmt(item.deposit, leaseCurrency) : '—'} />
+                                    <Detail label="Monthly Rent" value={fmtLease(item.monthly_rent, item)} />
+                                    <Detail label="Instalment" value={fmtLease(leaseMoney.instalment, item)} sub={`Every ${item.payment_cycle ?? '—'} month(s)`} />
+                                    <Detail label="Annual Value" value={fmtLease(leaseMoney.annual, item)} sub="Including VAT" />
+                                    <Detail label="Security Deposit" value={item.deposit ? fmtLease(item.deposit, item) : '—'} />
                                     <Detail label="Possession Date" value={formatDate(item.possession_date)} />
                                     <Detail label="Rent Start Date" value={formatDate(item.rent_start_date ?? item.start_date)} />
                                     <Detail label="Lease Start" value={formatDate(item.start_date)} />
@@ -341,14 +358,14 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                             <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: 16, marginBottom: 16 }}>
                                 <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>Charges & Taxes</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
-                                    <Detail label="Service Charge" value={fmt(leaseMoney.serviceCharge, leaseCurrency)} sub="Unit flat rate" />
-                                    <Detail label="Subtotal" value={fmt(leaseMoney.subtotal, leaseCurrency)} />
-                                    <Detail label={`VAT (${leaseMoney.vatRate}%)`} value={fmt(leaseMoney.vat, leaseCurrency)} />
-                                    <Detail label="Gross Total / Month" value={fmt(leaseMoney.gross, leaseCurrency)} />
-                                    <Detail label={`Rent WHT (${leaseMoney.rentWhtRate}%)`} value={fmt(leaseMoney.rentWht, leaseCurrency)} />
-                                    <Detail label={`Service Charge WHT (${leaseMoney.serviceChargeWhtRate}%)`} value={fmt(leaseMoney.serviceChargeWht, leaseCurrency)} />
-                                    <Detail label="WHT Remittable / Month" value={fmt(leaseMoney.wht, leaseCurrency)} />
-                                    <Detail label="Net Payable / Month" value={fmt(leaseMoney.net, leaseCurrency)} />
+                                    <Detail label="Service Charge" value={fmtLease(leaseMoney.serviceCharge, item)} sub="Unit flat rate" />
+                                    <Detail label="Subtotal" value={fmtLease(leaseMoney.subtotal, item)} />
+                                    <Detail label={`VAT (${leaseMoney.vatRate}%)`} value={fmtLease(leaseMoney.vat, item)} />
+                                    <Detail label="Gross Total / Month" value={fmtLease(leaseMoney.gross, item)} />
+                                    <Detail label={`Rent WHT (${leaseMoney.rentWhtRate}%)`} value={fmtLease(leaseMoney.rentWht, item)} />
+                                    <Detail label={`Service Charge WHT (${leaseMoney.serviceChargeWhtRate}%)`} value={fmtLease(leaseMoney.serviceChargeWht, item)} />
+                                    <Detail label="WHT Remittable / Month" value={fmtLease(leaseMoney.wht, item)} />
+                                    <Detail label="Net Payable / Month" value={fmtLease(leaseMoney.net, item)} />
                                 </div>
                             </div>
 
@@ -358,7 +375,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                     <Detail label="Fit-Out" value={item.fitout_enabled ? 'Enabled' : 'None'} />
                                     <Detail label="Fit-Out Until" value={item.fitout_enabled ? formatDate(item.fitout_to_date) : '—'} />
                                     <Detail label="Fit-Out Days" value={item.fitout_enabled ? `${item.fitout_days || 0} days` : '—'} />
-                                    <Detail label="Service Charge During Fit-Out" value={item.fitout_enabled ? fmt(leaseMoney.fitoutExtraSC, leaseCurrency) : '—'} sub={item.fitout_enabled ? `VAT ${fmt(leaseMoney.fitoutExtraVAT, leaseCurrency)}` : null} />
+                                    <Detail label="Service Charge During Fit-Out" value={item.fitout_enabled ? fmtLease(leaseMoney.fitoutExtraSC, item) : '—'} sub={item.fitout_enabled ? `VAT ${fmtLease(leaseMoney.fitoutExtraVAT, item)}` : null} />
                                 </div>
                             </div>
 
@@ -392,7 +409,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                                         <td>{row.installNum}</td>
                                                         <td>{row.dueDate}</td>
                                                         <td>{row.period}</td>
-                                                        <td style={{ fontWeight: 600 }}>{fmt(row.amount, leaseCurrency)}</td>
+                                                        <td style={{ fontWeight: 600 }}>{fmtLease(row.amount, item)}</td>
                                                         <td style={{ textTransform: 'capitalize' }}>{String(row.status || 'scheduled').replace('_', ' ')}</td>
                                                     </tr>
                                                 ))}
@@ -516,7 +533,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                 <Detail label="Due" value={formatDate(item.due_date)} />
                                 <Detail label="Period" value={item.period ?? '—'} />
                                 <Detail label="Requested By" value={item.requested_by?.name ?? '—'} sub={item.requested_by?.email ?? '—'} />
-                                <Detail label="Lease" value={item.lease?.lease_number ?? 'Manual invoice'} sub={item.lease ? `${fmt(item.lease?.monthly_rent, item.lease?.currency)} · Cycle ${item.lease?.payment_cycle ?? '—'} month(s)` : null} />
+                                <Detail label="Lease" value={item.lease?.lease_number ?? 'Manual invoice'} sub={item.lease ? `${fmtLease(item.lease?.monthly_rent, item.lease)} · Cycle ${item.lease?.payment_cycle ?? '—'} month(s)` : null} />
                                 <Detail label="Submitted" value={formatDate(item.approval_requested_at ?? item.created_at)} />
                             </div>
 
@@ -594,7 +611,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
     const openModal = (action, type, item) => setModal({ action, type, item });
     const closeModal = () => { if (!submitting) setModal(null); };
 
-    const handleConfirm = (message) => {
+    const handleConfirm = (message, depositRate) => {
         if (!modal || submitting) return;
         setSubmitting(true);
         const { action, type, item } = modal;
@@ -608,7 +625,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
                         ? `/superuser/units/${item.id}/${action}`
                         : `/superuser/invoices/${item.id}/${action}`;
 
-        router.post(url, { message }, {
+        router.post(url, type === 'lease' && depositRate ? { message, deposit_rate: depositRate } : { message }, {
             preserveScroll: true,
             onSuccess: () => { setModal(null); setDrawer(null); setSubmitting(false); },
             onError: () => { setSubmitting(false); },
@@ -796,7 +813,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
                                     <td style={{ fontWeight: 600 }}>{lease.lease_number ?? `Lease #${lease.id}`}</td>
                                     <td><div style={{ fontWeight: 500 }}>{lease.tenant?.name ?? '—'}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{lease.tenant?.email}</div></td>
                                     <td><div>{property}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Unit {unit}</div></td>
-                                    <td>{fmt(lease.monthly_rent, lease.currency)}</td>
+                                    <td>{fmtLease(lease.monthly_rent, lease)}</td>
                                     <td><StatusBadge status={lease.status} /></td>
                                     <td style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>{daysAgo(lease.created_at) ?? '—'}</td>
                                     <td style={{ color: 'var(--text-muted)', fontSize: 16, textAlign: 'right' }}>›</td>
@@ -853,7 +870,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
     return (
         <>
             <DetailDrawer drawer={drawer} onClose={closeDrawer} onApprove={(type, item) => openModal('approve', type, item)} onReject={(type, item) => openModal('reject', type, item)} submitting={submitting} />
-            <DecisionModal open={!!modal} action={modal?.action} subject={modalSubject} context={modalContext} onClose={closeModal} onConfirm={handleConfirm} submitting={submitting} />
+            <DecisionModal open={!!modal} action={modal?.action} subject={modalSubject} context={modalContext} needsDepositRate={modal?.type === 'lease' && String(modal.item?.currency || '').toUpperCase() === 'USD' && Number(modal.item?.deposit) > 0} onClose={closeModal} onConfirm={handleConfirm} submitting={submitting} />
 
             <div className="page-header">
                 <div>

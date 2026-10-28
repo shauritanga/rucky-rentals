@@ -15,8 +15,13 @@ function getLeaseStatus(tenant) {
 }
 
 export default function TenantsIndex({ tenants }) {
-  const { formatCompactTzs, formatMoney, rate } = useExchangeRate();
-  const leaseCurrency = (t) => t.leases?.[0]?.currency || t.leases?.[0]?.unit?.currency || 'USD';
+  const { formatCompactTzs, formatMoney } = useExchangeRate();
+  // Everything outside a unit is TZS. A USD-unit lease counts at the rate typed on its proformas
+  // (display_rate) and contributes nothing until one exists.
+  const leaseCurrency = () => 'TZS';
+  const inTzs = (l, amount) => (String(l.currency || l.unit?.currency || 'TZS').toUpperCase() === 'USD'
+    ? Number(amount || 0) * (Number(l.display_rate) || 0)
+    : Number(amount || 0));
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('name');
@@ -38,8 +43,8 @@ export default function TenantsIndex({ tenants }) {
     invoice_code: '',
   });
 
-  const totalRent = (t) => (t.leases||[]).reduce((s,l)=>s+Number(l.monthly_rent),0);
-  const totalBal  = (t) => (t.leases||[]).reduce((s,l)=>l.status==='overdue'?s+Number(l.monthly_rent):s,0);
+  const totalRent = (t) => (t.leases||[]).reduce((s,l)=>s+inTzs(l, l.monthly_rent),0);
+  const totalBal  = (t) => (t.leases||[]).reduce((s,l)=>l.status==='overdue'?s+inTzs(l, l.monthly_rent):s,0);
   const displayName = (t) => t.tenant_type === 'company' ? (t.company_name || t.name) : t.name;
 
   const counts = {
@@ -73,11 +78,7 @@ export default function TenantsIndex({ tenants }) {
 
   const overdueCount = tenants.filter(t => getLeaseStatus(t) === 'overdue').length;
   const monthlyRevenue = tenants.reduce((s, t) =>
-    s + (t.leases||[]).reduce((ls, l) => {
-      const amt = Number(l.monthly_rent);
-      const cur = (l.currency || 'TZS').toUpperCase();
-      return ls + (cur === 'TZS' ? amt : amt * rate);
-    }, 0), 0);
+    s + (t.leases||[]).reduce((ls, l) => ls + inTzs(l, l.monthly_rent), 0), 0);
 
   const submit = (e) => {
     e.preventDefault();
@@ -386,7 +387,7 @@ export default function TenantsIndex({ tenants }) {
                     <div className="tdr-kv-grid">
                       <div className="tdr-kv"><div className="tdr-kv-label">Monthly Rent</div><div className="tdr-kv-value">{formatMoney(totalRent(selected), leaseCurrency(selected))}</div></div>
                       <div className="tdr-kv"><div className="tdr-kv-label">Balance</div><div className={`tdr-kv-value ${bal>0?'red':(selected.leases||[]).length>0?'green':''}`}>{bal>0?`${formatMoney(bal, leaseCurrency(selected))} overdue`:(selected.leases||[]).length>0?'Paid up':'—'}</div></div>
-                      <div className="tdr-kv"><div className="tdr-kv-label">Deposit Held</div><div className="tdr-kv-value">{formatMoney((selected.leases||[]).reduce((s,l)=>s+Number(l.deposit),0), leaseCurrency(selected))}</div></div>
+                      <div className="tdr-kv"><div className="tdr-kv-label">Deposit Held</div><div className="tdr-kv-value">{formatMoney((selected.leases||[]).reduce((s,l)=>s+inTzs(l, l.deposit),0), 'TZS')}</div></div>
                       <div className="tdr-kv"><div className="tdr-kv-label">Units</div><div className="tdr-kv-value accent">{unitsText}</div></div>
                     </div>
                   </div>

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ExchangeRate;
 use App\Models\Invoice;
 use App\Models\Lease;
 use App\Models\MaintenanceRecord;
@@ -72,33 +71,14 @@ class DashboardController extends Controller
         $lastMonthOccupancyPct = $lastMonthTotalUnits > 0 ? (int) round($lastMonthOccupied / $lastMonthTotalUnits * 100) : 0;
         $occupancyDelta        = $currentOccupancyPct - $lastMonthOccupancyPct;
 
-        // Sum monthly rent in TZS, respecting each lease's own currency.
-        // Never mix TZS and USD raw amounts — convert everything to TZS first.
-        $monthlyRevenueTzs = Lease::whereIn('status', ['active', 'expiring', 'overdue'])
+        // Revenue = TZS actually collected in the month (payments are always TZS).
+        $collectedBetween = fn ($from, $to) => (float) Payment::where('status', 'paid')
             ->whereIn('unit_id', $unitIdsQuery)
-            ->get(['monthly_rent', 'currency'])
-            ->sum(function ($lease) {
-                $amount = (float) $lease->monthly_rent;
-                $currency = $lease->currency ?? 'TZS';
-                if ($currency === 'TZS') {
-                    return $amount;
-                }
-                // getLiveRate() reads from cache (same source as UI header badge),
-                // never from the stale DB table — keeps both dashboard views in sync.
-                return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
-            });
+            ->whereRaw('COALESCE(paid_date, DATE(created_at)) BETWEEN ? AND ?', [$from->toDateString(), $to->toDateString()])
+            ->sum('amount_in_base');
 
-        // Revenue for leases running during last month (for delta badge)
-        $lastMonthRevenueTzs = Lease::whereIn('unit_id', $unitIdsQuery)
-            ->where('start_date', '<=', $lastMonthEnd)
-            ->where(fn ($q) => $q->where('end_date', '>=', $lastMonthStart)->orWhereNull('end_date'))
-            ->get(['monthly_rent', 'currency'])
-            ->sum(function ($lease) {
-                $amount   = (float) $lease->monthly_rent;
-                $currency = $lease->currency ?? 'TZS';
-                if ($currency === 'TZS') return $amount;
-                return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
-            });
+        $monthlyRevenueTzs   = $collectedBetween($thisMonthStart, Carbon::now()->endOfMonth());
+        $lastMonthRevenueTzs = $collectedBetween($lastMonthStart, $lastMonthEnd);
 
         $revenueDelta = $monthlyRevenueTzs - $lastMonthRevenueTzs;
 
@@ -143,15 +123,7 @@ class DashboardController extends Controller
                 continue;
             }
 
-            $currency = $inv->currency ?? 'TZS';
-            if ($currency === 'TZS') {
-                $overdueBalanceTzs += $outstanding;
-            } else {
-                $rate = !empty($inv->exchange_rate)
-                    ? (float) $inv->exchange_rate
-                    : ExchangeRate::getLiveRate($currency, 'TZS');
-                $overdueBalanceTzs += $outstanding * $rate;
-            }
+            $overdueBalanceTzs += $outstanding;
 
             $unitKey = $inv->unit_ref ?: ($inv->lease?->unit_id ? 'u-' . $inv->lease->unit_id : 'inv-' . $inv->id);
             $overdueUnitsMap[$unitKey] = true;
@@ -160,16 +132,7 @@ class DashboardController extends Controller
         // Also include any legacy overdue payment records (if any exist)
         $legacyOverduePaymentSum = Payment::where('status', 'overdue')
             ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
-            ->get(['amount', 'currency', 'amount_in_base'])
-            ->sum(function ($payment) {
-                if ($payment->amount_in_base !== null) {
-                    return (float) $payment->amount_in_base;
-                }
-                $amount = (float) $payment->amount;
-                $currency = $payment->currency ?? 'TZS';
-                if ($currency === 'TZS') return $amount;
-                return $amount * ExchangeRate::getLiveRate($currency, 'TZS');
-            });
+            ->sum('amount_in_base');
         $overdueBalanceTzs += $legacyOverduePaymentSum;
 
         $overdueUnits = max(
@@ -204,16 +167,19 @@ class DashboardController extends Controller
 
         // ── Upcoming events ──────────────────────────────────────────
         $today    = Carbon::today();
-        $in7Days  = $today->copy()->addDays(7);
+        $upcomingDays = in_array((int) $request->query('upcoming_days'), [15, 30], true)
+            ? (int) $request->query('upcoming_days')
+            : 30;
+        $windowEnd = $today->copy()->addDays($upcomingDays);
         $events   = collect();
         $scopePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
-        // 1. Unpaid invoices due within 7 days → Rent events
+        // 1. Unpaid invoices due within the window → Rent events
         Invoice::where('status', 'unpaid')
-            ->whereBetween('due_date', [$today, $in7Days])
+            ->whereBetween('due_date', [$today, $windowEnd])
             ->when($scopePropertyId !== null, fn ($q) => $q->where('property_id', $scopePropertyId))
             ->orderBy('due_date')
-            ->limit(5)
+            ->limit(10)
             ->get()
             ->each(function ($inv) use (&$events) {
                 $date = Carbon::parse($inv->due_date);
@@ -228,13 +194,13 @@ class DashboardController extends Controller
                 ]);
             });
 
-        // 2. Leases expiring within 7 days → Lease renewal events
+        // 2. Leases expiring within the window → Lease renewal events
         Lease::with(['tenant', 'unit'])
             ->whereIn('status', ['active', 'expiring'])
-            ->whereBetween('end_date', [$today, $in7Days])
+            ->whereBetween('end_date', [$today, $windowEnd])
             ->whereIn('unit_id', (clone $unitsBaseQuery)->select('id'))
             ->orderBy('end_date')
-            ->limit(5)
+            ->limit(10)
             ->get()
             ->each(function ($lease) use (&$events) {
                 $date = Carbon::parse($lease->end_date);
@@ -249,12 +215,12 @@ class DashboardController extends Controller
                 ]);
             });
 
-        // 3. Scheduled maintenance due within 7 days → Repair events
+        // 3. Scheduled maintenance due within the window → Repair events
         ScheduledMaintenance::whereIn('status', ['upcoming', 'overdue'])
-            ->whereBetween('next_due', [$today, $in7Days])
+            ->whereBetween('next_due', [$today, $windowEnd])
             ->when($scopePropertyId !== null, fn ($q) => $q->where('property_id', $scopePropertyId))
             ->orderBy('next_due')
-            ->limit(5)
+            ->limit(10)
             ->get()
             ->each(function ($m) use (&$events) {
                 $date = Carbon::parse($m->next_due);
@@ -271,7 +237,7 @@ class DashboardController extends Controller
 
         $upcomingEvents = $events
             ->sortBy('sort')
-            ->take(6)
+            ->take(8)
             ->values()
             ->map(fn ($e) => collect($e)->except('sort')->all());
 
@@ -292,6 +258,7 @@ class DashboardController extends Controller
             'units'            => $units,
             'occupancyByFloor' => $occupancyByFloor,
             'upcomingEvents'   => $upcomingEvents,
+            'upcomingDays'     => $upcomingDays,
         ]);
     }
 }

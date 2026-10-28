@@ -59,6 +59,7 @@ class ClearanceController extends Controller
             'lease_id'       => ['required', 'exists:leases,id'],
             'scheduled_date' => ['nullable', 'date'],
             'termination_reason' => ['nullable', 'string', 'max:500'],
+            'deposit_rate' => ['nullable', 'numeric', 'min:0.0001', 'max:999999.9999'],
         ]);
 
         $lease = Lease::with(['unit', 'tenant'])->findOrFail($data['lease_id']);
@@ -76,6 +77,17 @@ class ClearanceController extends Controller
             'This lease already has an open clearance.'
         );
 
+        // Clearance is TZS only. A USD-unit lease's deposit is converted at the rate typed now.
+        $depositTzs = (float) $lease->deposit;
+        if (strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD') {
+            if (empty($data['deposit_rate']) || (float) $data['deposit_rate'] <= 0) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'deposit_rate' => 'Enter the current USD → TZS exchange rate to convert the security deposit.',
+                ]);
+            }
+            $depositTzs = round($depositTzs * (float) $data['deposit_rate'], 2);
+        }
+
         $count = UnitClearance::count() + 1;
 
         $clearance = UnitClearance::create([
@@ -87,9 +99,9 @@ class ClearanceController extends Controller
             'status'               => 'scheduled',
             'termination_reason'   => $data['termination_reason'] ?? null,
             'scheduled_date'       => $data['scheduled_date'] ?? now()->toDateString(),
-            'currency'             => $lease->currency ?: 'TZS',
-            'deposit_amount'       => (float) $lease->deposit,
-            'refund_amount'        => (float) $lease->deposit,
+            'currency'             => 'TZS',
+            'deposit_amount'       => $depositTzs,
+            'refund_amount'        => $depositTzs,
             'created_by'           => $user?->name,
         ]);
 
@@ -298,6 +310,8 @@ class ClearanceController extends Controller
                 $unit = Unit::find($lease->unit_id);
                 if ($unit && !$unit->hasOtherActiveLeases()) {
                     $unit->update(['status' => 'vacant']);
+                } elseif ($unit) {
+                    app(\App\Services\LeaseShareRebalancer::class)->rebalance($unit);
                 }
             }
 

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ExchangeRate;
 use App\Models\FuelLog;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
@@ -249,13 +248,8 @@ class ReportController extends Controller
         $depositsHeld = Lease::query()
             ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
             ->whereIn('status', ['active', 'expiring', 'overdue'])
-            ->get(['deposit', 'currency'])
-            ->sum(function ($lease) {
-                $amount   = (float) ($lease->deposit ?? 0);
-                $currency = $lease->currency ?? 'TZS';
-                if ($currency === 'TZS') return $amount;
-                return round($amount * ExchangeRate::getLiveRate($currency, 'TZS'), 2);
-            });
+            ->get(['id', 'deposit', 'currency', 'exchange_rate'])
+            ->sum(fn ($lease) => $this->depositInTzs($lease));
 
         // --- Monthly Revenue ---
         $periodMonths = [];
@@ -655,13 +649,8 @@ class ReportController extends Controller
                     $exportDeposits = Lease::query()
                         ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
                         ->whereIn('status', ['active', 'expiring', 'overdue'])
-                        ->get(['deposit', 'currency'])
-                        ->sum(function ($lease) {
-                            $amount   = (float) ($lease->deposit ?? 0);
-                            $currency = $lease->currency ?? 'TZS';
-                            if ($currency === 'TZS') return $amount;
-                            return round($amount * ExchangeRate::getLiveRate($currency, 'TZS'), 2);
-                        });
+                        ->get(['id', 'deposit', 'currency', 'exchange_rate'])
+                        ->sum(fn ($lease) => $this->depositInTzs($lease));
 
                     fputcsv($out, ['Gross Revenue',            number_format((float) $revenue, 2)]);
                     fputcsv($out, ['Total Expenses',           number_format((float) $totalExpenses, 2)]);
@@ -964,5 +953,18 @@ class ReportController extends Controller
         }
 
         return 18.0;
+    }
+
+    /**
+     * Held deposit in TZS: USD-unit leases use the rate typed at approval.
+     */
+    private function depositInTzs(Lease $lease): float
+    {
+        $deposit = (float) ($lease->deposit ?? 0);
+        if (strtoupper((string) $lease->currency) !== 'USD') {
+            return $deposit;
+        }
+
+        return round($deposit * (float) ($lease->exchange_rate ?: 0), 2);
     }
 }

@@ -85,6 +85,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const [wizardStep, setWizardStep] = useState(1);
   const [wizardLeaseId, setWizardLeaseId] = useState('');
   const [wizardReason, setWizardReason] = useState('');
+  const [wizardDepositRate, setWizardDepositRate] = useState('');
   const [wizardScheduledDate, setWizardScheduledDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [wizardClearanceId, setWizardClearanceId] = useState(null);
   const [awaitingLeaseId, setAwaitingLeaseId] = useState(null);
@@ -195,6 +196,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
     setWizardStep(1);
     setWizardLeaseId('');
     setWizardReason('');
+    setWizardDepositRate('');
     setWizardClearanceId(null);
     setShowWizard(true);
   };
@@ -210,7 +212,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const startClearance = () => {
     if (!wizardLeaseId) return;
     setCreating(true);
-    router.post('/clearance', { lease_id: wizardLeaseId, scheduled_date: wizardScheduledDate, termination_reason: wizardReason || null }, {
+    router.post('/clearance', { lease_id: wizardLeaseId, scheduled_date: wizardScheduledDate, termination_reason: wizardReason || null, deposit_rate: wizardDepositRate || null }, {
       onSuccess: () => setAwaitingLeaseId(Number(wizardLeaseId)),
       onError: () => setCreating(false),
     });
@@ -295,7 +297,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
     });
   };
 
-  const wizardCurrency = wizardClearance?.currency || eligibleLeases.find((l) => String(l.id) === String(wizardLeaseId))?.currency || 'TZS';
+  const wizardCurrency = 'TZS';
   const wizardDeposit = Number(wizardClearance?.deposit_amount ?? eligibleLeases.find((l) => String(l.id) === String(wizardLeaseId))?.deposit ?? 0);
   const wizardDeductions = Number(wizardClearance?.total_deductions || 0);
   const wizardRefund = Number(wizardClearance?.refund_amount ?? wizardDeposit);
@@ -548,6 +550,12 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                       <label className="form-label">Scheduled Inspection Date</label>
                       <input className="form-input" type="date" value={wizardScheduledDate} onChange={(e) => setWizardScheduledDate(e.target.value)} />
                     </div>
+                    {String(eligibleLeases.find((l) => String(l.id) === String(wizardLeaseId))?.currency || '').toUpperCase() === 'USD' && (
+                      <div className="form-group">
+                        <label className="form-label">Exchange rate to convert the deposit (USD → TZS) *</label>
+                        <input className="form-input" type="number" step="0.0001" min="0.0001" value={wizardDepositRate} onChange={(e) => setWizardDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
+                      </div>
+                    )}
                     <div className="form-group">
                       <label className="form-label">Reason for termination</label>
                       <input className="form-input" type="text" maxLength={500} value={wizardReason} onChange={(e) => setWizardReason(e.target.value)} placeholder="Optional, e.g. non-payment or breach of lease terms (leave blank for normal lease end)" />
@@ -555,13 +563,17 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                     {wizardLeaseId && (() => {
                       const lease = eligibleLeases.find((l) => String(l.id) === String(wizardLeaseId));
                       if (!lease) return null;
+                      const usd = String(lease.currency || '').toUpperCase() === 'USD';
+                      const rate = Number(wizardDepositRate) || 0;
+                      const depositTzs = usd ? (rate > 0 ? Number(lease.deposit) * rate : null) : Number(lease.deposit);
+                      const rentTzs = usd ? (Number(lease.display_rate) > 0 ? Number(lease.monthly_rent) * Number(lease.display_rate) : null) : Number(lease.monthly_rent);
                       return (
                         <div className="kv-grid" style={{ marginTop: 16 }}>
                           <div className="kv"><div className="kv-label">Tenant</div><div className="kv-value">{lease.tenant?.name}</div></div>
                           <div className="kv"><div className="kv-label">Unit</div><div className="kv-value">{lease.unit?.unit_number}</div></div>
                           <div className="kv"><div className="kv-label">Property</div><div className="kv-value">{lease.property?.name}</div></div>
-                          <div className="kv"><div className="kv-label">Monthly Rent</div><div className="kv-value">{formatMoney(lease.monthly_rent, lease.currency)}</div></div>
-                          <div className="kv"><div className="kv-label">Security Deposit</div><div className="kv-value accent">{formatMoney(lease.deposit, lease.currency)}</div></div>
+                          <div className="kv"><div className="kv-label">Monthly Rent</div><div className="kv-value">{rentTzs == null ? '—' : formatMoney(rentTzs, 'TZS')}</div></div>
+                          <div className="kv"><div className="kv-label">Security Deposit</div><div className="kv-value accent">{depositTzs == null ? '—' : formatMoney(depositTzs, 'TZS')}</div></div>
                           <div className="kv"><div className="kv-label">Lease Status</div><div className="kv-value" style={{ textTransform: 'capitalize' }}>{lease.status}</div></div>
                         </div>
                       );

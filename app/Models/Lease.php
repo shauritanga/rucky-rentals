@@ -29,11 +29,14 @@ class Lease extends Model
         'service_charge_rate',
         'vat_rate',
         'monthly_rent',
+        'service_charge',
         'deposit',
         'terms',
         'status',
         'approval_log',
     ];
+
+    protected $appends = ['display_rate', 'monthly_service_charge'];
 
     protected $casts = [
         'exchange_rate'  => 'float',
@@ -41,6 +44,27 @@ class Lease extends Model
         'fitout_enabled' => 'boolean',
         'fitout_days'    => 'integer',
     ];
+
+    /**
+     * USD→TZS rate used only to *show* a USD-unit lease in TZS: the latest rate typed on one of
+     * its proformas, else the deposit rate typed at approval. Never applied to real billing.
+     */
+    public function getDisplayRateAttribute(): ?float
+    {
+        if (strtoupper((string) $this->currency) !== 'USD') {
+            return null;
+        }
+
+        $invoiceRate = Invoice::where('lease_id', $this->id)->whereNotNull('usd_rate')->orderByDesc('id')->value('usd_rate');
+
+        return $invoiceRate ? (float) $invoiceRate : ($this->exchange_rate ? (float) $this->exchange_rate : null);
+    }
+
+    /** This lease's monthly service charge: its stored co-tenant share, else the unit's full charge. */
+    public function getMonthlyServiceChargeAttribute(): float
+    {
+        return (float) ($this->service_charge ?? $this->unit?->service_charge ?? 0);
+    }
 
     public function property()
     {

@@ -2,13 +2,38 @@ import { useEffect, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
-import useExchangeRate, { formatExchangeRate } from '@/hooks/useExchangeRate';
+import { formatExchangeRate } from '@/hooks/useExchangeRate';
 
 const fmt = (n) => Number(n).toLocaleString();
 const VAT_RATE = 0.18;
 const SERVICE_CHARGE_RATE = 0.05;
 
-const normalizeCurrency = (value) => (String(value || '').toUpperCase() === 'TZS' ? 'TZS' : 'USD');
+const RECEIPT_LABELS = { issued: 'Issued', not_issued: 'Not issued' };
+const WHT_LABELS = { paid: 'Paid', pending: 'Pending' };
+const TRACK_COLORS = {
+  issued:     ['var(--green-dim)', 'var(--green)'],
+  paid:       ['var(--green-dim)', 'var(--green)'],
+  not_issued: ['var(--amber-dim)', 'var(--amber)'],
+  pending:    ['var(--amber-dim)', 'var(--amber)'],
+};
+
+function TrackBadge({ status, labels }) {
+  const colors = TRACK_COLORS[status];
+  if (!colors) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+  return (
+    <span style={{ fontSize: '11.5px', fontWeight: 600, padding: '3px 9px', borderRadius: 20, background: colors[0], color: colors[1], whiteSpace: 'nowrap' }}>
+      {labels[status]}
+    </span>
+  );
+}
+
+// Invoices are TZS only. USD exists on the unit; a USD lease is converted with the rate typed on the proforma.
+const normalizeCurrency = () => 'TZS';
+const isUsdLease = (lease) => String(lease?.currency || lease?.unit?.currency || '').toUpperCase() === 'USD';
+const convertItems = (baseItems, rate) => baseItems.map((item) => ({
+  ...item,
+  unit_price: rate > 0 ? Math.round(Number(item.unit_price) * rate * 100) / 100 : 0,
+}));
 
 const resolveInvoiceCurrency = (invoice, leases = []) => {
   const direct = normalizeCurrency(invoice?.currency);
@@ -18,7 +43,7 @@ const resolveInvoiceCurrency = (invoice, leases = []) => {
   return normalizeCurrency(lease?.currency || lease?.unit?.currency);
 };
 
-const formatMoney = (amount, currency = 'USD') => {
+const formatMoney = (amount, currency = 'TZS') => {
   const numeric = Number(amount || 0);
   if (Number.isNaN(numeric)) return '—';
 
@@ -30,7 +55,7 @@ const formatMoney = (amount, currency = 'USD') => {
   })}`;
 };
 
-const formatMoneyCompact = (amount, currency = 'USD') => {
+const formatMoneyCompact = (amount, currency = 'TZS') => {
   const numeric = Number(amount || 0);
   if (Number.isNaN(numeric)) return '—';
 
@@ -83,7 +108,7 @@ const invoiceWorkflowLabel = (invoice) => {
 const canEditProforma = (invoice) => invoice?.type === 'proforma' && !invoice?.sent_to_tenant_at;
 const canSendProforma = (invoice) => invoice?.type === 'proforma' && invoice?.approval_status === 'approved' && !invoice?.sent_to_tenant_at && !!invoice?.tenant_email;
 
-function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
+function InvoiceDoc({ inv, currency = 'TZS', lease = null }) {
   const fitoutBadge = (description = '') => {
     const text = String(description || '').toLowerCase();
     if (!text.includes('fit-out')) return null;
@@ -151,18 +176,10 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
         <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
         <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{vatLabel}</span><span>{formatMoney(vatAmount, currency)}</span></div>
         <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(grandTotal, currency)}</span></div>
-        {currency === 'USD' && (inv.exchange_rate || inv.total_in_base) && (
-          <div style={{marginTop:10,paddingTop:10,borderTop:'1px dashed var(--border)',fontSize:12.5}}>
-            {inv.exchange_rate && (
-              <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',marginBottom:4}}>
-                <span>Exchange Rate (USD → TZS)</span>
-                <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(inv.exchange_rate)} TZS</span>
-              </div>
-            )}
-            <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,color:'var(--accent)'}}>
-              <span>Total Due in TZS</span>
-              <span>TZS {Math.round(inv.total_in_base || (grandTotal * Number(inv.exchange_rate))).toLocaleString()}</span>
-            </div>
+        {inv.usd_rate && (
+          <div style={{marginTop:10,paddingTop:10,borderTop:'1px dashed var(--border)',fontSize:12.5,color:'var(--text-muted)',display:'flex',justifyContent:'space-between'}}>
+            <span>Converted from USD at</span>
+            <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(inv.usd_rate)} TZS</span>
           </div>
         )}
       </div>
@@ -173,12 +190,13 @@ function InvoiceDoc({ inv, currency = 'USD', lease = null }) {
 export default function InvoicesIndex({ invoices, leases, tenants, flash = {} }) {
   const { props } = usePage();
   const flashData = props.flash ?? {};
-  const { rate: liveFxRate } = useExchangeRate();
+  const [baseItems, setBaseItems] = useState(null); // USD-basis lines for a USD lease; converted with the typed rate
   const [toast, setToast] = useState({ msg: '', type: '' });
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('date-desc');
   const [selected, setSelected] = useState(null);
+  const [whtReference, setWhtReference] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [invType, setInvType] = useState('proforma');
@@ -187,8 +205,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const { data, setData, post, patch, processing, reset, transform, errors } = useForm({
     type: 'invoice',
     lease_id: '',
-    currency: 'USD',
-    exchange_rate: '',
+    usd_rate: '',
     tenant_name: '',
     tenant_email: '',
     unit_ref: '',
@@ -202,9 +219,24 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const total = (inv) => (inv.items||[]).reduce((s,i)=>s+Number(i.total),0);
 
   const selectedLease = leases.find((l) => String(l.id) === String(data.lease_id));
-  const modalCurrency = selectedLease
-    ? normalizeCurrency(selectedLease?.currency || selectedLease?.unit?.currency)
-    : normalizeCurrency(data.currency);
+  const modalCurrency = 'TZS';
+  const selectedLeaseIsUsd = isUsdLease(selectedLease);
+
+  // Typing the rate re-prices the lines: from the USD basis for a fresh lease invoice,
+  // or proportionally for an existing proforma being edited.
+  const onRateChange = (value) => {
+    const previous = Number(data.usd_rate) || 0;
+    const next = Number(value) || 0;
+    setData('usd_rate', value);
+    if (baseItems) {
+      setItems(convertItems(baseItems, next));
+    } else if (previous > 0 && next > 0) {
+      setItems((current) => current.map((item) => ({
+        ...item,
+        unit_price: Math.round(Number(item.unit_price) * (next / previous) * 100) / 100,
+      })));
+    }
+  };
 
   const filtered = invoices.filter(inv => {
     const matchFilter = filter === 'all'
@@ -228,17 +260,10 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     paid: invoices.filter(i=>i.type!=='proforma' && i.status==='paid').length,
     overdue: invoices.filter(i=>i.type!=='proforma' && i.status==='overdue').length,
   };
-  const collectedTotals = invoices
+  const collectedTotal = invoices
     .filter(i => i.type !== 'proforma' && i.status === 'paid')
-    .reduce((acc, inv) => {
-      const currency = resolveInvoiceCurrency(inv, leases);
-      acc[currency] += Number(total(inv) || 0);
-      return acc;
-    }, { USD: 0, TZS: 0 });
-  const collectedLabel = ['USD', 'TZS']
-    .filter((currency) => collectedTotals[currency] > 0)
-    .map((currency) => formatMoneyCompact(collectedTotals[currency], currency))
-    .join(' + ') || '—';
+    .reduce((sum, inv) => sum + Number(total(inv) || 0), 0);
+  const collectedLabel = collectedTotal > 0 ? formatMoneyCompact(collectedTotal, 'TZS') : '—';
   const modalSubtotal = items.reduce((s, i) => s + (Number(i.quantity) * Number(i.unit_price)), 0);
   const modalVat = modalSubtotal * VAT_RATE;
   const modalTotal = modalSubtotal + modalVat;
@@ -313,7 +338,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const unitRef = getLeaseUnitRef(lease);
     const monthlyRent = Number(lease.monthly_rent ?? lease.rent ?? 0) || 0;
     const paymentCycle = Number(lease.payment_cycle ?? 1) || 1;
-    const unitServiceCharge = Number(lease.unit?.service_charge ?? 0);
+    const unitServiceCharge = Number(lease.monthly_service_charge ?? lease.unit?.service_charge ?? 0);
     const vatRate = Number(lease.vat_rate ?? VAT_RATE * 100) || 0;
     const possessionDate = lease.possession_date || lease.start_date || '';
     const rentStartDate = lease.rent_start_date || lease.start_date || '';
@@ -384,23 +409,22 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       ...d,
       type: 'invoice',
       lease_id: '',
-      currency: 'USD',
-      exchange_rate: '',
+      usd_rate: '',
       items: [],
     }));
+    setBaseItems(null);
     setItems([{ description: '', sub_description: '', quantity: 1, unit_price: 0 }]);
     setShowModal(true);
   };
 
   const openEditInvoiceModal = (invoice) => {
     setEditingInvoice(invoice);
+    setBaseItems(null);
     setInvType(invoice.type || 'proforma');
-    const invCurrency = resolveInvoiceCurrency(invoice, leases);
     setData({
       type: invoice.type || 'proforma',
       lease_id: invoice.lease_id ? String(invoice.lease_id) : '',
-      currency: invCurrency,
-      exchange_rate: invoice.exchange_rate != null && invCurrency === 'USD' ? String(invoice.exchange_rate) : '',
+      usd_rate: invoice.usd_rate != null ? String(invoice.usd_rate) : '',
       tenant_name: invoice.tenant_name || '',
       tenant_email: invoice.tenant_email || '',
       unit_ref: invoice.unit_ref || '',
@@ -420,6 +444,18 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     setShowModal(true);
   };
 
+  // Lease lines come in the unit's currency; a USD lease is priced in TZS once a rate is typed.
+  const applyLeaseItems = (lease, rate) => {
+    const lines = buildLeaseInvoiceItems(lease);
+    if (isUsdLease(lease)) {
+      setBaseItems(lines);
+      setItems(convertItems(lines, rate));
+    } else {
+      setBaseItems(null);
+      setItems(lines);
+    }
+  };
+
   const onLeaseChange = (leaseId) => {
     if (!leaseId) {
       setData(d => ({ ...d, lease_id: '' }));
@@ -433,13 +469,11 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const tenantEmail = getLeaseTenantEmail(l);
     const unitRef = getLeaseUnitRef(l);
     const billingPeriod = getNextBillingPeriod(l);
-    const lCurrency = normalizeCurrency(l.currency || l.unit?.currency);
 
     setData(d => ({
       ...d,
       lease_id: leaseId,
-      currency: lCurrency,
-      exchange_rate: lCurrency === 'USD' ? (d.exchange_rate || '') : '',
+      usd_rate: isUsdLease(l) ? (d.usd_rate || '') : '',
       tenant_name: tenantName,
       tenant_email: tenantEmail,
       unit_ref: unitRef,
@@ -449,7 +483,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     // All lease invoices are proforma by default (server enforces this too)
     setInvType('proforma');
 
-    setItems(buildLeaseInvoiceItems(l));
+    applyLeaseItems(l, Number(data.usd_rate) || 0);
   };
 
   useEffect(() => {
@@ -458,18 +492,23 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     if (!selectedLease) return;
 
     const billingPeriod = getNextBillingPeriod(selectedLease);
-    const lCurrency = normalizeCurrency(selectedLease.currency || selectedLease.unit?.currency);
     setData(d => ({
       ...d,
-      currency: lCurrency,
-      exchange_rate: lCurrency === 'USD' ? (d.exchange_rate || '') : '',
       tenant_name: getLeaseTenantName(selectedLease),
       tenant_email: getLeaseTenantEmail(selectedLease),
       unit_ref: getLeaseUnitRef(selectedLease),
       period: billingPeriod.text || d.period,
     }));
-    setItems(buildLeaseInvoiceItems(selectedLease));
+    applyLeaseItems(selectedLease, Number(data.usd_rate) || 0);
   }, [data.lease_id, leases]);
+
+  // Keep the open drawer in sync with refreshed invoice data (receipt / WHT status).
+  useEffect(() => {
+    setSelected((s) => (s ? (invoices.find((i) => i.id === s.id) ?? s) : s));
+  }, [invoices]);
+
+  const confirmWht = (inv) => router.post(`/invoices/${inv.id}/wht`, { wht_reference: whtReference || null }, { preserveScroll: true, onSuccess: () => setWhtReference('') });
+  const issueReceipt = (inv) => router.post(`/invoices/${inv.id}/receipt`, {}, { preserveScroll: true });
 
   const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
@@ -494,8 +533,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       return {
         ...form,
         type: invType,
-        currency: modalCurrency,
-        exchange_rate: modalCurrency === 'USD' && form.exchange_rate ? Number(form.exchange_rate) : null,
+        usd_rate: selectedLeaseIsUsd && form.usd_rate ? Number(form.usd_rate) : null,
         unit_ref: form.unit_ref?.trim() || '—',
         tenant_email: form.tenant_email || matchedTenant?.email || null,
         items,
@@ -586,7 +624,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
       <div className="card">
         <table className="data-table">
-          <thead><tr><th>Invoice #</th><th>Type</th><th>Tenant</th><th>Unit</th><th>Issue Date</th><th>Due Date</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Invoice #</th><th>Type</th><th>Tenant</th><th>Unit</th><th>Issue Date</th><th>Due Date</th><th>Amount</th><th>Status</th><th>Receipt</th><th>WHT</th><th></th></tr></thead>
           <tbody>
             {filtered.map(inv => (
               <tr key={inv.id} onClick={()=>setSelected(inv)}>
@@ -595,15 +633,13 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <td style={{fontWeight:500}}>{inv.tenant_name}</td>
                 <td style={{fontWeight:600,color:'var(--text-secondary)'}}>{inv.unit_ref}</td>
                 <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{formatDisplayDate(inv.issued_date)}</td>
+                <td style={{fontSize:'12.5px',color:'var(--text-muted)'}}>{formatDisplayDate(inv.due_date)}</td>
                 <td style={{fontWeight:700}}>
-                  <div>{formatMoney(total(inv), resolveInvoiceCurrency(inv, leases))}</div>
-                  {resolveInvoiceCurrency(inv, leases) === 'USD' && (inv.exchange_rate || inv.total_in_base) && (
-                    <div style={{fontSize:11,fontWeight:500,color:'var(--text-muted)',marginTop:2}}>
-                      ≈ TZS {Math.round(inv.total_in_base || (total(inv) * Number(inv.exchange_rate))).toLocaleString()}
-                    </div>
-                  )}
+                  <div>{formatMoney(total(inv))}</div>
                 </td>
                 <td><span className={`badge ${inv.type === 'proforma' ? (inv.approval_status || 'proforma') : inv.status}`}>{invoiceWorkflowLabel(inv)}</span></td>
+                <td><TrackBadge status={inv.receipt_status} labels={RECEIPT_LABELS} /></td>
+                <td><TrackBadge status={inv.wht_status} labels={WHT_LABELS} /></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(inv)}}>···</button></td>
               </tr>
             ))}
@@ -627,6 +663,29 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <div style={{marginBottom:12,fontSize:12.5,color:'var(--text-secondary)',display:'flex',gap:10,flexWrap:'wrap'}}>
                   <span><strong>Approval:</strong> {approvalStatusLabel(selected.approval_status || 'pending_approval')}</span>
                   <span><strong>Sent:</strong> {selected.sent_to_tenant_at ? formatDisplayDate(selected.sent_to_tenant_at) : 'Not sent'}</span>
+                </div>
+              )}
+              {selected.type === 'invoice' && (selected.receipt_status === 'not_issued' || selected.wht_status === 'pending') && (
+                <div style={{marginBottom:14,padding:'12px 14px',background:'var(--bg-elevated)',borderRadius:9,fontSize:12.5,display:'flex',flexDirection:'column',gap:10}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+                    <span><strong>WHT:</strong> <TrackBadge status={selected.wht_status} labels={WHT_LABELS} /></span>
+                    <span><strong>Receipt:</strong> <TrackBadge status={selected.receipt_status} labels={RECEIPT_LABELS} /></span>
+                  </div>
+                  {selected.wht_status === 'pending' && (
+                    <div style={{display:'flex',gap:8}}>
+                      <input className="form-input" style={{flex:1}} value={whtReference} onChange={e=>setWhtReference(e.target.value)} placeholder="WHT reference / certificate no. (optional)" />
+                      <button className="btn-secondary" onClick={()=>confirmWht(selected)}>Mark WHT Paid</button>
+                    </div>
+                  )}
+                  {selected.receipt_status === 'not_issued' && (
+                    <button
+                      className="btn-primary"
+                      style={{justifyContent:'center'}}
+                      disabled={selected.wht_status === 'pending'}
+                      title={selected.wht_status === 'pending' ? 'Confirm WHT payment first' : ''}
+                      onClick={()=>issueReceipt(selected)}
+                    >Issue Receipt</button>
+                  )}
                 </div>
               )}
               <InvoiceDoc inv={selected} currency={resolveInvoiceCurrency(selected, leases)} lease={leases.find((l) => Number(l.id) === Number(selected?.lease_id))} />
@@ -679,21 +738,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               </div>
 
               <div className="form-row">
-                {!data.lease_id ? (
-                  <div className="form-group">
-                    <label className="form-label">Currency *</label>
-                    <select className="form-input form-select" value={data.currency} onChange={e=>setData('currency', e.target.value)}>
-                      <option value="USD">USD ($)</option>
-                      <option value="TZS">TZS</option>
-                    </select>
-                  </div>
-                ) : (
-                  <div className="form-group">
-                    <label className="form-label">Lease Currency</label>
-                    <input className="form-input" value={modalCurrency} readOnly style={{opacity:.85,cursor:'default',background:'var(--bg-surface)'}} />
-                  </div>
-                )}
-                {modalCurrency === 'USD' && (
+                {selectedLeaseIsUsd && (
                   <div className="form-group">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <label className="form-label" style={{ marginBottom: 0 }}>Exchange Rate (USD → TZS) *</label>
@@ -704,13 +749,14 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                       type="number"
                       step="0.0001"
                       min="0.0001"
-                      value={data.exchange_rate}
-                      onChange={e=>setData('exchange_rate', e.target.value)}
-                      placeholder={liveFxRate ? String(liveFxRate) : "e.g. 2650.0000"}
+                      value={data.usd_rate}
+                      onChange={e=>onRateChange(e.target.value)}
+                      placeholder="e.g. 2650.0000"
                       required
                     />
                     <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
-                      Enter the current rate manually. Reference live rate: <strong>{formatExchangeRate(liveFxRate)}</strong>.
+                      This unit is priced in USD. Type today's rate; the lines below are converted to TZS.
+                      {selectedLease?.reference_rate ? <> Last rate used for this lease: <strong>{formatExchangeRate(selectedLease.reference_rate)}</strong>.</> : null}
                     </div>
                   </div>
                 )}
@@ -735,18 +781,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                     <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>Subtotal</span><span>{formatMoney(modalSubtotal, modalCurrency)}</span></div>
                     <div style={{display:'flex',justifyContent:'space-between',padding:'3px 0'}}><span style={{color:'var(--text-muted)'}}>VAT (18%)</span><span>{formatMoney(modalVat, modalCurrency)}</span></div>
                     <div style={{display:'flex',justifyContent:'space-between',paddingTop:8,marginTop:6,borderTop:'1px solid var(--border)'}}><span style={{fontWeight:700}}>Total Due</span><span style={{color:'var(--accent)',fontWeight:700}}>{formatMoney(modalTotal, modalCurrency)}</span></div>
-                    {modalCurrency === 'USD' && (
-                      <div style={{marginTop:8,paddingTop:8,borderTop:'1px dashed var(--border)',fontSize:12.5}}>
-                        <div style={{display:'flex',justifyContent:'space-between',color:'var(--text-muted)',marginBottom:3}}>
-                          <span>Exchange Rate</span>
-                          <span style={{fontWeight:600}}>1 USD = {formatExchangeRate(data.exchange_rate)} TZS</span>
-                        </div>
-                        <div style={{display:'flex',justifyContent:'space-between',fontWeight:700,color:'var(--accent)'}}>
-                          <span>Total in TZS</span>
-                          <span>TZS {Math.round(modalTotal * Number(data.exchange_rate || 0)).toLocaleString()}</span>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>

@@ -48,7 +48,7 @@ class InvoiceController extends Controller
             ]);
         }
 
-        $invoicesQuery = Invoice::with('items')->orderByDesc('created_at');
+        $invoicesQuery = Invoice::with(['items', 'payments:id,invoice_id,status,receipt_id,wht_confirmed'])->orderByDesc('created_at');
         $leasesQuery = Lease::with(['tenant', 'unit', 'installments'])
             ->where('status', 'active');
         $tenantsQuery = Tenant::query()->orderBy('name');
@@ -57,8 +57,27 @@ class InvoiceController extends Controller
         $this->scopeByUserProperty($leasesQuery, $request, 'property_id');
         $this->scopeByUserProperty($tenantsQuery, $request, 'property_id');
 
-        $invoices = $invoicesQuery->get();
+        $receiptService = app(PaymentReceiptService::class);
+        $invoices = $invoicesQuery->get()->each(function (Invoice $invoice) use ($receiptService) {
+            $paid = $invoice->payments->where('status', 'paid');
+            $hasLeaseRelated = $receiptService
+                ->buildPaymentBreakdown($invoice, (float) $invoice->items->sum('total'))['has_lease_related'];
+
+            // Receipts are only issued against full payment; WHT is tracked once money has been received.
+            $invoice->setAttribute('receipt_status', match (true) {
+                $paid->contains(fn ($p) => !empty($p->receipt_id)) => 'issued',
+                $invoice->status === 'paid' => 'not_issued',
+                default => 'na',
+            });
+            $invoice->setAttribute('wht_status', match (true) {
+                !$hasLeaseRelated || $paid->isEmpty() => 'na',
+                $paid->contains(fn ($p) => $p->wht_confirmed) => 'paid',
+                default => 'pending',
+            });
+            $invoice->unsetRelation('payments');
+        });
         $leases   = $leasesQuery->get();
+        $this->attachReferenceRates($leases);
         $tenants  = $tenantsQuery->get();
         return Inertia::render('Invoices/Index', compact('invoices', 'leases', 'tenants'));
     }
@@ -104,7 +123,7 @@ class InvoiceController extends Controller
                 'tenant_name'    => $inv->tenant_name,
                 'unit_ref'       => $inv->unit_ref,
                 'amount_due'     => $amountDue,
-                'currency'       => $inv->currency ?? 'USD',
+                'currency'       => 'TZS',
                 'due_date'       => $inv->due_date,
                 'is_overdue'     => $daysDiff < 0,
                 'days'           => abs($daysDiff),
@@ -149,8 +168,7 @@ class InvoiceController extends Controller
             'due_date'     => 'nullable|date',
             'period'       => 'nullable|string',
             'notes'        => 'nullable|string',
-            'currency'      => 'nullable|string|in:USD,TZS',
-            'exchange_rate' => 'nullable|numeric|min:0.0001|max:999999.9999',
+            'usd_rate'      => 'nullable|numeric|min:0.0001|max:999999.9999',
             'items'        => 'required|array|min:1',
             'items.*.description' => 'required|string',
             'items.*.quantity'    => 'required|integer|min:1',
@@ -202,31 +220,15 @@ class InvoiceController extends Controller
             ]);
             $createdInvoiceId = $invoice->id;
 
-            // Set currency from lease if invoice is lease-linked, or from request
-            $currency = 'TZS';
-            $lease = null;
-            if ($invoice->lease_id) {
-                $lease = Lease::find($invoice->lease_id);
-                if ($lease) {
-                    $currency = $lease->currency ?? 'TZS';
-                }
-            } elseif (!empty($data['currency'])) {
-                $currency = strtoupper($data['currency']);
-            }
-            $invoice->update(['currency' => $currency]);
-
-            // Pre-populate exchange rate for audit trail and GL posting
-            if ($currency !== 'TZS') {
-                // Rate is entered manually on the proforma/invoice; no unit, lease or live fallback.
-                if (empty($data['exchange_rate']) || (float) $data['exchange_rate'] <= 0) {
-                    throw ValidationException::withMessages([
-                        'exchange_rate' => 'Enter the current USD → TZS exchange rate for this invoice.',
-                    ]);
-                }
-                $invoice->update(['exchange_rate' => round((float) $data['exchange_rate'], 4)]);
-            } else {
-                $invoice->update(['exchange_rate' => 1.0]);
-            }
+            // Invoices are always TZS. A USD-unit lease is converted by the client using the
+            // rate typed on the proforma; that rate is kept in usd_rate for audit.
+            $lease = $invoice->lease_id ? Lease::find($invoice->lease_id) : null;
+            $usdRate = $this->resolveUsdRate($lease, $data['usd_rate'] ?? null);
+            $invoice->update([
+                'currency'      => 'TZS',
+                'exchange_rate' => 1.0,
+                'usd_rate'      => $usdRate,
+            ]);
 
             $invoiceTotal = 0.0;
             foreach ($data['items'] as $item) {
@@ -255,9 +257,8 @@ class InvoiceController extends Controller
             $netItemsTotal = (float) $invoice->items()->get()->reject(fn($i) => in_array($i->item_type, ['electricity_charge', 'electricity_vat']))->sum('total');
             $leaseVat = ($elecItemsVat > 0 || $vatRate <= 0) ? 0.0 : round($netItemsTotal * ($vatRate / 100), 2);
             $grandTotal = $invoiceTotal + $leaseVat;
-            $fx = (float) ($invoice->exchange_rate ?? 1.0);
             $invoice->updateQuietly([
-                'total_in_base' => round($grandTotal * $fx, 2),
+                'total_in_base' => round($grandTotal, 2),
             ]);
 
             $this->attachInvoiceToInstallment($invoice);
@@ -518,6 +519,90 @@ class InvoiceController extends Controller
     /**
      * Re-send a proforma invoice email on demand (from the Email button in the drawer).
      */
+    /**
+     * Record that the tenant has paid the withholding tax on this invoice.
+     */
+    public function confirmWht(Request $request, Invoice $invoice): \Illuminate\Http\RedirectResponse
+    {
+        $this->authorizeInvoiceProperty($request, $invoice);
+
+        $data = $request->validate(['wht_reference' => 'nullable|string|max:255']);
+
+        $paid = Payment::where('invoice_id', $invoice->id)->where('status', 'paid')->get();
+        if ($paid->isEmpty()) {
+            return back()->with('error', 'Record a payment before confirming WHT.');
+        }
+
+        Payment::whereIn('id', $paid->pluck('id'))->update([
+            'wht_confirmed' => true,
+            'wht_reference' => $data['wht_reference'] ?? null,
+        ]);
+
+        $this->logAudit(
+            request: $request,
+            action: 'WHT confirmed paid',
+            resource: $invoice->invoice_number,
+            propertyName: Property::where('id', $invoice->property_id)->value('name'),
+            category: 'payment',
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
+        return back()->with('success', 'WHT marked as paid.');
+    }
+
+    /**
+     * Issue the receipt for a fully paid invoice (one receipt for the full amount).
+     */
+    public function issueReceipt(Request $request, Invoice $invoice, PaymentReceiptService $receiptService): \Illuminate\Http\RedirectResponse
+    {
+        $this->authorizeInvoiceProperty($request, $invoice);
+
+        $invoice->load('items');
+        $paid = Payment::where('invoice_id', $invoice->id)->where('status', 'paid')->orderBy('id')->get();
+
+        if ($invoice->status !== 'paid' || $paid->isEmpty()) {
+            return back()->with('error', 'A receipt can only be issued once the invoice is fully paid.');
+        }
+        if ($paid->contains(fn ($p) => !empty($p->receipt_id))) {
+            return back()->with('error', 'A receipt has already been issued for this invoice.');
+        }
+
+        $hasLeaseRelated = $receiptService
+            ->buildPaymentBreakdown($invoice, (float) $invoice->items->sum('total'))['has_lease_related'];
+        $receiptService->assertReceiptEligibility(
+            issueReceipt: true,
+            whtConfirmed: $paid->every(fn ($p) => $p->wht_confirmed),
+            hasLeaseRelatedCharges: (bool) $hasLeaseRelated,
+            isPartialPayment: false,
+        );
+
+        DB::transaction(function () use ($invoice, $paid, $receiptService) {
+            $last = $paid->last();
+            $receipt = $receiptService->createReceiptForPayment($last, $invoice);
+            $receipt->update(['amount' => round((float) $paid->sum('amount'), 2)]);
+            $last->update(['receipt_id' => $receipt->id, 'issue_receipt' => true]);
+        });
+
+        $this->logAudit(
+            request: $request,
+            action: 'Receipt issued',
+            resource: $invoice->invoice_number,
+            propertyName: Property::where('id', $invoice->property_id)->value('name'),
+            category: 'payment',
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
+        return back()->with('success', 'Receipt issued.');
+    }
+
+    private function authorizeInvoiceProperty(Request $request, Invoice $invoice): void
+    {
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
+        }
+    }
+
     public function send(Request $request, Invoice $invoice): \Illuminate\Http\RedirectResponse
     {
         if ($this->shouldScopeToProperty($request)) {
@@ -555,6 +640,37 @@ class InvoiceController extends Controller
         }
     }
 
+    /**
+     * Latest rate typed on a proforma for each lease (a hint only, never applied automatically).
+     */
+    private function attachReferenceRates($leases): void
+    {
+        $rates = Invoice::whereIn('lease_id', $leases->pluck('id'))
+            ->whereNotNull('usd_rate')
+            ->orderBy('id')
+            ->pluck('usd_rate', 'lease_id'); // later rows overwrite earlier ones => latest wins
+
+        $leases->each(fn ($lease) => $lease->setAttribute('reference_rate', $rates[$lease->id] ?? null));
+    }
+
+    /**
+     * Rate typed on a proforma for a USD-unit lease; required for those, ignored otherwise.
+     */
+    private function resolveUsdRate(?Lease $lease, $typedRate): ?float
+    {
+        if (strtoupper((string) ($lease?->currency ?? 'TZS')) !== 'USD') {
+            return null;
+        }
+
+        if (empty($typedRate) || (float) $typedRate <= 0) {
+            throw ValidationException::withMessages([
+                'usd_rate' => 'Enter the current USD → TZS exchange rate for this USD unit.',
+            ]);
+        }
+
+        return round((float) $typedRate, 4);
+    }
+
     private function updateEditableProforma(Request $request, Invoice $invoice): \Illuminate\Http\RedirectResponse
     {
         abort_if($invoice->type !== 'proforma', 422, 'Only proforma invoices can be edited this way.');
@@ -584,8 +700,7 @@ class InvoiceController extends Controller
             'period'       => 'nullable|string',
             'notes'        => 'nullable|string',
             'status'       => 'nullable|in:draft',
-            'currency'      => 'nullable|string|in:USD,TZS',
-            'exchange_rate' => 'nullable|numeric|min:0.0001|max:999999.9999',
+            'usd_rate'      => 'nullable|numeric|min:0.0001|max:999999.9999',
             'items'        => 'required|array|min:1',
             'items.*.description' => 'required|string',
             'items.*.quantity'    => 'required|integer|min:1',
@@ -608,31 +723,14 @@ class InvoiceController extends Controller
         $approvalStatus = ($data['status'] ?? null) === 'draft' ? 'draft' : 'pending_approval';
 
         DB::transaction(function () use ($invoice, $data, $propertyId, $lease, $approvalStatus) {
-            $currency = $invoice->currency ?? 'TZS';
-            if ($lease) {
-                $currency = $lease->currency ?? 'TZS';
-            } elseif (!empty($data['currency'])) {
-                $currency = strtoupper($data['currency']);
-            }
-
-            $exchangeRate = $invoice->exchange_rate;
-            if ($currency !== 'TZS') {
-                if (!empty($data['exchange_rate']) && (float) $data['exchange_rate'] > 0) {
-                    $exchangeRate = round((float) $data['exchange_rate'], 4);
-                } elseif (!$exchangeRate) {
-                    throw ValidationException::withMessages([
-                        'exchange_rate' => 'Enter the current USD → TZS exchange rate for this invoice.',
-                    ]);
-                }
-            } else {
-                $exchangeRate = 1.0;
-            }
+            $usdRate = $this->resolveUsdRate($lease, $data['usd_rate'] ?? null);
 
             $invoice->update([
                 'property_id' => $propertyId,
                 'lease_id' => $data['lease_id'] ?? null,
-                'currency' => $currency,
-                'exchange_rate' => $exchangeRate,
+                'currency' => 'TZS',
+                'exchange_rate' => 1.0,
+                'usd_rate' => $usdRate,
                 'tenant_name' => $data['tenant_name'],
                 'tenant_email' => $data['tenant_email'] ?? null,
                 'unit_ref' => $data['unit_ref'],
@@ -674,9 +772,8 @@ class InvoiceController extends Controller
             $netItemsTotal = (float) $invoice->items()->get()->reject(fn($i) => in_array($i->item_type, ['electricity_charge', 'electricity_vat']))->sum('total');
             $leaseVat = ($elecItemsVat > 0 || $vatRate <= 0) ? 0.0 : round($netItemsTotal * ($vatRate / 100), 2);
             $grandTotal = $invoiceTotal + $leaseVat;
-            $fx = (float) ($exchangeRate ?? 1.0);
             $invoice->updateQuietly([
-                'total_in_base' => round($grandTotal * $fx, 2),
+                'total_in_base' => round($grandTotal, 2),
             ]);
 
             $invoice->load('items');

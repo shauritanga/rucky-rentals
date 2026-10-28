@@ -6,7 +6,7 @@ import { formatDisplayDate } from '@/utils/dateFormat';
 const STATUS_CLASS = { occupied: 'occupied', vacant: 'vacant', overdue: 'overdue', maintenance: 'maintenance' };
 const STATUS_LABEL = { occupied: 'Occupied', vacant: 'Vacant', overdue: 'Overdue', maintenance: 'Maintenance' };
 
-export default function Dashboard({ stats, recentPayments, maintenanceItems, units, occupancyByFloor, upcomingEvents = [] }) {
+export default function Dashboard({ stats, recentPayments, maintenanceItems, units, occupancyByFloor, upcomingEvents = [], upcomingDays = 30 }) {
   const { formatCompactTzs, formatMoney } = useExchangeRate();
 
   return (
@@ -123,15 +123,27 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
               <div className="card-title">Upcoming</div>
               <div className="card-sub">Payments, moves & repairs</div>
             </div>
-            <button className="card-action">Calendar</button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[15, 30].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className="card-action"
+                  style={days === upcomingDays ? { fontWeight: 700, color: 'var(--accent)' } : undefined}
+                  onClick={() => router.get('/', { upcoming_days: days }, { preserveScroll: true, preserveState: true, only: ['upcomingEvents', 'upcomingDays'] })}
+                >
+                  {days}d
+                </button>
+              ))}
+            </div>
           </div>
           <div className="events-list">
             {upcomingEvents.length === 0 ? (
               <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-                No upcoming events in the next 7 days
+                No upcoming events in the next {upcomingDays} days
               </div>
             ) : upcomingEvents.map((e) => (
-              <div className="event-item" key={`${e.day}-${e.title}`}>
+              <div className="event-item" key={`${e.mon}-${e.day}-${e.title}`}>
                 <div className="event-date"><div className="event-day">{e.day}</div><div className="event-mon">{e.mon}</div></div>
                 <div>
                   <div className="event-title">{e.title}</div>

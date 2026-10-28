@@ -64,6 +64,8 @@ Route::middleware('auth')->group(function () {
         Route::resource('documents', DocumentController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::resource('invoices', InvoiceController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::post('invoices/{invoice}/send', [InvoiceController::class, 'send'])->name('invoices.send');
+        Route::post('invoices/{invoice}/wht', [InvoiceController::class, 'confirmWht'])->name('invoices.wht');
+        Route::post('invoices/{invoice}/receipt', [InvoiceController::class, 'issueReceipt'])->name('invoices.receipt');
         Route::post('invoices/{invoice}/resubmit', [InvoiceController::class, 'resubmit'])->name('invoices.resubmit');
         Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'downloadPdf'])->name('invoices.pdf');
         Route::get('invoices/due-reminders', [InvoiceController::class, 'dueReminders'])->name('invoices.due-reminders');
