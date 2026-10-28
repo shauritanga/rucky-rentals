@@ -88,14 +88,6 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
               <option key={property.id} value={property.id}>{property.name}</option>
             ))}
           </select>
-          {selectedPropertyId !== 'all' && (
-            <button
-              className="btn btn-primary"
-              onClick={() => router.post(`/superuser/property/${selectedPropertyId}/enter`)}
-            >
-              View Property Panel
-            </button>
-          )}
         </div>
       </div>
 
@@ -129,7 +121,12 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
                 const occupied = Number(property.occupied_units || 0);
                 const occupancy = units > 0 ? Math.round((occupied / units) * 100) : 0;
                 return (
-                  <tr key={property.id}>
+                  <tr
+                    key={property.id}
+                    onClick={() => router.post(`/superuser/property/${property.id}/enter`)}
+                    style={{ cursor: 'pointer' }}
+                    title="Open property panel"
+                  >
                     <td><div style={{ fontWeight: 600 }}>{property.name}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{property.city || '-'}</div></td>
                     <td>{property.manager?.name || 'Unassigned'}</td>
                     <td>{occupancy}%</td>

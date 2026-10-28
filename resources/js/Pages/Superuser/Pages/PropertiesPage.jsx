@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { router } from '@inertiajs/react';
 
 const statusClass = (status) => {
   if (status === 'active') return 'active';
@@ -18,6 +19,8 @@ export default function PropertiesPage({
   onAssignManager,
 }) {
   const [viewMode, setViewMode] = useState('grid');
+
+  const enterProperty = (propertyId) => router.post(`/superuser/property/${propertyId}/enter`);
 
   const filtered = properties.filter((property) => {
     const q = search.trim().toLowerCase();
@@ -66,11 +69,17 @@ export default function PropertiesPage({
               : 0;
             const cls = property.status === 'active' ? 'active-prop' : property.status === 'trial' ? 'trial-prop' : 'inactive-prop';
             return (
-              <div key={property.id} className={`prop-card ${cls}`}>
+              <div
+                key={property.id}
+                className={`prop-card ${cls}`}
+                onClick={() => enterProperty(property.id)}
+                style={{ cursor: 'pointer' }}
+                title="Open property panel"
+              >
                 <button
                   type="button"
                   className="prop-edit-button"
-                  onClick={() => onEditProperty(property)}
+                  onClick={(e) => { e.stopPropagation(); onEditProperty(property); }}
                   aria-label={`Edit ${property.name}`}
                   title="Edit property"
                 >
@@ -94,7 +103,7 @@ export default function PropertiesPage({
                   </div>
                   <span className={`badge ${statusClass(property.status)}`}>{property.status}</span>
                 </div>
-                <div style={{ marginTop: 10 }}>
+                <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
                   <select
                     className="form-input form-select"
                     value={property.manager_user_id || ''}
@@ -136,7 +145,12 @@ export default function PropertiesPage({
                   : 0;
 
                 return (
-                  <tr key={property.id}>
+                  <tr
+                    key={property.id}
+                    onClick={() => enterProperty(property.id)}
+                    style={{ cursor: 'pointer' }}
+                    title="Open property panel"
+                  >
                     <td style={{ fontWeight: 700 }}>{property.name}</td>
                     <td>{property.code || '-'}</td>
                     <td>{property.address || [property.city, property.country].filter(Boolean).join(', ')}</td>
@@ -145,7 +159,7 @@ export default function PropertiesPage({
                     <td>TZS {Math.round(Number(property.monthly_rent || 0) / 1000)}k</td>
                     <td>{property.manager?.name || 'Unassigned'}</td>
                     <td><span className={`badge ${statusClass(property.status)}`}>{property.status}</span></td>
-                    <td>
+                    <td onClick={(e) => e.stopPropagation()}>
                       <select
                         className="form-input form-select"
                         style={{ width: 180, padding: '6px 28px 6px 10px', fontSize: '12.5px' }}
@@ -158,7 +172,7 @@ export default function PropertiesPage({
                         ))}
                       </select>
                     </td>
-                    <td><button type="button" className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => onEditProperty(property)}>Edit</button></td>
+                    <td><button type="button" className="btn-ghost" style={{ padding: '6px 10px', fontSize: 12 }} onClick={(e) => { e.stopPropagation(); onEditProperty(property); }}>Edit</button></td>
                   </tr>
                 );
               })}
