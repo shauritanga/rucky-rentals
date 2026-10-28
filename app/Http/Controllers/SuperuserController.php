@@ -159,7 +159,17 @@ class SuperuserController extends Controller
             'pendingUnits'       => $pendingUnits,
             'pendingInvoices'    => $pendingInvoices,
             'archivedManagers'   => $archivedManagers,
+            'lastBackupAt'       => $this->lastBackupAt(),
         ]);
+    }
+
+    /** ISO time of the newest database backup file, or null when none has been made. */
+    private function lastBackupAt(): ?string
+    {
+        $files = glob(storage_path('app/backups/*.sql.gz')) ?: [];
+        $latest = $files ? max(array_map('filemtime', $files)) : null;
+
+        return $latest ? \Carbon\Carbon::createFromTimestamp($latest)->toIso8601String() : null;
     }
 
     public function storeProperty(Request $request)

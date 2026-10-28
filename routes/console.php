@@ -17,3 +17,9 @@ Schedule::command('queue:work --stop-when-empty --max-jobs=50 --max-time=55')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Daily database backup at 02:00: kept on disk (14 days) and emailed to the superusers.
+Schedule::command('backup:database')
+    ->dailyAt('02:00')
+    ->withoutOverlapping()
+    ->onFailure(fn () => \Illuminate\Support\Facades\Log::error('Daily database backup failed'));

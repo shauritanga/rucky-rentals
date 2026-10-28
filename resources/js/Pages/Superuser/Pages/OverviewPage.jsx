@@ -15,8 +15,16 @@ const SYSTEM_HEALTH = [
   { name: 'File Storage', sub: 'Documents & images', status: 'Operational', uptime: 100, color: 'green' },
   { name: 'Email Service', sub: 'Transactional mail', status: 'Operational', uptime: 99.85, color: 'green' },
   { name: 'SMS Gateway', sub: 'Tenant notifications', status: 'Degraded', uptime: 98.2, color: 'amber' },
-  { name: 'Backup Service', sub: 'Daily automated backup', status: 'Operational', uptime: 100, color: 'green' },
 ];
+
+// Backup status comes from the newest backup file on the server, not a fixed label.
+function backupHealth(lastBackupAt) {
+  if (!lastBackupAt) return { name: 'Backup Service', sub: 'No backup has run yet', status: 'Not run', uptime: 0, color: 'red' };
+  const hours = (Date.now() - new Date(lastBackupAt).getTime()) / 36e5;
+  const when = new Date(lastBackupAt).toLocaleString();
+  if (hours > 36) return { name: 'Backup Service', sub: `Last backup ${when}`, status: 'Overdue', uptime: 50, color: 'amber' };
+  return { name: 'Backup Service', sub: `Last backup ${when}`, status: 'Operational', uptime: 100, color: 'green' };
+}
 
 const DOT_COLOR_MAP = {
   settings: 'red',
@@ -35,7 +43,7 @@ function formatLogTime(ts) {
   return formatDisplayDateTime(ts, '');
 }
 
-export default function OverviewPage({ properties = [], managers = [], auditLogs = [] }) {
+export default function OverviewPage({ properties = [], managers = [], auditLogs = [], lastBackupAt = null }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState('all');
   // formatCompactTzs formats a pre-converted TZS value — no rate multiplication.
   // Revenue is converted server-side using getLiveRate() so all views are consistent.
@@ -161,7 +169,7 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
         <div className="card">
           <div className="card-header"><div className="card-title">System Health</div></div>
           <div style={{ padding: '6px 16px' }}>
-            {SYSTEM_HEALTH.map((h) => {
+            {[...SYSTEM_HEALTH, backupHealth(lastBackupAt)].map((h) => {
               const bg = h.color === 'green' ? 'var(--green-dim)' : h.color === 'amber' ? 'var(--amber-dim)' : 'var(--red-dim)';
               const color = h.color === 'green' ? 'var(--green)' : h.color === 'amber' ? 'var(--amber)' : 'var(--red)';
               return (

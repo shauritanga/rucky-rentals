@@ -199,6 +199,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           properties={effectiveProperties}
           managers={effectiveManagers}
           auditLogs={auditLogs}
+          lastBackupAt={props.lastBackupAt}
         />
       )}
 
