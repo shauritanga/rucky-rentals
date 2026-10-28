@@ -114,7 +114,7 @@ php artisan db:seed --class=CleanSlateSeeder
 
 ## Production Deployment
 
-The project ships with a GitHub Actions workflow (`.github/workflows/deploy.yml`) that automatically deploys to a DigitalOcean droplet on every push to `main`.
+The project ships with a GitHub Actions workflow (`.github/workflows/deploy.yml`) that automatically deploys to a DigitalOcean droplet on every push to `main`. The workflow pulls the code, runs migrations and rebuilds assets, so pushing to `main` deploys. Take a database backup first when a change includes a data-converting migration.
 
 Required GitHub secrets:
 
@@ -126,10 +126,24 @@ Required GitHub secrets:
 
 ---
 
+## Billing rules
+
+- **Currency**: invoices, payments, clearance and KPIs are always TZS. A unit may be priced in USD; the person creating a proforma for a USD unit types the day's USD → TZS rate, which converts the lines and is kept on the invoice (`invoices.usd_rate`). The lease shows TZS using its latest proforma rate (or "—" until one exists). The deposit rate is typed at lease approval and again at clearance.
+- **Invoice numbers**: per tenant and year, `<CODE>/NN/YYYY` (the tenant's `invoice_code`). A proforma keeps its number when it becomes a tax invoice, which happens only once it is fully paid (WHT included). Receipt and WHT status are tracked per invoice.
+- **Security deposit**: a non-tax "Proforma – Security Deposit" (no VAT, no WHT, never a tax invoice) is issued automatically when a lease is approved. The deposit is booked to Deposits Payable only when it is paid, and is excluded from revenue KPIs. Leases approved before this change keep their original booking; the lease drawer has an "Issue Deposit Proforma" button for them.
+- **Co-tenants**: when several leases run on one unit, rent and service charge are split equally. Installments are priced month by month by the number of leases running in that month (`LeaseShareRebalancer`), so a tenant's share goes back to 100% when a co-tenant's lease ends. Invoiced and paid installments are never changed; leases with a hand-set rent are skipped.
+- **Early termination**: a manager starts a Clearance and submits it for review; only a superuser can finalize it and terminate the lease.
+
+## Backups
+
+`php artisan backup:database` dumps the Postgres database to `storage/app/backups/` (kept 14 days) and emails the compressed dump to every superuser. It is scheduled daily at 02:00 in `routes/console.php`, so the scheduler (`schedule:work` or the cron entry) must be running. The backup contains all system data; keep the mailbox private. The Overview page shows the real time of the last backup.
+
+---
+
 ## Tech Stack
 
 - **Backend**: Laravel 13, PostgreSQL, Laravel Reverb (WebSockets)
 - **Frontend**: React 19, Inertia.js v2, Vite
 - **Auth**: Session-based, role-scoped (`superuser`, `manager`, `staff`)
 - **Accounting**: Double-entry GL posted automatically on invoices and payments
-- **Currency**: Multi-currency (TZS / USD) with exchange rate support
+- **Currency**: TZS everywhere; USD exists only as a unit's rate basis (see Billing rules)
