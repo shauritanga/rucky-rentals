@@ -114,15 +114,22 @@ php artisan db:seed --class=CleanSlateSeeder
 
 ## Production Deployment
 
-The project ships with a GitHub Actions workflow (`.github/workflows/deploy.yml`) that automatically deploys to a DigitalOcean droplet on every push to `main`. The workflow pulls the code, runs migrations and rebuilds assets, so pushing to `main` deploys. Take a database backup first when a change includes a data-converting migration.
+Production is deployed by hand: **pull the code from GitHub on the server**. Nothing is copied from a developer machine, and pushing to `main` does not deploy by itself. (`.github/workflows/deploy.yml` exists but is not in use.)
 
-Required GitHub secrets:
+The app lives in `/var/www/rucky-rentals` and runs under pm2 (`rucky-web`, `rucky-worker`, `rucky-scheduler`) behind nginx. To release:
 
-| Secret | Description |
-|---|---|
-| `SERVER_HOST` | Droplet IP address |
-| `SERVER_USER` | SSH username (e.g. `root`) |
-| `SERVER_SSH_KEY` | Private SSH key for the deploy key pair |
+```bash
+ssh root@<server>
+cd /var/www/rucky-rentals
+git pull --ff-only
+composer install --no-dev --optimize-autoloader   # only if composer.lock changed
+npm ci && npm run build                           # public/build is not in git, so it is built on the server
+php artisan migrate --force                       # only if there are new migrations
+php artisan config:cache && php artisan route:cache && php artisan view:cache
+pm2 restart all
+```
+
+Take a database backup first (`php artisan backup:database`) when a release includes a migration that changes existing data.
 
 ---
 
