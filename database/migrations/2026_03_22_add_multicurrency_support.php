@@ -31,7 +31,7 @@ return new class extends Migration
             $table->date('effective_date');
             $table->timestamps();
 
-            $table->unique(['property_id', 'from_currency', 'to_currency', 'effective_date']);
+            $table->unique(['property_id', 'from_currency', 'to_currency', 'effective_date'], 'exchange_rates_scope_unique'); // short name: MySQL limits identifiers to 64 chars
             $table->index(['property_id', 'effective_date']);
         });
     }

@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('exchange_rates', function (Blueprint $table) {
             // Drop the property-scoped foreign key and unique constraint
             $table->dropForeign(['property_id']);
-            $table->dropUnique(['property_id', 'from_currency', 'to_currency', 'effective_date']);
+            $table->dropUnique('exchange_rates_scope_unique');
             $table->dropIndex(['property_id', 'effective_date']);
 
             // Make property_id optional — rates are now global
@@ -30,7 +30,7 @@ return new class extends Migration
             $table->dropIndex('exchange_rates_lookup_index');
             $table->unsignedBigInteger('property_id')->nullable(false)->change();
             $table->foreign('property_id')->references('id')->on('properties')->cascadeOnDelete();
-            $table->unique(['property_id', 'from_currency', 'to_currency', 'effective_date']);
+            $table->unique(['property_id', 'from_currency', 'to_currency', 'effective_date'], 'exchange_rates_scope_unique');
             $table->index(['property_id', 'effective_date']);
         });
     }
