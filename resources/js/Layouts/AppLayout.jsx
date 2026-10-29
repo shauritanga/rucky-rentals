@@ -309,6 +309,9 @@ function OverflowNavBtn({ items, isActive, collapsed }) {
 
 export default function AppLayout({ children, title, subtitle }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
+  // Phones show the sidebar as a slide-over menu instead of a fixed column.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const isMobile = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
   useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ bottom: 0, left: 0 });
@@ -428,7 +431,8 @@ export default function AppLayout({ children, title, subtitle }) {
 
   return (
     <div className="app-layout">
-      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} id="sidebar">
+      <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`} id="sidebar"
+        onClick={(e) => { if (e.target.closest('.nav-item, .user-menu-item, a')) setMobileOpen(false); }}>
         <div className="sidebar-header">
           <div className="logo-mark">M</div>
           <span className="logo-text">Mwamba Properties</span>
@@ -545,6 +549,8 @@ export default function AppLayout({ children, title, subtitle }) {
         </div>
       </aside>
 
+      <div className={`sidebar-backdrop ${mobileOpen ? 'show' : ''}`} onClick={() => setMobileOpen(false)} aria-hidden="true" />
+
       <div className="main">
         {viewingProperty && (
           <div style={{
@@ -580,10 +586,10 @@ export default function AppLayout({ children, title, subtitle }) {
         <header className="topbar">
           <button
             className="toggle-btn"
-            onClick={() => setCollapsed(!collapsed)}
-            title="Toggle sidebar"
-            aria-label="Toggle sidebar"
-            aria-expanded={!collapsed}
+            onClick={() => (isMobile() ? setMobileOpen((o) => !o) : setCollapsed(!collapsed))}
+            title="Menu"
+            aria-label="Toggle menu"
+            aria-expanded={mobileOpen || !collapsed}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="1.5" y="1.5" width="15" height="15" rx="3" stroke="currentColor" strokeWidth="1.5"/>

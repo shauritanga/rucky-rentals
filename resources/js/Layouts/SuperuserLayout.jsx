@@ -367,6 +367,9 @@ function OverflowNavBtnSU({ items, activeView, onNavigate, navCounts, collapsed 
 
 export default function SuperuserLayout({ activeView, onNavigate, title, subtitle, actionLabel, onAction, navCounts = {}, children }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true');
+  // Phones show the sidebar as a slide-over menu instead of a fixed column.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const isMobile = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
   useEffect(() => { localStorage.setItem('sidebar-collapsed', collapsed); }, [collapsed]);
   const [theme, setTheme] = useState(() => localStorage.getItem('app-theme') || 'dark');
   const { props } = usePage();
@@ -482,7 +485,8 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
 
   return (
     <div className="app-layout superuser-shell">
-      <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}
+        onClick={(e) => { if (e.target.closest('.nav-item, .user-menu-item, a')) setMobileOpen(false); }}>
         <div className="sidebar-header">
           <div className="logo-mark">M</div>
           <span className="logo-text">Mwamba Properties</span>
@@ -605,14 +609,16 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
         </div>
       </aside>
 
+      <div className={`sidebar-backdrop ${mobileOpen ? 'show' : ''}`} onClick={() => setMobileOpen(false)} aria-hidden="true" />
+
       <div className="main">
         <header className="topbar">
           <button
             className="toggle-btn"
-            onClick={() => setCollapsed(!collapsed)}
-            title="Toggle sidebar"
-            aria-label="Toggle sidebar"
-            aria-expanded={!collapsed}
+            onClick={() => (isMobile() ? setMobileOpen((o) => !o) : setCollapsed(!collapsed))}
+            title="Menu"
+            aria-label="Toggle menu"
+            aria-expanded={mobileOpen || !collapsed}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="1.5" y="1.5" width="15" height="15" rx="3" stroke="currentColor" strokeWidth="1.5"/>
@@ -620,10 +626,6 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
             </svg>
           </button>
           <div className="topbar-title">{title} {subtitle && <span>- {subtitle}</span>}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '4px 12px', borderRadius: 20, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-            <span style={{ width: 6, height: 6, background: 'var(--green)', borderRadius: '50%', display: 'inline-block' }}></span>
-            All systems operational
-          </div>
           <button className="icon-btn" onClick={() => setTheme((t) => t === 'dark' ? 'light' : 'dark')} title="Toggle theme">
             {theme === 'dark'
               ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
