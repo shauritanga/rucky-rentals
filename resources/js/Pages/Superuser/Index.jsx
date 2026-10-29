@@ -198,8 +198,9 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         <OverviewPage
           properties={effectiveProperties}
           managers={effectiveManagers}
-          auditLogs={auditLogs}
           lastBackupAt={props.lastBackupAt}
+          ownerSummaries={props.ownerSummaries}
+          onNavigate={setActiveView}
         />
       )}
 

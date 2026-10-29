@@ -160,7 +160,109 @@ class SuperuserController extends Controller
             'pendingInvoices'    => $pendingInvoices,
             'archivedManagers'   => $archivedManagers,
             'lastBackupAt'       => $this->lastBackupAt(),
+            'ownerSummaries'     => $this->ownerSummaries($properties, ['leases' => $pendingLeases, 'invoices' => $pendingInvoices, 'units' => $pendingUnits, 'team' => $pendingTeamMembers, 'maintenance' => $pendingMaintenance]),
         ]);
+    }
+
+    /**
+     * Owner headline numbers per scope ('all' plus each property id), so the Overview can follow
+     * its property filter without another request. Everything is in TZS.
+     */
+    private function ownerSummaries($properties, array $pending): array
+    {
+        $scopes = ['all' => null];
+        foreach ($properties as $property) {
+            $scopes[(string) $property->id] = (int) $property->id;
+        }
+
+        return collect($scopes)->map(fn ($propertyId) => $this->ownerSummary($propertyId, $pending))->all();
+    }
+
+    private function ownerSummary(?int $propertyId, array $pending): array
+    {
+        $today = now()->startOfDay();
+        $monthStart = now()->startOfMonth();
+        $lastStart = now()->subMonthNoOverflow()->startOfMonth();
+        $lastEnd = now()->subMonthNoOverflow()->endOfMonth();
+        $scope = fn ($q) => $propertyId ? $q->where('property_id', $propertyId) : $q;
+        $depositIds = Invoice::where('kind', 'deposit')->select('id');
+
+        // Units
+        $unitQuery = $scope(Unit::query()->approved());
+        $units = (clone $unitQuery)->count();
+        $occupied = (clone $unitQuery)->whereIn('status', ['occupied', 'overdue'])->count();
+
+        // Money collected (rent only; deposits are not income)
+        $collected = fn ($from, $to) => (float) $scope(Payment::where('status', 'paid'))
+            ->where(fn ($q) => $q->whereNull('invoice_id')->orWhereNotIn('invoice_id', $depositIds))
+            ->whereRaw('COALESCE(paid_date, DATE(created_at)) BETWEEN ? AND ?', [$from->toDateString(), $to->toDateString()])
+            ->sum('amount_in_base');
+
+        $collectedCount = $scope(Payment::where('status', 'paid'))
+            ->where(fn ($q) => $q->whereNull('invoice_id')->orWhereNotIn('invoice_id', $depositIds))
+            ->whereRaw('COALESCE(paid_date, DATE(created_at)) BETWEEN ? AND ?', [$monthStart->toDateString(), now()->endOfMonth()->toDateString()])
+            ->count();
+
+        // Billed vs collected for invoices falling due this month
+        $billable = fn () => $scope(Invoice::with('items')->where('kind', '!=', 'deposit')->where('status', '!=', 'draft'))
+            ->where(fn ($q) => $q->whereNull('approval_status')->orWhere('approval_status', 'approved'));
+        $total = fn ($inv) => (float) ($inv->total_in_base ?: $inv->items->sum('total'));
+
+        $dueThisMonth = $billable()->whereBetween('due_date', [$monthStart->toDateString(), now()->endOfMonth()->toDateString()])->get();
+        $paidOn = fn ($ids) => Payment::where('status', 'paid')->whereIn('invoice_id', $ids)
+            ->selectRaw('invoice_id, SUM(amount_in_base) as s')->groupBy('invoice_id')->pluck('s', 'invoice_id');
+        $paidThis = $paidOn($dueThisMonth->pluck('id'));
+        $billed = round($dueThisMonth->sum($total), 2);
+        $billedPaid = round($dueThisMonth->sum(fn ($i) => min($total($i), (float) ($paidThis[$i->id] ?? 0))), 2);
+
+        // Money still owed
+        $open = $billable()->whereNotIn('status', ['proforma', 'paid'])->whereNotNull('due_date')->get();
+        $paidOpen = $paidOn($open->pluck('id'));
+        $owed = fn ($i) => max(0, $total($i) - (float) ($paidOpen[$i->id] ?? 0));
+        $overdue = $open->filter(fn ($i) => \Carbon\Carbon::parse($i->due_date)->lt($today) && $owed($i) > 0);
+        $dueSoon = $open->filter(fn ($i) => \Carbon\Carbon::parse($i->due_date)->between($today, $today->copy()->addDays(30)) && $owed($i) > 0);
+
+        $debtors = $overdue->groupBy('tenant_name')->map(fn ($group, $name) => [
+            'tenant' => $name,
+            'amount' => round($group->sum($owed), 2),
+            'invoices' => $group->count(),
+            'days' => (int) $group->max(fn ($i) => \Carbon\Carbon::parse($i->due_date)->diffInDays($today)),
+        ])->sortByDesc('amount')->take(4)->values()->all();
+
+        // Deposits held for tenants: paid deposit proformas, plus older leases that booked it at approval
+        $running = ['active', 'expiring', 'overdue'];
+        $paidDeposits = (float) $scope(Payment::where('status', 'paid'))
+            ->whereIn('invoice_id', Invoice::where('kind', 'deposit')->whereIn('lease_id', $scope(Lease::whereIn('status', $running))->select('id'))->select('id'))
+            ->sum('amount_in_base');
+        $legacyDeposits = $scope(Lease::whereIn('status', $running))->where('deposit', '>', 0)
+            ->whereNotIn('id', Invoice::where('kind', 'deposit')->whereNotNull('lease_id')->select('lease_id'))->get()
+            ->sum(fn ($l) => strtoupper((string) $l->currency) === 'USD' ? (float) $l->deposit * (float) ($l->exchange_rate ?: 0) : (float) $l->deposit);
+
+        $inScope = fn ($rows) => collect($rows)->filter(fn ($r) => !$propertyId || (int) $r->property_id === $propertyId)->count();
+        $approvals = $inScope($pending['leases']) + $inScope($pending['invoices']) + $inScope($pending['units'])
+            + $inScope($pending['team']) + $inScope($pending['maintenance'])
+            + $scope(\App\Models\UnitClearance::whereNotNull('submitted_for_review_at')->whereNotIn('status', ['completed', 'cancelled']))->count();
+
+        return [
+            'units'          => $units,
+            'occupied'       => $occupied,
+            'vacant'         => (clone $unitQuery)->where('status', 'vacant')->count(),
+            'collectedThis'  => $collected($monthStart, now()->endOfMonth()),
+            'collectedLast'  => $collected($lastStart, $lastEnd),
+            'collectedCount' => $collectedCount,
+            'billed'         => $billed,
+            'billedPaid'     => $billedPaid,
+            'overdueCount'   => $overdue->count(),
+            'overdueAmount'  => round($overdue->sum($owed), 2),
+            'dueSoonCount'   => $dueSoon->count(),
+            'dueSoonAmount'  => round($dueSoon->sum($owed), 2),
+            'debtors'        => $debtors,
+            'depositsHeld'   => round($paidDeposits + $legacyDeposits, 2),
+            'leasesEnding'   => $scope(Lease::whereIn('status', ['active', 'expiring']))
+                ->whereBetween('end_date', [$today->toDateString(), $today->copy()->addDays(90)->toDateString()])->count(),
+            'openMaintenance' => $scope(\App\Models\MaintenanceRecord::whereIn('status', ['open', 'in-progress']))->count(),
+            'approvals'      => $approvals,
+        ];
     }
 
     /** ISO time of the newest database backup file, or null when none has been made. */

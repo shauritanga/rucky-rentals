@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
-import { formatDisplayDateTime } from '@/utils/dateFormat';
 
 const statusClass = (status) => {
   if (status === 'active') return 'active';
@@ -9,41 +8,55 @@ const statusClass = (status) => {
   return 'inactive';
 };
 
-const SYSTEM_HEALTH = [
-  { name: 'Application Server', sub: 'API & web interface', status: 'Operational', uptime: 99.98, color: 'green' },
-  { name: 'Database', sub: 'PostgreSQL primary', status: 'Operational', uptime: 99.99, color: 'green' },
-  { name: 'File Storage', sub: 'Documents & images', status: 'Operational', uptime: 100, color: 'green' },
-  { name: 'Email Service', sub: 'Transactional mail', status: 'Operational', uptime: 99.85, color: 'green' },
-  { name: 'SMS Gateway', sub: 'Tenant notifications', status: 'Degraded', uptime: 98.2, color: 'amber' },
-];
 
-// Backup status comes from the newest backup file on the server, not a fixed label.
-function backupHealth(lastBackupAt) {
-  if (!lastBackupAt) return { name: 'Backup Service', sub: 'No backup has run yet', status: 'Not run', uptime: 0, color: 'red' };
-  const hours = (Date.now() - new Date(lastBackupAt).getTime()) / 36e5;
-  const when = new Date(lastBackupAt).toLocaleString();
-  if (hours > 36) return { name: 'Backup Service', sub: `Last backup ${when}`, status: 'Overdue', uptime: 50, color: 'amber' };
-  return { name: 'Backup Service', sub: `Last backup ${when}`, status: 'Operational', uptime: 100, color: 'green' };
-}
-
-const DOT_COLOR_MAP = {
-  settings: 'red',
-  user:     'amber',
-  lease:    'purple',
-  payment:  'green',
-  finance:  'green',
-  default:  'accent',
+const Icon = ({ children }) => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+);
+const ICONS = {
+  cash:   <Icon><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></Icon>,
+  home:   <Icon><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>,
+  alert:  <Icon><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Icon>,
+  shield: <Icon><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></Icon>,
+  check:  <Icon><polyline points="20 6 9 17 4 12"/></Icon>,
+  clock:  <Icon><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>,
+  doc:    <Icon><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></Icon>,
+  tool:   <Icon><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94z"/></Icon>,
+  save:   <Icon><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></Icon>,
 };
 
-function dotColor(log) {
-  return DOT_COLOR_MAP[log.category] ?? DOT_COLOR_MAP.default;
+const pct = (part, whole) => (whole > 0 ? Math.min(100, Math.round((part / whole) * 100)) : 0);
+
+// Rows for "Needs Your Attention": each has a tone, a headline figure and an optional page to open.
+function attentionRows(o, lastBackupAt, tzs) {
+  if (!o) return [];
+  const rows = [
+    { key: 'approvals', icon: ICONS.check, title: 'Waiting for your approval', sub: 'Leases, invoices, units, team and clearances', value: o.approvals, tone: o.approvals ? 'amber' : 'ok', go: o.approvals ? 'approvals' : null },
+    { key: 'due', icon: ICONS.clock, title: 'Rent due in 30 days', sub: `${o.dueSoonCount} invoice${o.dueSoonCount === 1 ? '' : 's'} coming due`, value: o.dueSoonCount ? tzs(o.dueSoonAmount) : 0, tone: o.dueSoonCount ? 'amber' : 'ok' },
+    { key: 'ending', icon: ICONS.doc, title: 'Leases ending soon', sub: 'Within the next 90 days', value: o.leasesEnding, tone: o.leasesEnding ? 'amber' : 'ok' },
+    { key: 'maint', icon: ICONS.tool, title: 'Open repair requests', sub: 'Reported and in progress', value: o.openMaintenance, tone: o.openMaintenance ? 'amber' : 'ok' },
+  ];
+  const hours = lastBackupAt ? (Date.now() - new Date(lastBackupAt).getTime()) / 36e5 : null;
+  if (hours === null) rows.push({ key: 'backup', icon: ICONS.save, title: 'Data backup', sub: 'No backup has run yet', value: 'Not run', tone: 'red' });
+  else if (hours > 36) rows.push({ key: 'backup', icon: ICONS.save, title: 'Data backup', sub: `Last backup ${new Date(lastBackupAt).toLocaleString()}`, value: 'Overdue', tone: 'amber' });
+  return rows;
 }
 
-function formatLogTime(ts) {
-  return formatDisplayDateTime(ts, '');
+function Kpi({ icon, tone, label, value, delta, foot, bar }) {
+  return (
+    <div className="stat-card ov-kpi">
+      <div className="stat-top">
+        <div className={`stat-icon ${tone}`}>{icon}</div>
+        {delta}
+      </div>
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+      {bar !== undefined && <div className="ov-bar"><div className={`ov-bar-fill ${tone}`} style={{ width: `${bar}%` }} /></div>}
+      <div className="ov-foot">{foot}</div>
+    </div>
+  );
 }
 
-export default function OverviewPage({ properties = [], managers = [], auditLogs = [], lastBackupAt = null }) {
+export default function OverviewPage({ properties = [], managers = [], lastBackupAt = null, ownerSummaries = {}, onNavigate = () => {} }) {
   const [selectedPropertyId, setSelectedPropertyId] = useState('all');
   // formatCompactTzs formats a pre-converted TZS value — no rate multiplication.
   // Revenue is converted server-side using getLiveRate() so all views are consistent.
@@ -76,6 +89,12 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
     });
   }, [managers, selectedProperty]);
 
+  const o = ownerSummaries[selectedPropertyId] || ownerSummaries.all || null;
+  const tzs = (n) => formatCompactTzs(Number(n || 0));
+  const occPct = o ? pct(o.occupied, o.units) : 0;
+  const change = o && o.collectedLast > 0 ? Math.round(((o.collectedThis - o.collectedLast) / o.collectedLast) * 100) : null;
+  const attention = attentionRows(o, lastBackupAt, tzs);
+
   return (
     <>
       <div className="page-header">
@@ -99,24 +118,29 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-top"><div className="stat-icon blue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div><span className="stat-delta up">portfolio</span></div>
-          <div className="stat-value">{scopedStats.total || 0}</div><div className="stat-label">Total Properties</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-top"><div className="stat-icon blue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></div><span className="stat-delta up">units</span></div>
-          <div className="stat-value">{scopedStats.units || 0}</div><div className="stat-label">Total Units</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-top"><div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><span className="stat-delta up">occupied</span></div>
-          <div className="stat-value">{scopedStats.occupied || 0}</div><div className="stat-label">Occupied Units</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-top"><div className="stat-icon green"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div><span className="stat-delta up">revenue</span></div>
-          <div className="stat-value">{formatCompactTzs(scopedStats.revenue)}</div><div className="stat-label">Monthly Revenue</div>
-        </div>
-      </div>
+      {o && (
+        <>
+            <div className="stats-grid">
+              <Kpi
+                icon={ICONS.cash} tone="green" label="Collected this month" value={tzs(o.collectedThis)}
+                delta={change !== null && change !== 0 ? <span className={`stat-delta ${change > 0 ? 'up' : 'down'}`}>{change > 0 ? '↑' : '↓'} {Math.abs(change)}% vs last month</span> : null}
+                foot={o.collectedCount ? `${o.collectedCount} payment${o.collectedCount > 1 ? 's' : ''} received this month · deposits excluded` : 'No payments received yet this month'}
+              />
+              <Kpi
+                icon={ICONS.home} tone="blue" label="Occupancy" value={`${occPct}%`} bar={occPct}
+                foot={`${o.occupied} of ${o.units} units occupied${o.vacant ? ` · ${o.vacant} vacant` : ''}`}
+              />
+              <Kpi
+                icon={ICONS.alert} tone={o.overdueCount ? 'red' : 'green'} label="Overdue rent" value={tzs(o.overdueAmount)}
+                foot={o.overdueCount ? `${o.overdueCount} invoice${o.overdueCount > 1 ? 's' : ''} past due` : 'Everyone is paid up'}
+              />
+              <Kpi
+                icon={ICONS.shield} tone="amber" label="Deposits held" value={tzs(o.depositsHeld)}
+                foot="Refundable to tenants at move-out"
+              />
+            </div>
+        </>
+      )}
 
       <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <div className="card">
@@ -165,45 +189,37 @@ export default function OverviewPage({ properties = [], managers = [], auditLogs
         </div>
       </div>
 
-      <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 16 }}>
+      <div style={{ marginTop: 16 }} />
+      {o && (
+      <div className="ov-two">
         <div className="card">
-          <div className="card-header"><div className="card-title">System Health</div></div>
-          <div style={{ padding: '6px 16px' }}>
-            {[...SYSTEM_HEALTH, backupHealth(lastBackupAt)].map((h) => {
-              const bg = h.color === 'green' ? 'var(--green-dim)' : h.color === 'amber' ? 'var(--amber-dim)' : 'var(--red-dim)';
-              const color = h.color === 'green' ? 'var(--green)' : h.color === 'amber' ? 'var(--amber)' : 'var(--red)';
-              return (
-                <div key={h.name} className="health-row">
-                  <div className="health-icon" style={{ background: bg, color }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  </div>
-                  <div className="health-name"><div style={{ fontSize: 13.5, fontWeight: 500 }}>{h.name}</div><div className="health-sub">{h.sub}</div></div>
-                  <div className="uptime-bar"><div className="uptime-fill" style={{ width: `${h.uptime}%`, background: color }}></div></div>
-                  <div className="health-status" style={{ color }}>{h.status}</div>
-                </div>
-              );
-            })}
+          <div className="card-header"><div><div className="card-title">Needs Your Attention</div><div className="card-sub">{attention.every((r) => r.tone === 'ok') ? 'Nothing needs action right now' : 'Items waiting on you'}</div></div></div>
+          <div className="ov-list">
+            {attention.map((r) => (
+              <button key={r.key} type="button" className={`ov-todo ${r.go ? 'clickable' : ''}`} onClick={() => r.go && onNavigate(r.go)} disabled={!r.go}>
+                <span className={`ov-ico ${r.tone}`}>{r.icon}</span>
+                <span className="ov-todo-text"><span className="ov-todo-title">{r.title}</span><span className="ov-todo-sub">{r.sub}</span></span>
+                <span className={`ov-pill ${r.tone}`}>{r.tone === 'ok' ? 'All clear' : r.value}</span>
+              </button>
+            ))}
           </div>
         </div>
 
         <div className="card">
-          <div className="card-header"><div><div className="card-title">Recent Activity</div></div></div>
-          <div style={{ padding: '4px 16px' }}>
-            {auditLogs.length === 0 && (
-              <div style={{ padding: '16px 0', color: 'var(--text-muted)', fontSize: 13 }}>No activity recorded yet.</div>
-            )}
-            {auditLogs.slice(0, 8).map((log) => (
-              <div key={log.id} className="act-item">
-                <div className={`act-dot ${dotColor(log)}`}></div>
-                <div>
-                  <div className="act-text">{log.user_name} — {log.action}</div>
-                  <div className="act-meta">{log.resource}{log.property_name ? ` · ${log.property_name}` : ''} · {formatLogTime(log.created_at)}</div>
-                </div>
+          <div className="card-header"><div><div className="card-title">Who owes the most</div><div className="card-sub">Overdue rent by tenant</div></div></div>
+          <div className="ov-list">
+            {o.debtors.length === 0 && <div className="ov-empty">{ICONS.check}<span>No overdue rent. Everyone is paid up.</span></div>}
+            {o.debtors.map((d) => (
+              <div key={d.tenant} className="ov-debtor">
+                <span className="ov-avatar">{String(d.tenant || '?').trim().charAt(0).toUpperCase()}</span>
+                <span className="ov-todo-text"><span className="ov-todo-title">{d.tenant}</span><span className="ov-todo-sub">{d.invoices} invoice{d.invoices > 1 ? 's' : ''} · {d.days} day{d.days === 1 ? '' : 's'} overdue</span></span>
+                <span className="ov-amount">{tzs(d.amount)}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
+      )}
     </>
   );
 }

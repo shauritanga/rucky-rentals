@@ -857,3 +857,36 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 /* ── Sidebar collapsed: nav item tooltips ─────────────────────── */
 .sidebar.collapsed .nav-item[data-tooltip]::after{content:attr(data-tooltip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);background:var(--bg-surface);color:var(--text);border:1px solid var(--border);padding:5px 10px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:200}
 .sidebar.collapsed .nav-item[data-tooltip]:hover::after{opacity:1}
+
+/* ── Superuser Overview (owner view) ── */
+.superuser-shell .ov-kpi{padding:13px 16px}
+.ov-kpi .stat-top{margin-bottom:8px;min-height:30px}
+.ov-kpi .stat-icon{width:30px;height:30px;border-radius:8px}
+.ov-kpi .stat-icon svg{width:15px;height:15px}
+.ov-kpi .stat-value{font-size:22px;margin-bottom:2px}
+.ov-kpi .stat-label{font-size:12px}
+.ov-kpi .stat-delta{font-size:10.5px;padding:2px 6px}
+.ov-bar{height:4px;border-radius:99px;background:var(--bg-elevated);margin:9px 0 6px;overflow:hidden}
+.ov-bar-fill{height:100%;border-radius:99px;background:var(--accent);transition:width .4s ease}
+.ov-bar-fill.green{background:var(--green)}.ov-bar-fill.amber{background:var(--amber)}.ov-bar-fill.red{background:var(--red)}
+.ov-foot{font-size:11.5px;color:var(--text-muted);margin-top:6px;line-height:1.35}
+.ov-bar + .ov-foot{margin-top:0}
+.ov-two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.ov-list{padding:8px 12px 12px}
+.ov-todo,.ov-debtor{display:flex;align-items:center;gap:12px;width:100%;padding:11px 8px;border:none;background:none;border-radius:10px;font-family:inherit;text-align:left;color:inherit}
+.ov-todo + .ov-todo,.ov-debtor + .ov-debtor{border-top:1px solid var(--border-subtle)}
+.ov-todo:disabled{cursor:default;opacity:1}
+.ov-todo.clickable{cursor:pointer}
+.ov-todo.clickable:hover{background:var(--bg-hover)}
+.ov-ico{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ov-ico.ok{background:var(--green-dim);color:var(--green)}.ov-ico.amber{background:var(--amber-dim);color:var(--amber)}.ov-ico.red{background:var(--red-dim);color:var(--red)}
+.ov-todo-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.ov-todo-title{font-size:13.5px;font-weight:500}
+.ov-todo-sub{font-size:12px;color:var(--text-muted)}
+.ov-pill{font-size:12px;font-weight:600;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.ov-pill.ok{background:var(--green-dim);color:var(--green)}.ov-pill.amber{background:var(--amber-dim);color:var(--amber)}.ov-pill.red{background:var(--red-dim);color:var(--red)}
+.ov-avatar{width:34px;height:34px;border-radius:50%;background:var(--red-dim);color:var(--red);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;flex-shrink:0}
+.ov-amount{font-size:13.5px;font-weight:600;color:var(--red);white-space:nowrap}
+.ov-empty{display:flex;align-items:center;gap:10px;padding:22px 10px;color:var(--text-secondary);font-size:13px}
+.ov-empty svg{color:var(--green);flex-shrink:0}
+@media (max-width:900px){.ov-two{grid-template-columns:1fr}}
