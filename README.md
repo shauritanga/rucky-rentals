@@ -51,14 +51,15 @@ Then open **http://localhost:8000** in your browser.
 
 ---
 
-## Default Login
+## First Login
 
-| Field | Value |
-|---|---|
-| Email | `admin@rukyrentals.co.tz` |
-| Password | `admin123` |
+There is no default account and no password in the code. Create the first superuser with the seeder, which asks for the email and password (at least 12 characters):
 
-> **Change the password immediately** after first login.
+```bash
+php artisan db:seed
+```
+
+For a non-interactive install, set `ADMIN_EMAIL`, `ADMIN_PASSWORD` and optionally `ADMIN_NAME` in the environment first; without them the seeder creates nobody. Login sends a one-time code by email, so mail must be working.
 
 ---
 
@@ -136,7 +137,7 @@ pm2 restart all
 
 If `git pull` complains about untracked files in `public/build` (first pull after build output became tracked), run `rm -rf public/build` once and pull again.
 
-### Option B: cPanel (MySQL, no Node)
+### Option B: cPanel / DirectAdmin (MySQL, no Node)
 
 1. **PHP**: cPanel → MultiPHP Manager → PHP 8.3 or 8.4 for the domain. In MultiPHP INI Editor / Select PHP Version enable `pdo_mysql, mbstring, openssl, xml, curl, gd, zip, fileinfo, bcmath, intl`; set `memory_limit` to at least 256M.
 2. **Database**: cPanel → MySQL Databases → create a database and a user, then add the user to the database with all privileges.
@@ -167,6 +168,13 @@ If `git pull` complains about untracked files in `public/build` (first pull afte
    The schedule already runs the queue worker every minute and the daily 02:00 database backup (`mysqldump`, emailed to the superusers).
 9. **SSL**: cPanel → SSL/TLS Status → run AutoSSL for the domain.
 10. **Releases**: `git pull --ff-only`; `composer install --no-dev -o` if `composer.lock` changed; `php artisan migrate --force`; re-run the three cache commands.
+
+**DirectAdmin notes**
+- The domain's web folder is `~/domains/<domain>/public_html`. Replace it with a link to the app: `mv public_html public_html_old && ln -s ~/rucky-rentals/public public_html` (`private_html` already links to it).
+- PHP 8.3 is the default CLI `php`; use plain `php` (there is no `ea-phpXX` command).
+- **Mail**: use port 587 with `MAIL_SCHEME=smtp`, and set `MAIL_HOST` to the server's own host name (`hostname -f`) if `mail.<your-domain>` fails with "certificate subjectAltName did not match". Add an SPF `TXT` record (`v=spf1 a mx ip4:<server-ip> ~all`) so mail is not marked as spam.
+- **SSL**: if the Let's Encrypt pre-check fails, make sure the DNS for `@` and `www` points at the server and that old `A` records are gone; wait for caches, or ask the host to re-run it.
+- **Scheduler**: add one cron job every minute: `cd /home/<user>/rucky-rentals && /usr/local/bin/php artisan schedule:run >> /dev/null 2>&1`.
 
 ---
 
