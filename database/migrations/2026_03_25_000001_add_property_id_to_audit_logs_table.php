@@ -13,7 +13,7 @@ return new class extends Migration
                 ->nullable()
                 ->constrained()
                 ->nullOnDelete()
-                ->after('property_name');
+                ;
         });
     }
 

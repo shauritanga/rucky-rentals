@@ -13,7 +13,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('payments', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained()->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained()->nullOnDelete();
         });
 
         if (Schema::getConnection()->getDriverName() === 'sqlite') {

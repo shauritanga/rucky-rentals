@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('units', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained('properties')->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained('properties')->nullOnDelete();
         });
 
         // Legacy backfill: if system has only one property, map all existing units to it.

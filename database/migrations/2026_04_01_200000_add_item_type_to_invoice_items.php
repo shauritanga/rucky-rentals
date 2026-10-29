@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('invoice_items', function (Blueprint $table) {
-            $table->string('item_type', 30)->default('other')->after('description');
+            $table->string('item_type', 30)->default('other');
         });
 
         // Back-fill existing rows based on description text matching

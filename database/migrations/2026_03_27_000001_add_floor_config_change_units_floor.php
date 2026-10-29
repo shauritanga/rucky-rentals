@@ -11,7 +11,7 @@ return new class extends Migration
     {
         // ── Properties: add floor_config JSON ────────────────────────────────
         Schema::table('properties', function (Blueprint $table) {
-            $table->json('floor_config')->nullable()->after('total_floors');
+            $table->json('floor_config')->nullable();
         });
 
         // Backfill: convert existing total_floors into a floor_config JSON
@@ -30,7 +30,7 @@ return new class extends Migration
         // ── Units: change `floor` from integer to varchar(20) ────────────────
         // Step 1: add a temporary string column
         Schema::table('units', function (Blueprint $table) {
-            $table->string('floor_code', 20)->nullable()->after('floor');
+            $table->string('floor_code', 20)->nullable();
         });
 
         // Step 2: backfill — cast existing integer floor values to string
@@ -58,7 +58,7 @@ return new class extends Migration
     {
         // ── Units: revert varchar floor → integer ────────────────────────────
         Schema::table('units', function (Blueprint $table) {
-            $table->integer('floor_int')->nullable()->after('floor');
+            $table->integer('floor_int')->nullable();
         });
 
         // Cast string codes back to integers (only works for numeric codes; others default to 1)

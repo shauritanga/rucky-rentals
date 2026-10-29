@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('units', function (Blueprint $table) {
-            $table->decimal('exchange_rate', 10, 4)->nullable()->after('currency');
+            $table->decimal('exchange_rate', 10, 4)->nullable();
         });
     }
 

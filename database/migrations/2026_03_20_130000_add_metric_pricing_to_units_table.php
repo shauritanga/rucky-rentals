@@ -15,9 +15,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('units', function (Blueprint $table) {
-            $table->decimal('size_sqm', 10, 2)->nullable()->after('size_sqft');
-            $table->decimal('rate_per_sqm', 12, 2)->nullable()->after('size_sqm');
-            $table->enum('currency', ['TZS', 'USD'])->default('USD')->after('rate_per_sqm');
+            $table->decimal('size_sqm', 10, 2)->nullable();
+            $table->decimal('rate_per_sqm', 12, 2)->nullable();
+            $table->enum('currency', ['TZS', 'USD'])->default('USD');
         });
 
         DB::table('units')

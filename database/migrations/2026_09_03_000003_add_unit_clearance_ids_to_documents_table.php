@@ -11,12 +11,12 @@ return new class extends Migration
         Schema::table('documents', function (Blueprint $table) {
             $table->foreignId('unit_clearance_id')
                 ->nullable()
-                ->after('maintenance_record_id')
+                
                 ->constrained('unit_clearances')
                 ->nullOnDelete();
             $table->foreignId('unit_clearance_item_id')
                 ->nullable()
-                ->after('unit_clearance_id')
+                
                 ->constrained('unit_clearance_items')
                 ->nullOnDelete();
         });

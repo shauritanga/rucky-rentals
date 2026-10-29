@@ -9,9 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('units', function (Blueprint $table) {
-            $table->decimal('service_charge_per_sqm', 12, 2)->default(0)->after('rate_per_sqm');
-            $table->decimal('service_charge', 12, 2)->default(0)->after('deposit');
-            $table->enum('electricity_type', ['direct', 'submeter'])->default('direct')->after('service_charge');
+            $table->decimal('service_charge_per_sqm', 12, 2)->default(0);
+            $table->decimal('service_charge', 12, 2)->default(0);
+            $table->enum('electricity_type', ['direct', 'submeter'])->default('direct');
         });
     }
 

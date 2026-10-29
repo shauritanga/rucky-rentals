@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('accounts', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained()->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained()->nullOnDelete();
         });
 
         Schema::table('accounts', function (Blueprint $table) {
@@ -19,9 +19,9 @@ return new class extends Migration
         });
 
         Schema::table('journal_entries', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained()->nullOnDelete();
-            $table->string('source_type')->nullable()->after('status');
-            $table->unsignedBigInteger('source_id')->nullable()->after('source_type');
+            $table->foreignId('property_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('source_type')->nullable();
+            $table->unsignedBigInteger('source_id')->nullable();
         });
 
         $defaultPropertyId = DB::table('properties')->orderBy('id')->value('id');

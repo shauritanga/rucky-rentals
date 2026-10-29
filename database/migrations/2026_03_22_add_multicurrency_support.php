@@ -10,15 +10,15 @@ return new class extends Migration
     {
         // Add currency fields to invoices and payments
         Schema::table('invoices', function (Blueprint $table) {
-            $table->enum('currency', ['USD', 'TZS'])->default('USD')->after('total');
-            $table->decimal('exchange_rate', 10, 4)->nullable()->after('currency'); // Rate used for conversion
-            $table->decimal('total_in_base', 10, 2)->nullable()->after('exchange_rate'); // TZS converted amount
+            $table->enum('currency', ['USD', 'TZS'])->default('USD');
+            $table->decimal('exchange_rate', 10, 4)->nullable(); // Rate used for conversion
+            $table->decimal('total_in_base', 10, 2)->nullable(); // TZS converted amount
         });
 
         Schema::table('payments', function (Blueprint $table) {
-            $table->enum('currency', ['USD', 'TZS'])->default('USD')->after('amount');
-            $table->decimal('exchange_rate', 10, 4)->nullable()->after('currency');
-            $table->decimal('amount_in_base', 10, 2)->nullable()->after('exchange_rate'); // TZS converted amount
+            $table->enum('currency', ['USD', 'TZS'])->default('USD');
+            $table->decimal('exchange_rate', 10, 4)->nullable();
+            $table->decimal('amount_in_base', 10, 2)->nullable(); // TZS converted amount
         });
 
         // Store exchange rates per property per date

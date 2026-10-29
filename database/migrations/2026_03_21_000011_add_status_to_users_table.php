@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->string('status', 20)->default('active')->after('role');
+            $table->string('status', 20)->default('active');
         });
 
         DB::table('users')->whereNull('status')->update(['status' => 'active']);

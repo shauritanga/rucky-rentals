@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('maintenance_tickets', function (Blueprint $table) {
-            $table->timestamp('resolved_date')->nullable()->after('reported_date');
-            $table->json('materials')->nullable()->after('notes');
+            $table->timestamp('resolved_date')->nullable();
+            $table->json('materials')->nullable();
         });
     }
 

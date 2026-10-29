@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('properties', function (Blueprint $table) {
-            $table->unsignedInteger('total_floors')->default(1)->after('occupied_units');
+            $table->unsignedInteger('total_floors')->default(1);
         });
     }
 

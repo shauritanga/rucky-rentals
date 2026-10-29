@@ -12,9 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('payments', function (Blueprint $table) {
-            $table->foreignId('invoice_id')->nullable()->after('property_id')->constrained()->nullOnDelete();
-            $table->string('reference')->nullable()->after('method');
-            $table->text('notes')->nullable()->after('paid_date');
+            $table->foreignId('invoice_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('reference')->nullable();
+            $table->text('notes')->nullable();
         });
     }
 

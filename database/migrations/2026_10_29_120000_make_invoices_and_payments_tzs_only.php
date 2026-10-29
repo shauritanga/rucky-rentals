@@ -15,7 +15,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('invoices', function (Blueprint $table) {
-            $table->decimal('usd_rate', 12, 4)->nullable()->after('exchange_rate');
+            $table->decimal('usd_rate', 12, 4)->nullable();
         });
 
         DB::transaction(function () {

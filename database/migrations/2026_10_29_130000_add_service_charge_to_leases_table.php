@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('leases', function (Blueprint $table) {
             // This lease's monthly service charge (its co-tenant share). Null = the unit's full charge.
-            $table->decimal('service_charge', 14, 2)->nullable()->after('monthly_rent');
+            $table->decimal('service_charge', 14, 2)->nullable();
         });
     }
 

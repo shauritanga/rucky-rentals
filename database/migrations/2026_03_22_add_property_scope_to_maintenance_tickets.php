@@ -11,7 +11,7 @@ return new class extends Migration
     {
         // Add property_id to maintenance_tickets
         Schema::table('maintenance_tickets', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained()->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained()->nullOnDelete();
         });
 
         // Populate property_id from related units

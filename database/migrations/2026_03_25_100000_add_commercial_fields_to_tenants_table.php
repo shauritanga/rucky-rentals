@@ -9,12 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->string('tenant_type', 20)->default('individual')->after('phone');
-            $table->string('company_name')->nullable()->after('tenant_type');
-            $table->string('registration_number')->nullable()->after('company_name');
-            $table->string('tin', 50)->nullable()->after('registration_number');
-            $table->string('vrn', 50)->nullable()->after('tin');
-            $table->string('contact_person')->nullable()->after('vrn');
+            $table->string('tenant_type', 20)->default('individual');
+            $table->string('company_name')->nullable();
+            $table->string('registration_number')->nullable();
+            $table->string('tin', 50)->nullable();
+            $table->string('vrn', 50)->nullable();
+            $table->string('contact_person')->nullable();
         });
     }
 

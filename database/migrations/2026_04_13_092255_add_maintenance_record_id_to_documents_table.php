@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('documents', function (Blueprint $table) {
             $table->foreignId('maintenance_record_id')
                 ->nullable()
-                ->after('invoice_id')
+                
                 ->constrained('maintenance_tickets')
                 ->nullOnDelete();
         });

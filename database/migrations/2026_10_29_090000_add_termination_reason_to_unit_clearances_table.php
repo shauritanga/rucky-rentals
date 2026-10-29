@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('unit_clearances', function (Blueprint $table) {
-            $table->string('termination_reason', 500)->nullable()->after('manager_notes');
+            $table->string('termination_reason', 500)->nullable();
         });
     }
 

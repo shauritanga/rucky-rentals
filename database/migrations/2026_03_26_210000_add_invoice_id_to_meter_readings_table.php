@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('meter_readings', function (Blueprint $table) {
-            $table->foreignId('invoice_id')->nullable()->after('recorded_by')->constrained()->nullOnDelete();
+            $table->foreignId('invoice_id')->nullable()->constrained()->nullOnDelete();
         });
     }
 

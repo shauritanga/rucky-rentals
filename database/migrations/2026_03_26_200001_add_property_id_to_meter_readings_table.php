@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('meter_readings', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained()->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained()->nullOnDelete();
         });
 
         // Backfill from the unit's property_id

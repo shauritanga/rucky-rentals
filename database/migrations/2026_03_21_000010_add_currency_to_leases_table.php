@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('leases', function (Blueprint $table) {
-            $table->string('currency', 3)->default('USD')->after('payment_cycle');
+            $table->string('currency', 3)->default('USD');
         });
 
         // Backfill existing leases from their linked unit currency.

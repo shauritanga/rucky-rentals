@@ -10,10 +10,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('maintenance_tickets', function (Blueprint $table) {
-            $table->string('reported_by')->nullable()->after('assignee');
+            $table->string('reported_by')->nullable();
             $table->enum('workflow_status', [
                 'submitted', 'pending_manager', 'approved', 'in_progress', 'resolved'
-            ])->default('submitted')->after('status');
+            ])->default('submitted');
         });
 
         // Backfill workflow_status from existing status values

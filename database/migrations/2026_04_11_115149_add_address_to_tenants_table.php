@@ -9,9 +9,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->string('address', 255)->nullable()->after('phone');
-            $table->string('city', 120)->nullable()->after('address');
-            $table->string('country', 120)->nullable()->default('Tanzania')->after('city');
+            $table->string('address', 255)->nullable();
+            $table->string('city', 120)->nullable();
+            $table->string('country', 120)->nullable()->default('Tanzania');
         });
     }
 

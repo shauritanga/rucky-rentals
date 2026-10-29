@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('leases', function (Blueprint $table) {
-            $table->string('lease_number')->nullable()->unique()->after('id');
+            $table->string('lease_number')->nullable()->unique();
         });
 
         Lease::withTrashed()->whereNull('lease_number')->orderBy('id')->each(function (Lease $lease) {

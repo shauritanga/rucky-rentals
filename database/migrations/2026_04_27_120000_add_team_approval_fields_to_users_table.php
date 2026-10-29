@@ -9,10 +9,10 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->foreignId('requested_by_user_id')->nullable()->after('property_id')->constrained('users')->nullOnDelete();
-            $table->timestamp('approval_requested_at')->nullable()->after('requested_by_user_id');
-            $table->timestamp('approval_decided_at')->nullable()->after('approval_requested_at');
-            $table->text('approval_note')->nullable()->after('approval_decided_at');
+            $table->foreignId('requested_by_user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('approval_requested_at')->nullable();
+            $table->timestamp('approval_decided_at')->nullable();
+            $table->text('approval_note')->nullable();
         });
     }
 

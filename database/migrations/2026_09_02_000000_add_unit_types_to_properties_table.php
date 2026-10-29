@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('properties', function (Blueprint $table) {
-            $table->json('unit_types')->nullable()->after('floor_config');
+            $table->json('unit_types')->nullable();
         });
     }
 

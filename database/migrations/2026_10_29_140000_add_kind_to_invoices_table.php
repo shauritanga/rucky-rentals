@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::table('invoices', function (Blueprint $table) {
             // 'rent' = normal billing, 'deposit' = refundable security deposit (non-tax proforma + receipt).
-            $table->string('kind', 20)->default('rent')->after('type');
+            $table->string('kind', 20)->default('rent');
         });
     }
 

@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('leases', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained('properties')->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained('properties')->nullOnDelete();
         });
 
         // Backfill existing leases from their unit's property assignment.

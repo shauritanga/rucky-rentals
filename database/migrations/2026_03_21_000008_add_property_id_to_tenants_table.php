@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained('properties')->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained('properties')->nullOnDelete();
         });
 
         // Legacy backfill: if only one property exists, map existing tenants to it.

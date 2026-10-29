@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('invoices', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('type')->constrained('properties')->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained('properties')->nullOnDelete();
         });
 
         // Backfill from linked lease when available.

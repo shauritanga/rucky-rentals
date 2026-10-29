@@ -9,13 +9,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('payments', function (Blueprint $table) {
-            $table->decimal('breakdown_rent', 14, 2)->default(0)->after('amount_in_base');
-            $table->decimal('breakdown_service_charge', 14, 2)->default(0)->after('breakdown_rent');
-            $table->decimal('breakdown_electricity', 14, 2)->default(0)->after('breakdown_service_charge');
-            $table->boolean('issue_receipt')->default(false)->after('breakdown_electricity');
-            $table->boolean('wht_confirmed')->default(false)->after('issue_receipt');
-            $table->string('wht_reference')->nullable()->after('wht_confirmed');
-            $table->foreignId('receipt_id')->nullable()->after('wht_reference')->constrained('receipts')->nullOnDelete();
+            $table->decimal('breakdown_rent', 14, 2)->default(0);
+            $table->decimal('breakdown_service_charge', 14, 2)->default(0);
+            $table->decimal('breakdown_electricity', 14, 2)->default(0);
+            $table->boolean('issue_receipt')->default(false);
+            $table->boolean('wht_confirmed')->default(false);
+            $table->string('wht_reference')->nullable();
+            $table->foreignId('receipt_id')->nullable()->constrained('receipts')->nullOnDelete();
         });
     }
 

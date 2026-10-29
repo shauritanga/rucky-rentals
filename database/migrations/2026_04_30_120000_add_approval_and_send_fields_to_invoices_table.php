@@ -10,14 +10,14 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('invoices', function (Blueprint $table) {
-            $table->foreignId('requested_by_user_id')->nullable()->after('property_id')->constrained('users')->nullOnDelete();
-            $table->string('approval_status', 20)->nullable()->after('status');
-            $table->timestamp('approval_requested_at')->nullable()->after('approval_status');
-            $table->timestamp('approval_decided_at')->nullable()->after('approval_requested_at');
-            $table->foreignId('approval_decided_by')->nullable()->after('approval_decided_at')->constrained('users')->nullOnDelete();
-            $table->text('approval_note')->nullable()->after('approval_decided_by');
-            $table->timestamp('sent_to_tenant_at')->nullable()->after('approval_note');
-            $table->foreignId('sent_to_tenant_by')->nullable()->after('sent_to_tenant_at')->constrained('users')->nullOnDelete();
+            $table->foreignId('requested_by_user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('approval_status', 20)->nullable();
+            $table->timestamp('approval_requested_at')->nullable();
+            $table->timestamp('approval_decided_at')->nullable();
+            $table->foreignId('approval_decided_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->text('approval_note')->nullable();
+            $table->timestamp('sent_to_tenant_at')->nullable();
+            $table->foreignId('sent_to_tenant_by')->nullable()->constrained('users')->nullOnDelete();
         });
 
         DB::table('invoices')

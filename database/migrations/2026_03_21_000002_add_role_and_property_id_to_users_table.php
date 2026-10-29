@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->enum('role', ['superuser', 'manager', 'accountant', 'lease_manager', 'maintenance_staff', 'viewer'])
                 ->default('manager')
-                ->after('email');
-            $table->foreignId('property_id')->nullable()->after('role')->constrained('properties')->nullOnDelete();
+                ;
+            $table->foreignId('property_id')->nullable()->constrained('properties')->nullOnDelete();
         });
     }
 

@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('maintenance_tickets', function (Blueprint $table) {
-            $table->string('currency', 3)->default('TZS')->after('cost');
-            $table->decimal('cost_in_base', 14, 2)->nullable()->after('currency');
+            $table->string('currency', 3)->default('TZS');
+            $table->decimal('cost_in_base', 14, 2)->nullable();
         });
     }
 

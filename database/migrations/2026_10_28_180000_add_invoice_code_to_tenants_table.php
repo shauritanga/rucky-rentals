@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->string('invoice_code', 12)->nullable()->unique()->after('initials');
+            $table->string('invoice_code', 12)->nullable()->unique();
         });
 
         Tenant::query()->orderBy('id')->each(function (Tenant $tenant) {

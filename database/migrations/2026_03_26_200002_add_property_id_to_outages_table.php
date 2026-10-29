@@ -10,7 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('outages', function (Blueprint $table) {
-            $table->foreignId('property_id')->nullable()->after('id')->constrained()->nullOnDelete();
+            $table->foreignId('property_id')->nullable()->constrained()->nullOnDelete();
         });
 
         // Backfill: assign existing outages to the first property (if only one exists)

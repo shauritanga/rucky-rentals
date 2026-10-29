@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('documents', function (Blueprint $table) {
-            $table->unsignedBigInteger('invoice_id')->nullable()->after('tenant_id');
+            $table->unsignedBigInteger('invoice_id')->nullable();
         });
     }
 

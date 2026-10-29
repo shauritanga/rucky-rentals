@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('unit_clearances', function (Blueprint $table) {
-            $table->timestamp('submitted_for_review_at')->nullable()->after('termination_reason');
-            $table->string('submitted_by')->nullable()->after('submitted_for_review_at');
+            $table->timestamp('submitted_for_review_at')->nullable();
+            $table->string('submitted_by')->nullable();
         });
     }
 
