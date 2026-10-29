@@ -24,6 +24,8 @@ return new class extends Migration
                 )
                 WHERE property_id IS NULL
             ');
+        } elseif (Schema::getConnection()->getDriverName() === 'mysql') {
+            DB::statement('UPDATE payments p JOIN units u ON p.unit_id = u.id SET p.property_id = u.property_id');
         } else {
             DB::statement('UPDATE payments p SET property_id = u.property_id FROM units u WHERE p.unit_id = u.id');
         }

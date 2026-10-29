@@ -9,7 +9,7 @@ return new class extends Migration
     {
         // Clear accounting events for a completely fresh slate
         DB::table('accounting_events')->delete();
-        if (DB::getDriverName() !== 'sqlite') {
+        if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER SEQUENCE accounting_events_id_seq RESTART WITH 1');
         }
     }

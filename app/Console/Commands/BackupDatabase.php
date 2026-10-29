@@ -19,8 +19,9 @@ class BackupDatabase extends Command
     public function handle(): int
     {
         $db = config('database.connections.' . config('database.default'));
-        if (($db['driver'] ?? null) !== 'pgsql') {
-            $this->error('Only Postgres databases are supported.');
+        $driver = $db['driver'] ?? null;
+        if (!in_array($driver, ['pgsql', 'mysql', 'mariadb'], true)) {
+            $this->error('Only PostgreSQL and MySQL/MariaDB databases are supported.');
             return self::FAILURE;
         }
 
@@ -30,18 +31,27 @@ class BackupDatabase extends Command
         }
 
         $file = sprintf('%s/%s-%s.sql.gz', $dir, $db['database'], now()->format('Ymd-His'));
-        // bash (not sh) so PIPESTATUS reports a pg_dump failure instead of gzip's exit code.
+        $env = ['H' => $db['host'], 'P' => $db['port'], 'U' => $db['username'], 'D' => $db['database'], 'F' => $file];
+        if ($driver === 'pgsql') {
+            $dump = 'pg_dump --no-owner -h "$H" -p "$P" -U "$U" "$D"';
+            $env['PGPASSWORD'] = $db['password'];
+        } else {
+            $dump = 'mysqldump --single-transaction --routines --no-tablespaces -h "$H" -P "$P" -u "$U" "$D"';
+            $env['MYSQL_PWD'] = $db['password'];
+        }
+
+        // bash (not sh) so PIPESTATUS reports a dump failure instead of gzip's exit code.
         $process = Process::fromShellCommandline(
-            'bash -c ' . escapeshellarg('pg_dump --no-owner -h "$H" -p "$P" -U "$U" "$D" | gzip > "$F"; exit ${PIPESTATUS[0]}'),
+            'bash -c ' . escapeshellarg($dump . ' | gzip > "$F"; exit ${PIPESTATUS[0]}'),
             null,
-            ['H' => $db['host'], 'P' => $db['port'], 'U' => $db['username'], 'D' => $db['database'], 'F' => $file, 'PGPASSWORD' => $db['password']],
+            $env,
         );
         $process->setTimeout(600);
         $process->run();
 
         if (!$process->isSuccessful() || !is_file($file) || filesize($file) < 200) {
             @unlink($file);
-            $this->error('pg_dump failed: ' . trim($process->getErrorOutput()));
+            $this->error('Database dump failed: ' . trim($process->getErrorOutput()));
             return self::FAILURE;
         }
         chmod($file, 0600);

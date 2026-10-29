@@ -96,6 +96,10 @@ class ElectricityController extends Controller
             return "strftime('%Y-%m', {$column})";
         }
 
+        if (DB::connection()->getDriverName() === 'mysql') {
+            return "DATE_FORMAT({$column}, '%Y-%m')";
+        }
+
         return "TO_CHAR({$column}, 'YYYY-MM')";
     }
 
@@ -103,6 +107,10 @@ class ElectricityController extends Controller
     {
         if (DB::connection()->getDriverName() === 'sqlite') {
             return "SUM(CASE WHEN end_time IS NOT NULL THEN strftime('%s', end_time) - strftime('%s', start_time) ELSE 0 END)";
+        }
+
+        if (DB::connection()->getDriverName() === 'mysql') {
+            return 'SUM(CASE WHEN end_time IS NOT NULL THEN TIME_TO_SEC(TIMEDIFF(TIME(end_time), TIME(start_time))) ELSE 0 END)';
         }
 
         return 'SUM(CASE WHEN end_time IS NOT NULL THEN EXTRACT(EPOCH FROM (end_time::time - start_time::time)) ELSE 0 END)';

@@ -34,7 +34,9 @@ return new class extends Migration
         });
 
         // Step 2: backfill — cast existing integer floor values to string
-        DB::statement('UPDATE units SET floor_code = CAST(floor AS VARCHAR)');
+        DB::statement(DB::getDriverName() === 'mysql'
+            ? 'UPDATE units SET floor_code = CAST(floor AS CHAR)'
+            : 'UPDATE units SET floor_code = CAST(floor AS VARCHAR)');
 
         // Step 3: drop the old integer column
         Schema::table('units', function (Blueprint $table) {
@@ -60,7 +62,9 @@ return new class extends Migration
         });
 
         // Cast string codes back to integers (only works for numeric codes; others default to 1)
-        DB::statement("UPDATE units SET floor_int = CASE WHEN floor ~ '^[0-9]+$' THEN CAST(floor AS INTEGER) ELSE 1 END");
+        DB::statement(DB::getDriverName() === 'mysql'
+            ? "UPDATE units SET floor_int = CASE WHEN floor REGEXP '^[0-9]+$' THEN CAST(floor AS SIGNED) ELSE 1 END"
+            : "UPDATE units SET floor_int = CASE WHEN floor ~ '^[0-9]+$' THEN CAST(floor AS INTEGER) ELSE 1 END");
 
         Schema::table('units', function (Blueprint $table) {
             $table->dropColumn('floor');

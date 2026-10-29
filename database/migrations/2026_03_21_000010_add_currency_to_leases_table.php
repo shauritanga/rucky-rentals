@@ -22,6 +22,8 @@ return new class extends Migration
                 )
                 WHERE currency IS NULL OR currency = "USD"
             ');
+        } elseif (Schema::getConnection()->getDriverName() === 'mysql') {
+            DB::statement('UPDATE leases JOIN units ON units.id = leases.unit_id SET leases.currency = units.currency');
         } else {
             DB::statement('UPDATE leases SET currency = units.currency FROM units WHERE units.id = leases.unit_id');
         }

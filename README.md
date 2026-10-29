@@ -116,20 +116,57 @@ php artisan db:seed --class=CleanSlateSeeder
 
 Production is deployed by hand: **pull the code from GitHub on the server**. Nothing is copied from a developer machine, and pushing to `main` does not deploy by itself. (`.github/workflows/deploy.yml` exists but is not in use.)
 
-The app lives in `/var/www/rucky-rentals` and runs under pm2 (`rucky-web`, `rucky-worker`, `rucky-scheduler`) behind nginx. To release:
+The compiled frontend (`public/build`) is committed to git, so a server never needs Node. **Run `npm run build` and commit `public/build` whenever you change anything under `resources/js` or `resources/css`.**
+
+The app supports PostgreSQL and MySQL/MariaDB. Postgres keeps unit status in sync with database triggers; on every driver the `LeaseObserver` does the same in code.
+
+### Option A: VPS (nginx + pm2)
+
+The app lives in `/var/www/rucky-rentals` and runs under pm2 (`rucky-web`, `rucky-worker`, `rucky-scheduler`) behind nginx.
 
 ```bash
 ssh root@<server>
 cd /var/www/rucky-rentals
 git pull --ff-only
 composer install --no-dev --optimize-autoloader   # only if composer.lock changed
-npm ci && npm run build                           # public/build is not in git, so it is built on the server
 php artisan migrate --force                       # only if there are new migrations
 php artisan config:cache && php artisan route:cache && php artisan view:cache
 pm2 restart all
 ```
 
-Take a database backup first (`php artisan backup:database`) when a release includes a migration that changes existing data.
+If `git pull` complains about untracked files in `public/build` (first pull after build output became tracked), run `rm -rf public/build` once and pull again.
+
+### Option B: cPanel (MySQL, no Node)
+
+1. **PHP**: cPanel → MultiPHP Manager → PHP 8.3 or 8.4 for the domain. In MultiPHP INI Editor / Select PHP Version enable `pdo_mysql, mbstring, openssl, xml, curl, gd, zip, fileinfo, bcmath, intl`; set `memory_limit` to at least 256M.
+2. **Database**: cPanel → MySQL Databases → create a database and a user, then add the user to the database with all privileges.
+3. **Code**: in the cPanel terminal, outside `public_html`:
+   ```bash
+   cd ~ && git clone git@github.com:shauritanga/rucky-rentals.git
+   cd rucky-rentals
+   ```
+   (Add a deploy SSH key to the GitHub repo first: `ssh-keygen -t ed25519`, then paste `~/.ssh/id_ed25519.pub` under repo Settings → Deploy keys.)
+4. **Web root**: cPanel → Domains → set the domain's (or a staging subdomain's) **Document Root to `rucky-rentals/public`**.
+5. **Dependencies**: use the same PHP binary as the site, e.g.
+   ```bash
+   ea-php83 /opt/cpanel/composer/bin/composer install --no-dev --optimize-autoloader
+   ```
+6. **Environment**: `cp .env.example .env`, then set `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL`, `DB_CONNECTION=mysql`, `DB_HOST=localhost`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `SESSION_DRIVER=database`, `QUEUE_CONNECTION=database`, `CACHE_STORE=database`, `BROADCAST_CONNECTION=log`, `MAIL_MAILER=resend` and your Resend key. Then `ea-php83 artisan key:generate`.
+7. **Install**:
+   ```bash
+   ea-php83 artisan migrate --force
+   ea-php83 artisan storage:link
+   ea-php83 artisan config:cache && ea-php83 artisan route:cache && ea-php83 artisan view:cache
+   chmod -R ug+rwX storage bootstrap/cache
+   ```
+   Create the first superuser with `ea-php83 artisan tinker` (or seed one), and set the system settings in the app.
+8. **Scheduler (replaces pm2)**: cPanel → Cron Jobs → every minute:
+   ```
+   cd /home/<cpanel-user>/rucky-rentals && /usr/local/bin/ea-php83 artisan schedule:run >> /dev/null 2>&1
+   ```
+   The schedule already runs the queue worker every minute and the daily 02:00 database backup (`mysqldump`, emailed to the superusers).
+9. **SSL**: cPanel → SSL/TLS Status → run AutoSSL for the domain.
+10. **Releases**: `git pull --ff-only`; `composer install --no-dev -o` if `composer.lock` changed; `php artisan migrate --force`; re-run the three cache commands.
 
 ---
 
@@ -149,7 +186,7 @@ Take a database backup first (`php artisan backup:database`) when a release incl
 
 ## Tech Stack
 
-- **Backend**: Laravel 13, PostgreSQL, Laravel Reverb (WebSockets)
+- **Backend**: Laravel 13, PostgreSQL or MySQL/MariaDB
 - **Frontend**: React 19, Inertia.js v2, Vite
 - **Auth**: Session-based, role-scoped (`superuser`, `manager`, `staff`)
 - **Accounting**: Double-entry GL posted automatically on invoices and payments

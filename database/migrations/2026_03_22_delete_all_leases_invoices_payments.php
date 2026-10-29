@@ -15,7 +15,7 @@ return new class extends Migration
         DB::table('leases')->delete();
 
         // Reset auto-increment counters
-        if (DB::getDriverName() !== 'sqlite') {
+        if (DB::getDriverName() === 'pgsql') {
             DB::statement('ALTER SEQUENCE payments_id_seq RESTART WITH 1');
             DB::statement('ALTER SEQUENCE invoice_items_id_seq RESTART WITH 1');
             DB::statement('ALTER SEQUENCE invoices_id_seq RESTART WITH 1');
