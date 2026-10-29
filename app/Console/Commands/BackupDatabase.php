@@ -13,7 +13,7 @@ class BackupDatabase extends Command
     protected $signature   = 'backup:database {--keep=14 : Days of local backups to keep} {--no-mail : Skip emailing the superusers}';
     protected $description = 'Dump the Postgres database, keep recent copies on disk and email the latest to the superusers';
 
-    /** Resend rejects messages over ~40MB; stay well under it. */
+    /** Mail servers commonly reject messages over ~25-40MB; stay under it. */
     private const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
     public function handle(): int

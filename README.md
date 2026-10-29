@@ -151,7 +151,7 @@ If `git pull` complains about untracked files in `public/build` (first pull afte
    ```bash
    ea-php83 /opt/cpanel/composer/bin/composer install --no-dev --optimize-autoloader
    ```
-6. **Environment**: `cp .env.example .env`, then set `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL`, `DB_CONNECTION=mysql`, `DB_HOST=localhost`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `SESSION_DRIVER=database`, `QUEUE_CONNECTION=database`, `CACHE_STORE=database`, `BROADCAST_CONNECTION=log`, `MAIL_MAILER=resend` and your Resend key. Then `ea-php83 artisan key:generate`.
+6. **Environment**: `cp .env.example .env`, then set `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL`, `DB_CONNECTION=mysql`, `DB_HOST=localhost`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `SESSION_DRIVER=database`, `QUEUE_CONNECTION=database`, `CACHE_STORE=database`, `BROADCAST_CONNECTION=log`, and SMTP mail from a mailbox on your domain (cPanel → Email Accounts → Connect Devices): `MAIL_MAILER=smtp`, `MAIL_HOST=mail.<your-domain>`, `MAIL_PORT=465`, `MAIL_SCHEME=smtps` (or port 587 with `MAIL_SCHEME=smtp`), `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`. Then `ea-php83 artisan key:generate`.
 7. **Install**:
    ```bash
    ea-php83 artisan migrate --force
