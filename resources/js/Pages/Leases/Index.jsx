@@ -928,29 +928,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
             <button className="modal-close" onClick={() => setShowDeleteConfirm(false)}>✕</button>
           </div>
           <div className="modal-body">
-              <div className="form-row">
-                <div className="form-group"><label className="form-label">Unit *</label>
-                  <select className="form-input form-select" value={data.unit_id} onChange={e=>onUnitChange(e.target.value)} required>
-                    <option value="">Select unit…</option>
-                    {unitsByFloor.map(([floor, floorUnits]) => (
-                      <optgroup key={floor} label={`Floor ${floor}`}>
-                        {floorUnits.map(u => {
-                          const coTenants = activeLeasesByUnit[String(u.id)] || [];
-                          const coTenantLabel = coTenants.length > 0
-                            ? ` — occupied (${coTenants.map(l => l.tenant?.name).filter(Boolean).join(', ')})`
-                            : (u.allows_co_tenants ? ` — ${u.co_tenant_count} co-tenants` : '');
-                          return (
-                            <option key={u.id} value={u.id} disabled={!editingLeaseId && coTenants.length > 0}>
-                              {u.unit_number} — {u.type} ({formatMoney(u.rent, u.currency)}/mo){coTenantLabel}
-                            </option>
-                          );
-                        })}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
             <p style={{margin: 0, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6}}>
               Are you sure you want to delete the lease for{' '}
               <strong>{selected?.tenant?.name}</strong> on unit{' '}
@@ -1057,6 +1034,26 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
               <div style={{height:1,background:'var(--border-subtle)',margin:'16px 0'}}></div>
 
               <div className="form-row">
+                <div className="form-group"><label className="form-label">Unit *</label>
+                  <select className="form-input form-select" value={data.unit_id} onChange={e=>onUnitChange(e.target.value)} required>
+                    <option value="">Select unit…</option>
+                    {unitsByFloor.map(([floor, floorUnits]) => (
+                      <optgroup key={floor} label={`Floor ${floor}`}>
+                        {floorUnits.map(u => {
+                          const coTenants = activeLeasesByUnit[String(u.id)] || [];
+                          const coTenantLabel = coTenants.length > 0
+                            ? ` — occupied (${coTenants.map(l => l.tenant?.name).filter(Boolean).join(', ')})`
+                            : (u.allows_co_tenants ? ` — ${u.co_tenant_count} co-tenants` : '');
+                          return (
+                            <option key={u.id} value={u.id} disabled={!editingLeaseId && coTenants.length > 0}>
+                              {u.unit_number} — {u.type} ({formatMoney(u.rent, u.currency)}/mo){coTenantLabel}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
                 <div className="form-group"><label className="form-label">Payment Cycle *</label>
                   <select className="form-input form-select" value={data.payment_cycle} onChange={e=>setData('payment_cycle',e.target.value)}>
                     <option value={3}>Quarterly — every 3 months</option><option value={4}>Every 4 months</option><option value={6}>Semi-Annual — every 6 months</option><option value={12}>Annual — once a year</option>
