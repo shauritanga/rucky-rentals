@@ -1,16 +1,16 @@
 {
-  "_AppLayout-90G9vZbO.js": {
-    "file": "assets/AppLayout-90G9vZbO.js",
+  "_AppLayout-CQEt9Pml.js": {
+    "file": "assets/AppLayout-CQEt9Pml.js",
     "name": "AppLayout",
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js"
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js"
     ]
   },
-  "_DueInvoicesPopup-BzdnB327.js": {
-    "file": "assets/DueInvoicesPopup-BzdnB327.js",
+  "_DueInvoicesPopup-WN3H_1Kz.js": {
+    "file": "assets/DueInvoicesPopup-WN3H_1Kz.js",
     "name": "DueInvoicesPopup",
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
@@ -24,18 +24,25 @@
       "_jsx-runtime-CJHzdmYV.js"
     ]
   },
-  "_SuperuserLayout-CdZVE2kV.js": {
-    "file": "assets/SuperuserLayout-CdZVE2kV.js",
+  "_Pagination-ey9Ys_0f.js": {
+    "file": "assets/Pagination-ey9Ys_0f.js",
+    "name": "Pagination",
+    "imports": [
+      "_jsx-runtime-CJHzdmYV.js"
+    ]
+  },
+  "_SuperuserLayout-BnvFbNJv.js": {
+    "file": "assets/SuperuserLayout-BnvFbNJv.js",
     "name": "SuperuserLayout",
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js"
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js"
     ]
   },
-  "_Toaster-DWtHRRK-.js": {
-    "file": "assets/Toaster-DWtHRRK-.js",
+  "_Toaster-DmGoarK_.js": {
+    "file": "assets/Toaster-DmGoarK_.js",
     "name": "Toaster",
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
@@ -46,8 +53,8 @@
     "file": "assets/dateFormat-DoIWQf7s.js",
     "name": "dateFormat"
   },
-  "_floorConfig-YE1At3wf.js": {
-    "file": "assets/floorConfig-YE1At3wf.js",
+  "_floorConfig-DEBTlCRc.js": {
+    "file": "assets/floorConfig-DEBTlCRc.js",
     "name": "floorConfig"
   },
   "_jsx-runtime-CJHzdmYV.js": {
@@ -62,7 +69,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-Dk4JsSye.css",
+    "file": "assets/app-NhQmmM_U.css",
     "name": "app",
     "names": [
       "app.css"
@@ -71,184 +78,186 @@
     "isEntry": true
   },
   "resources/js/Pages/Audit/Index.jsx": {
-    "file": "assets/Index-CfH3UXZ5.js",
+    "file": "assets/Index-CLUFpnzH.js",
     "name": "Index",
     "src": "resources/js/Pages/Audit/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Clearance/Index.jsx": {
-    "file": "assets/Index-D5Om4b-a.js",
+    "file": "assets/Index-CG256n7D.js",
     "name": "Index",
     "src": "resources/js/Pages/Clearance/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Dashboard.jsx": {
-    "file": "assets/Dashboard-BY0tj3_9.js",
+    "file": "assets/Dashboard-DfzkO5qw.js",
     "name": "Dashboard",
     "src": "resources/js/Pages/Dashboard.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_useExchangeRate-eGcdiZZE.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Documents/Index.jsx": {
-    "file": "assets/Index-B3vgNiKl.js",
+    "file": "assets/Index-DkD60TsG.js",
     "name": "Index",
     "src": "resources/js/Pages/Documents/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Electricity/Index.jsx": {
-    "file": "assets/Index-Dleyh8Tg.js",
+    "file": "assets/Index-De4Ir8NQ.js",
     "name": "Index",
     "src": "resources/js/Pages/Electricity/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js"
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js"
     ]
   },
   "resources/js/Pages/Invoices/Index.jsx": {
-    "file": "assets/Index-LOKPlkst.js",
+    "file": "assets/Index-ChXExQoF.js",
     "name": "Index",
     "src": "resources/js/Pages/Invoices/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_Pagination-ey9Ys_0f.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_useExchangeRate-eGcdiZZE.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Leases/Index.jsx": {
-    "file": "assets/Index-BcgeQpa3.js",
+    "file": "assets/Index-CkZKFkOC.js",
     "name": "Index",
     "src": "resources/js/Pages/Leases/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Maintenance/Index.jsx": {
-    "file": "assets/Index-DEp-HQuj.js",
+    "file": "assets/Index-2YgnB95B.js",
     "name": "Index",
     "src": "resources/js/Pages/Maintenance/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_useExchangeRate-eGcdiZZE.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Payments/Index.jsx": {
-    "file": "assets/Index-B0ZFuWWN.js",
+    "file": "assets/Index-DD_GZ43U.js",
     "name": "Index",
     "src": "resources/js/Pages/Payments/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_Pagination-ey9Ys_0f.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Profile.jsx": {
-    "file": "assets/Profile-Cg8LTRgQ.js",
+    "file": "assets/Profile-IRV64dHW.js",
     "name": "Profile",
     "src": "resources/js/Pages/Profile.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js"
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js"
     ]
   },
   "resources/js/Pages/Reports/Builder.jsx": {
-    "file": "assets/Builder-DvckIIV0.js",
+    "file": "assets/Builder-okq30qYI.js",
     "name": "Builder",
     "src": "resources/js/Pages/Reports/Builder.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "resources/js/Pages/Reports/ReportTabs.jsx",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Reports/Index.jsx": {
-    "file": "assets/Index-D4S2n9vd.js",
+    "file": "assets/Index-DI3tyd2w.js",
     "name": "Index",
     "src": "resources/js/Pages/Reports/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "resources/js/Pages/Reports/ReportTabs.jsx",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Reports/ReportTabs.jsx": {
-    "file": "assets/ReportTabs-fuQHbLO1.js",
+    "file": "assets/ReportTabs-D5Ly1Qp5.js",
     "name": "ReportTabs",
     "src": "resources/js/Pages/Reports/ReportTabs.jsx",
     "isDynamicEntry": true,
@@ -258,30 +267,30 @@
     ]
   },
   "resources/js/Pages/Settings/Index.jsx": {
-    "file": "assets/Index-C7MDL5ia.js",
+    "file": "assets/Index-QjkXSqOt.js",
     "name": "Index",
     "src": "resources/js/Pages/Settings/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js"
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js"
     ]
   },
   "resources/js/Pages/Superuser/Index.jsx": {
-    "file": "assets/Index-CfQayVX8.js",
+    "file": "assets/Index-Cd-8NPp9.js",
     "name": "Index",
     "src": "resources/js/Pages/Superuser/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_SuperuserLayout-CdZVE2kV.js",
+      "_Toaster-DmGoarK_.js",
+      "_SuperuserLayout-BnvFbNJv.js",
       "resources/js/Pages/Superuser/Pages/ApprovalsPage.jsx",
       "resources/js/Pages/Superuser/Pages/AuditPage.jsx",
       "resources/js/Pages/Superuser/Pages/ManagersPage.jsx",
@@ -290,11 +299,11 @@
       "resources/js/Pages/Superuser/Pages/RolesPage.jsx",
       "resources/js/Pages/Superuser/Pages/SettingsPage.jsx",
       "_useExchangeRate-eGcdiZZE.js",
-      "_floorConfig-YE1At3wf.js"
+      "_floorConfig-DEBTlCRc.js"
     ]
   },
   "resources/js/Pages/Superuser/Pages/ApprovalsPage.jsx": {
-    "file": "assets/ApprovalsPage-D-9DIstX.js",
+    "file": "assets/ApprovalsPage-DRPRjUuS.js",
     "name": "ApprovalsPage",
     "src": "resources/js/Pages/Superuser/Pages/ApprovalsPage.jsx",
     "isDynamicEntry": true,
@@ -306,7 +315,7 @@
     ]
   },
   "resources/js/Pages/Superuser/Pages/AuditPage.jsx": {
-    "file": "assets/AuditPage-B3ZS8GmO.js",
+    "file": "assets/AuditPage-4F_zD1xZ.js",
     "name": "AuditPage",
     "src": "resources/js/Pages/Superuser/Pages/AuditPage.jsx",
     "isDynamicEntry": true,
@@ -316,7 +325,7 @@
     ]
   },
   "resources/js/Pages/Superuser/Pages/ManagersPage.jsx": {
-    "file": "assets/ManagersPage-b-PM_lEm.js",
+    "file": "assets/ManagersPage-Dy8C4WiM.js",
     "name": "ManagersPage",
     "src": "resources/js/Pages/Superuser/Pages/ManagersPage.jsx",
     "isDynamicEntry": true,
@@ -327,7 +336,7 @@
     ]
   },
   "resources/js/Pages/Superuser/Pages/OverviewPage.jsx": {
-    "file": "assets/OverviewPage-CaDWqUoF.js",
+    "file": "assets/OverviewPage-Okauls2T.js",
     "name": "OverviewPage",
     "src": "resources/js/Pages/Superuser/Pages/OverviewPage.jsx",
     "isDynamicEntry": true,
@@ -338,7 +347,7 @@
     ]
   },
   "resources/js/Pages/Superuser/Pages/OwnerRevenuePage.jsx": {
-    "file": "assets/OwnerRevenuePage-QdiEUbfA.js",
+    "file": "assets/OwnerRevenuePage-CKhtaKU1.js",
     "name": "OwnerRevenuePage",
     "src": "resources/js/Pages/Superuser/Pages/OwnerRevenuePage.jsx",
     "isDynamicEntry": true,
@@ -348,7 +357,7 @@
     ]
   },
   "resources/js/Pages/Superuser/Pages/PropertiesPage.jsx": {
-    "file": "assets/PropertiesPage-BKxb77gW.js",
+    "file": "assets/PropertiesPage-BMWrC8Ut.js",
     "name": "PropertiesPage",
     "src": "resources/js/Pages/Superuser/Pages/PropertiesPage.jsx",
     "isDynamicEntry": true,
@@ -358,7 +367,7 @@
     ]
   },
   "resources/js/Pages/Superuser/Pages/RolesPage.jsx": {
-    "file": "assets/RolesPage-Ci0weMHj.js",
+    "file": "assets/RolesPage-ect04_bW.js",
     "name": "RolesPage",
     "src": "resources/js/Pages/Superuser/Pages/RolesPage.jsx",
     "isDynamicEntry": true,
@@ -368,7 +377,7 @@
     ]
   },
   "resources/js/Pages/Superuser/Pages/SettingsPage.jsx": {
-    "file": "assets/SettingsPage-C7WPXVsR.js",
+    "file": "assets/SettingsPage-B90Zo0_z.js",
     "name": "SettingsPage",
     "src": "resources/js/Pages/Superuser/Pages/SettingsPage.jsx",
     "isDynamicEntry": true,
@@ -376,69 +385,69 @@
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js"
+      "_Toaster-DmGoarK_.js"
     ]
   },
   "resources/js/Pages/Superuser/Profile.jsx": {
-    "file": "assets/Profile-DFEIFWqZ.js",
+    "file": "assets/Profile-_enuu9NJ.js",
     "name": "Profile",
     "src": "resources/js/Pages/Superuser/Profile.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_SuperuserLayout-CdZVE2kV.js"
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_SuperuserLayout-BnvFbNJv.js"
     ]
   },
   "resources/js/Pages/Team/Index.jsx": {
-    "file": "assets/Index-C-nl6VWg.js",
+    "file": "assets/Index-wIKrXVZb.js",
     "name": "Index",
     "src": "resources/js/Pages/Team/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Tenants/Index.jsx": {
-    "file": "assets/Index-Cp1yDIiL.js",
+    "file": "assets/Index-CwQngp-u.js",
     "name": "Index",
     "src": "resources/js/Pages/Tenants/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_useExchangeRate-eGcdiZZE.js",
       "_dateFormat-DoIWQf7s.js"
     ]
   },
   "resources/js/Pages/Units/Index.jsx": {
-    "file": "assets/Index-DAGJt0sS.js",
+    "file": "assets/Index-iquo-2lC2.js",
     "name": "Index",
     "src": "resources/js/Pages/Units/Index.jsx",
     "isDynamicEntry": true,
     "imports": [
       "_jsx-runtime-CJHzdmYV.js",
       "resources/js/app.jsx",
-      "_DueInvoicesPopup-BzdnB327.js",
+      "_DueInvoicesPopup-WN3H_1Kz.js",
       "_MoneyInput-Cruq5EHr.js",
-      "_Toaster-DWtHRRK-.js",
-      "_AppLayout-90G9vZbO.js",
+      "_Toaster-DmGoarK_.js",
+      "_AppLayout-CQEt9Pml.js",
       "_dateFormat-DoIWQf7s.js",
-      "_floorConfig-YE1At3wf.js"
+      "_floorConfig-DEBTlCRc.js"
     ]
   },
   "resources/js/app.jsx": {
-    "file": "assets/app-BTrpYKiB.js",
+    "file": "assets/app-LTz0Yw_n.js",
     "name": "app",
     "src": "resources/js/app.jsx",
     "isEntry": true,
@@ -475,7 +484,7 @@
       "resources/js/Pages/Units/Index.jsx"
     ],
     "css": [
-      "assets/app-Dk4JsSye.css"
+      "assets/app-NhQmmM_U.css"
     ]
   }
 }

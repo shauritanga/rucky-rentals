@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
 import MoneyInput from '@/Components/MoneyInput';
+import Pagination, { usePagination } from '@/Components/Pagination';
 
 // Sum of raw item amounts (net, VAT-exclusive)
 const invoiceItemsNet = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
@@ -409,6 +410,11 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   const selectedInvoiceUnit = useMemo(() => resolveInvoiceUnit(selectedInvoice), [selectedInvoice, units]);
   const selectedInvoiceCurrency = useMemo(() => getInvoiceCurrency(selectedInvoice, selectedInvoiceUnit), [selectedInvoice, selectedInvoiceUnit]);
 
+  const ledgerPager = usePagination(filteredRows, `${filter}|${search}|${month}`);
+  const depositPager = usePagination(filteredDeposits, `${depositFilter}|${depositSearch}`);
+  const creditPager = usePagination(creditsByTenant);
+  const historyPager = usePagination(creditHistory);
+
   const selectedTenantCredit = useMemo(() => tenantCreditForInvoice(selectedInvoice), [selectedInvoice, creditsByTenant]);
 
   const selectedInvoiceNet = selectedInvoice ? invoiceTotal(selectedInvoice) : 0;
@@ -664,7 +670,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRows.map((row) => {
+                  {ledgerPager.pageItems.map((row) => {
                     const variance = row.variance;
                     const varianceColor = variance > 0 ? 'var(--green)' : variance < 0 ? 'var(--red)' : 'var(--text-muted)';
                     const varianceText = variance > 0 ? `+${formatAmount(variance, row.currency)}` : variance < 0 ? `(${formatAmount(Math.abs(variance), row.currency)})` : '—';
@@ -719,6 +725,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 </tbody>
               </table>
             )}
+            <Pagination pager={ledgerPager} label="payments" />
           </div>
         </>
       )}
@@ -782,7 +789,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                     </td>
                   </tr>
                 )}
-                {filteredDeposits.map((dep) => {
+                {depositPager.pageItems.map((dep) => {
                   const initialDeposit = Number(dep.deposit_amount || 0);
                   const deductions = Number(dep.deductions || 0);
                   const finalAmount = Number(dep.final_amount ?? (initialDeposit - deductions));
@@ -908,6 +915,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 })}
               </tbody>
             </table>
+            <Pagination pager={depositPager} label="deposits" />
           </div>
         </>
       )}
@@ -927,7 +935,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 {creditsByTenant.length === 0 ? (
                   <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>No credit balances on account</div>
                 ) : (
-                  creditsByTenant.map((entry) => (
+                  creditPager.pageItems.map((entry) => (
                     <div key={entry.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, borderBottom: '1px solid var(--border-subtle)' }}>
                       <div
                         className="t-avatar"
@@ -952,6 +960,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                     </div>
                   ))
                 )}
+                <Pagination pager={creditPager} label="tenants" />
               </div>
             </div>
 
@@ -966,7 +975,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 {creditHistory.length === 0 ? (
                   <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>No credit events yet</div>
                 ) : (
-                  creditHistory.map((entry) => {
+                  historyPager.pageItems.map((entry) => {
                     const deltaColor = entry.type === 'credit'
                       ? 'var(--green)'
                       : entry.type === 'apply'
@@ -985,6 +994,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                     );
                   })
                 )}
+                <Pagination pager={historyPager} label="events" />
               </div>
             </div>
           </div>

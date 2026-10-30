@@ -5,6 +5,7 @@ import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
 import { formatExchangeRate } from '@/hooks/useExchangeRate';
 import MoneyInput from '@/Components/MoneyInput';
+import Pagination, { usePagination } from '@/Components/Pagination';
 
 const fmt = (n) => Number(n).toLocaleString();
 const VAT_RATE = 0.18;
@@ -257,6 +258,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     if (sort === 'amount-hi') return total(b) - total(a);
     return 0;
   });
+
+  const pager = usePagination(filtered, `${filter}|${search}|${sort}`);
 
   const counts = {
     all: invoices.length,
@@ -608,7 +611,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
         <table className="data-table">
           <thead><tr><th>Invoice #</th><th>Type</th><th>Tenant</th><th>Unit</th><th>Issue Date</th><th>Due Date</th><th>Amount</th><th>Status</th><th>Receipt</th><th>WHT</th><th></th></tr></thead>
           <tbody>
-            {filtered.map(inv => (
+            {pager.pageItems.map(inv => (
               <tr key={inv.id} onClick={()=>setSelected(inv)}>
                 <td style={{fontWeight:700,color:'var(--accent)'}}>{inv.invoice_number}</td>
                 <td><span style={{fontSize:'11.5px',fontWeight:600,padding:'3px 9px',borderRadius:20,background:inv.type==='proforma'?'var(--amber-dim)':'var(--accent-dim)',color:inv.type==='proforma'?'var(--amber)':'var(--accent)'}}>{inv.kind==='deposit'?'Deposit Proforma':(inv.type==='proforma'?'Proforma':'Tax Invoice')}</span></td>
@@ -627,6 +630,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
             ))}
           </tbody>
         </table>
+        <Pagination pager={pager} label="invoices" />
       </div>
 
       {/* Invoice Drawer */}
