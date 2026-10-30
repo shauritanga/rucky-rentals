@@ -226,7 +226,7 @@ export default function Electricity({
     return (
         <AppLayout title="Electricity">
             {showReadingAlert && quarterlyMissingUnits.length > 0 && (
-                <div className="due-invoices-popup">
+                <div className="due-invoices-popup compact">
                     <div className="due-invoices-popup-header">
                         <span>{directReadingPrompt.label ?? 'Current quarter'} Readings Due</span>
                         <button className="due-invoices-popup-close" onClick={closeReadingAlert} aria-label="Close">✕</button>
