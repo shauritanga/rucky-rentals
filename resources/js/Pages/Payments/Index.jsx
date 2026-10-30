@@ -27,6 +27,7 @@ const invoiceTotal = (inv) => {
 const classifyInvoiceItem = (item = {}) => {
   const type = String(item.item_type || '').toLowerCase();
   const desc = String(item.description || '').toLowerCase();
+  if (type === 'security_deposit') return 'deposit';
   if (type === 'rent' || desc.includes('rent')) return 'rent';
   if (type === 'service_charge' || desc.includes('service charge')) return 'service_charge';
   if (['electricity', 'electricity_charge', 'electricity_vat'].includes(type) || desc.includes('electricity') || desc.includes('generator') || desc.includes('submeter')) return 'electricity';
@@ -420,16 +421,17 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   const canSubmit = Boolean(selectedInvoiceId && received > 0 && data.paid_date);
   const invoiceBreakdown = useMemo(() => {
     if (!selectedInvoice) {
-      return { rent: 0, service_charge: 0, electricity: 0, hasLeaseRelated: false, electricityOnly: false };
+      return { rent: 0, service_charge: 0, electricity: 0, deposit: 0, hasLeaseRelated: false, electricityOnly: false, isDeposit: false };
     }
     const totals = (selectedInvoice.items || []).reduce((acc, item) => {
       const bucket = classifyInvoiceItem(item);
       acc[bucket] += Number(item.total || 0);
       return acc;
-    }, { rent: 0, service_charge: 0, electricity: 0 });
-    const hasLeaseRelated = totals.rent > 0 || totals.service_charge > 0;
-    const electricityOnly = !hasLeaseRelated && totals.electricity > 0;
-    return { ...totals, hasLeaseRelated, electricityOnly };
+    }, { rent: 0, service_charge: 0, electricity: 0, deposit: 0 });
+    const isDeposit = selectedInvoice.kind === 'deposit' || (totals.deposit > 0 && totals.rent + totals.service_charge + totals.electricity === 0);
+    const hasLeaseRelated = !isDeposit && (totals.rent > 0 || totals.service_charge > 0);
+    const electricityOnly = !isDeposit && !hasLeaseRelated && totals.electricity > 0;
+    return { ...totals, hasLeaseRelated, electricityOnly, isDeposit };
   }, [selectedInvoice]);
   const isPartialPayment = selectedInvoice && received > 0 && received + 0.01 < selectedBalanceDue;
   const receiptValidationError = (() => {
@@ -1097,9 +1099,11 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                   Issue Receipt
                 </label>
                 <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                  {invoiceBreakdown.electricityOnly
-                    ? 'Electricity-only payment: receipt can be issued without WHT confirmation.'
-                    : 'Rent/service charge payments require WHT confirmation before receipt issuance.'}
+                  {invoiceBreakdown.isDeposit
+                    ? 'Security deposit (refundable): no VAT or WHT. A receipt can be issued once it is paid in full.'
+                    : invoiceBreakdown.electricityOnly
+                      ? 'Electricity-only payment: receipt can be issued without WHT confirmation.'
+                      : 'Rent/service charge payments require WHT confirmation before receipt issuance.'}
                 </div>
                 {invoiceBreakdown.hasLeaseRelated && (
                   <>
@@ -1125,21 +1129,14 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
               {selectedInvoice && received > 0 && (
                 <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 4 }}>
-                  <div style={{ fontSize: '10.5px', fontWeight: 700, letterSpacing: '.6px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 12 }}>Reconciliation Preview</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 13 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Invoice gross (incl. VAT)</span><span>{formatAmount(selectedInvoiceNet, selectedInvoiceCurrency)}</span></div>
-                    {selectedTenantCredit > 0 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--green)' }}>Less: credit on account</span><span style={{ color: 'var(--green)' }}>({formatAmount(selectedTenantCredit, selectedInvoiceCurrency)})</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Balance due</span><span>{formatAmount(selectedBalanceDue, selectedInvoiceCurrency)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-secondary)' }}>Amount received</span><span>{formatAmount(received, selectedInvoiceCurrency)}</span></div>
-                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2, display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 700 }}>
-                      <span>{reconcileVariance > 0 ? 'Overpayment' : reconcileVariance < 0 ? 'Shortfall' : 'Variance'}</span>
-                      <span style={{ color: reconcileVariance > 0 ? '#a78bfa' : reconcileVariance < 0 ? 'var(--red)' : 'var(--green)' }}>{reconcileVariance === 0 ? `Exact — ${selectedInvoiceCurrency} 0` : fmtVariance(reconcileVariance, (value) => formatAmount(value, selectedInvoiceCurrency))}</span>
-                    </div>
                   </div>
                   <div style={{ marginTop: 12, borderRadius: 8, padding: '10px 14px', fontSize: 13, fontWeight: 600, background: reconcileVariance > 0 ? 'rgba(167,139,250,.12)' : reconcileVariance < 0 ? 'var(--red-dim)' : 'var(--green-dim)', color: reconcileVariance > 0 ? '#a78bfa' : reconcileVariance < 0 ? 'var(--red)' : 'var(--green)' }}>
                     {reconcileVariance === 0 && '✓ Exact payment — invoice will be marked PAID'}
                     {reconcileVariance > 0 && `Overpaid by ${formatAmount(reconcileVariance, selectedInvoiceCurrency)} — invoice marked PAID, excess credited to tenant account`}
-                    {reconcileVariance < 0 && `Underpayment of ${formatAmount(Math.abs(reconcileVariance), selectedInvoiceCurrency)} — invoice marked PARTIALLY PAID, shortfall remains outstanding`}
+                    {reconcileVariance < 0 && `Short by ${formatAmount(Math.abs(reconcileVariance), selectedInvoiceCurrency)} — invoice marked PARTIALLY PAID`}
                   </div>
                 </div>
               )}
