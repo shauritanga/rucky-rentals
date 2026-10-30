@@ -102,6 +102,8 @@ class UnitController extends Controller
             'service_charge_per_sqm' => 'nullable|numeric|min:0',
             'currency'               => 'required|in:TZS,USD',
             'electricity_type'       => 'nullable|in:direct,submeter',
+            'allows_co_tenants'      => 'nullable|boolean',
+            'co_tenant_count'        => 'nullable|required_if:allows_co_tenants,true,1|integer|min:2|max:10',
             'notes'                  => 'nullable|string',
         ]);
         $data['size_sqm']               = (float) $data['size_sqm'];
@@ -111,6 +113,8 @@ class UnitController extends Controller
         $data['service_charge_per_sqm'] = (float) ($data['service_charge_per_sqm'] ?? 0);
         $data['service_charge']         = round($data['size_sqm'] * $data['service_charge_per_sqm'], 2);
         $data['electricity_type']       = $data['electricity_type'] ?? 'direct';
+        $data['allows_co_tenants']      = (bool) ($data['allows_co_tenants'] ?? false);
+        $data['co_tenant_count']        = $data['allows_co_tenants'] ? (int) $data['co_tenant_count'] : null;
         $data['status']                 = 'vacant';
         $rentMonths                     = (float) SystemSetting::get('deposit_rent_months', 1);
         $scMonths                       = (float) SystemSetting::get('deposit_service_charge_months', 1);
@@ -205,6 +209,8 @@ class UnitController extends Controller
             'currency'               => 'required|in:TZS,USD',
             'status'                 => 'required|in:occupied,vacant,overdue,maintenance',
             'electricity_type'       => 'nullable|in:direct,submeter',
+            'allows_co_tenants'      => 'nullable|boolean',
+            'co_tenant_count'        => 'nullable|required_if:allows_co_tenants,true,1|integer|min:2|max:10',
             'notes'                  => 'nullable|string',
         ]);
         $data['size_sqm']               = (float) $data['size_sqm'];
@@ -214,9 +220,17 @@ class UnitController extends Controller
         $data['service_charge_per_sqm'] = (float) ($data['service_charge_per_sqm'] ?? 0);
         $data['service_charge']         = round($data['size_sqm'] * $data['service_charge_per_sqm'], 2);
         $data['electricity_type']       = $data['electricity_type'] ?? 'direct';
+        $data['allows_co_tenants']      = (bool) ($data['allows_co_tenants'] ?? false);
+        $data['co_tenant_count']        = $data['allows_co_tenants'] ? (int) $data['co_tenant_count'] : null;
         $rentMonths                     = (float) SystemSetting::get('deposit_rent_months', 1);
         $scMonths                       = (float) SystemSetting::get('deposit_service_charge_months', 1);
         $data['deposit']                = round(($data['rent'] * $rentMonths) + ($data['service_charge'] * $scMonths), 2);
+
+        if (!$data['allows_co_tenants'] && $unit->leases()->whereIn('status', ['pending_accountant', 'pending_pm', 'active', 'expiring', 'overdue'])->count() > 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'allows_co_tenants' => 'This unit has more than one tenant. End the extra leases before turning co-tenants off.',
+            ]);
+        }
 
         $unit->update($data);
 

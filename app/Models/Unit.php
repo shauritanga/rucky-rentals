@@ -23,6 +23,8 @@ class Unit extends Model
         'deposit',
         'service_charge',
         'electricity_type',
+        'allows_co_tenants',
+        'co_tenant_count',
         'notes',
         'approval_status',
         'approval_requested_at',
@@ -37,6 +39,7 @@ class Unit extends Model
         'rent'                   => 'float',
         'deposit'                => 'float',
         'service_charge'         => 'float',
+        'allows_co_tenants'      => 'boolean',
         'approval_requested_at'  => 'datetime',
         'approval_decided_at'    => 'datetime',
     ];

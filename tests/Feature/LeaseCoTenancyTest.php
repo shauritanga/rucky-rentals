@@ -14,7 +14,55 @@ class LeaseCoTenancyTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_second_active_lease_can_be_created_for_an_already_occupied_unit(): void
+    public function test_a_co_tenant_unit_takes_all_its_tenants_together_with_equal_shares(): void
+    {
+        $property = $this->createProperty();
+        $superuser = $this->createSuperuser();
+        $unit = $this->createCoTenantUnit($property->id);
+        $tenantA = $this->createTenant($property->id, 'a@example.com');
+        $tenantB = $this->createTenant($property->id, 'b@example.com');
+
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id) + ['tenant_ids' => [$tenantA->id, $tenantB->id]])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $leases = Lease::where('unit_id', $unit->id)->get();
+        $this->assertCount(2, $leases);
+        $this->assertSame(1, $leases->pluck('co_tenant_group')->unique()->count());
+        $this->assertNotNull($leases->first()->co_tenant_group);
+        $this->assertEqualsCanonicalizing([500.0, 500.0], $leases->pluck('monthly_rent')->map(fn ($v) => (float) $v)->all());
+        $this->assertSame('occupied', $unit->fresh()->status);
+        $this->assertSame(2, Lease::where('unit_id', $unit->id)->where('status', 'active')->count());
+    }
+
+    public function test_a_co_tenant_unit_refuses_a_lease_with_a_single_tenant(): void
+    {
+        $property = $this->createProperty();
+        $superuser = $this->createSuperuser();
+        $unit = $this->createCoTenantUnit($property->id);
+        $tenantA = $this->createTenant($property->id, 'a@example.com');
+
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id))
+            ->assertSessionHasErrors('tenant_ids');
+
+        $this->assertSame(0, Lease::count());
+    }
+
+    public function test_the_same_tenant_cannot_be_entered_twice_on_a_co_tenant_unit(): void
+    {
+        $property = $this->createProperty();
+        $superuser = $this->createSuperuser();
+        $unit = $this->createCoTenantUnit($property->id);
+        $tenantA = $this->createTenant($property->id, 'a@example.com');
+
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id) + ['tenant_ids' => [$tenantA->id, $tenantA->id]])
+            ->assertSessionHasErrors('tenant_ids');
+    }
+
+    public function test_a_single_tenant_unit_refuses_a_second_lease_and_a_group(): void
     {
         $property = $this->createProperty();
         $superuser = $this->createSuperuser();
@@ -22,28 +70,25 @@ class LeaseCoTenancyTest extends TestCase
         $tenantA = $this->createTenant($property->id, 'a@example.com');
         $tenantB = $this->createTenant($property->id, 'b@example.com');
 
-        $this->actingAsPropertySuperuser($superuser, $property->id)
-            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id))
-            ->assertRedirect();
+        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantA->id, $unit->id))->assertSessionHasNoErrors();
 
         $this->actingAsPropertySuperuser($superuser, $property->id)
             ->post('/leases', $this->leasePayload($tenantB->id, $unit->id))
-            ->assertRedirect();
+            ->assertSessionHasErrors('unit_id');
 
-        $this->assertSame(2, Lease::where('unit_id', $unit->id)->where('status', 'active')->count());
-        $this->assertSame('occupied', $unit->fresh()->status);
+        $this->assertSame(1, Lease::where('unit_id', $unit->id)->count());
     }
 
     public function test_deleting_one_of_two_active_leases_keeps_the_unit_occupied(): void
     {
         $property = $this->createProperty();
         $superuser = $this->createSuperuser();
-        $unit = $this->createUnit($property->id);
+        $unit = $this->createCoTenantUnit($property->id);
         $tenantA = $this->createTenant($property->id, 'a@example.com');
         $tenantB = $this->createTenant($property->id, 'b@example.com');
 
-        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantA->id, $unit->id));
-        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantB->id, $unit->id));
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id) + ['tenant_ids' => [$tenantA->id, $tenantB->id]]);
 
         $leaseA = Lease::where('tenant_id', $tenantA->id)->firstOrFail();
         $leaseB = Lease::where('tenant_id', $tenantB->id)->firstOrFail();
@@ -74,28 +119,53 @@ class LeaseCoTenancyTest extends TestCase
         $this->assertSame('vacant', $unit->fresh()->status);
     }
 
-    public function test_moving_a_lease_to_a_new_unit_only_vacates_old_unit_if_no_other_lease_remains(): void
+    public function test_a_co_tenant_lease_cannot_be_moved_to_another_unit(): void
     {
         $property = $this->createProperty();
         $superuser = $this->createSuperuser();
-        $unitA = $this->createUnit($property->id, 'A.01');
+        $unitA = $this->createCoTenantUnit($property->id, 'A.01');
         $unitB = $this->createUnit($property->id, 'A.02');
         $tenantA = $this->createTenant($property->id, 'a@example.com');
         $tenantB = $this->createTenant($property->id, 'b@example.com');
 
-        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantA->id, $unitA->id));
-        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantB->id, $unitA->id));
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->post('/leases', $this->leasePayload($tenantA->id, $unitA->id) + ['tenant_ids' => [$tenantA->id, $tenantB->id]]);
 
         $leaseB = Lease::where('tenant_id', $tenantB->id)->firstOrFail();
 
-        $editPayload = $this->leasePayload($tenantB->id, $unitB->id) + ['action' => 'edit'];
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->patch("/leases/{$leaseB->id}", $this->leasePayload($tenantB->id, $unitB->id) + ['action' => 'edit'])
+            ->assertSessionHasErrors('unit_id');
+
+        $this->assertSame($unitA->id, $leaseB->fresh()->unit_id);
+    }
+
+    public function test_a_unit_can_only_be_set_to_single_tenant_when_it_has_one_lease(): void
+    {
+        $property = $this->createProperty();
+        $superuser = $this->createSuperuser();
+        $unit = $this->createCoTenantUnit($property->id);
+        $tenantA = $this->createTenant($property->id, 'a@example.com');
+        $tenantB = $this->createTenant($property->id, 'b@example.com');
 
         $this->actingAsPropertySuperuser($superuser, $property->id)
-            ->patch("/leases/{$leaseB->id}", $editPayload)
-            ->assertRedirect();
+            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id) + ['tenant_ids' => [$tenantA->id, $tenantB->id]]);
 
-        $this->assertSame('occupied', $unitA->fresh()->status, 'unitA still has tenantA active lease');
-        $this->assertSame('occupied', $unitB->fresh()->status);
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->put("/units/{$unit->id}", [
+                'unit_number' => 'F1.01', 'floor' => '1', 'type' => 'Office Suite', 'size_sqm' => 9.29,
+                'rate_per_sqm' => 107.64, 'service_charge_per_sqm' => 0, 'currency' => 'TZS',
+                'status' => 'occupied', 'electricity_type' => 'direct', 'allows_co_tenants' => false,
+            ])
+            ->assertSessionHasErrors('allows_co_tenants');
+    }
+
+    private function createCoTenantUnit(int $propertyId, string $unitNumber = 'A.01', int $count = 2): Unit
+    {
+        $unit = $this->createUnit($propertyId, $unitNumber);
+        $unit->update(['allows_co_tenants' => true, 'co_tenant_count' => $count]);
+
+        return $unit;
     }
 
     private function createProperty(): Property

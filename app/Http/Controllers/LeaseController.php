@@ -17,6 +17,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
@@ -103,7 +104,16 @@ class LeaseController extends Controller
         $validated = $request->validate([
             'tenant_mode'     => 'nullable|in:existing,new',
             'tenant_id'       => [
-                'required',
+                'required_without:tenant_ids',
+                'nullable',
+                Rule::exists('tenants', 'id')->when(
+                    $effectivePropertyId,
+                    fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
+                ),
+            ],
+            'tenant_ids'      => 'nullable|array|max:10',
+            'tenant_ids.*'    => [
+                'integer',
                 Rule::exists('tenants', 'id')->when(
                     $effectivePropertyId,
                     fn($rule) => $rule->where(fn($q) => $q->where('property_id', $effectivePropertyId))
@@ -170,13 +180,41 @@ class LeaseController extends Controller
         }
 
         if (($validated['tenant_mode'] ?? 'existing') === 'existing') {
-            $tenant = Tenant::findOrFail($tenantId);
-            if ($effectivePropertyId !== null) {
-                abort_if((int) $tenant->property_id !== $effectivePropertyId, 403);
+            foreach (array_filter(array_merge([$tenantId], $validated['tenant_ids'] ?? [])) as $id) {
+                $existing = Tenant::findOrFail($id);
+                if ($effectivePropertyId !== null) {
+                    abort_if((int) $existing->property_id !== $effectivePropertyId, 403);
+                }
             }
         }
 
         $validated = $this->normalizeLeaseTiming($validated);
+
+        // Who is on this lease: one tenant for a normal unit, the whole group for a co-tenant unit.
+        $tenantIds = collect($validated['tenant_ids'] ?? [])->map(fn ($id) => (int) $id)->values();
+        if ($tenantIds->isEmpty() && $tenantId) {
+            $tenantIds = collect([(int) $tenantId]);
+        }
+        $needed = $unit->allows_co_tenants ? max(2, (int) $unit->co_tenant_count) : 1;
+        if ($tenantIds->count() !== $needed || $tenantIds->unique()->count() !== $needed) {
+            throw ValidationException::withMessages([
+                'tenant_ids' => $unit->allows_co_tenants
+                    ? "Unit {$unit->unit_number} takes co-tenants: choose exactly {$needed} different tenants and create their leases together."
+                    : "Unit {$unit->unit_number} takes a single tenant.",
+            ]);
+        }
+
+        // One lease group per unit and period: the unit is either free for these dates or it is not.
+        $endsInPast = Carbon::parse($validated['end_date'])->startOfDay()->lt(Carbon::today());
+        if (!$endsInPast && Lease::where('unit_id', $unit->id)
+            ->whereIn('status', ['pending_accountant', 'pending_pm', 'active', 'expiring', 'overdue'])
+            ->whereDate('start_date', '<', $validated['end_date'])
+            ->whereDate('end_date', '>', $validated['start_date'])
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'unit_id' => "Unit {$unit->unit_number} already has a lease for these dates.",
+            ]);
+        }
 
         // Determine initial status — superuser acting in property view mode auto-approves
         if ($this->isSuperuserActing($request)) {
@@ -206,9 +244,18 @@ class LeaseController extends Controller
             ]]);
         }
 
-        $data = [
+        // Equal shares of the unit's rent, service charge and deposit for every tenant on it.
+        $shares = $tenantIds->count();
+        $monthlyRent = $shares > 1 ? round((float) $unit->rent / $shares, 2) : $validated['monthly_rent'];
+        $serviceCharge = round((float) ($unit->service_charge ?? 0) / $shares, 2);
+        $rentMonths = (float) SystemSetting::get('deposit_rent_months', 1);
+        $scMonths   = (float) SystemSetting::get('deposit_service_charge_months', 1);
+        // Each tenant's deposit: the amount typed on the form, else the unit's rule applied to their share.
+        $deposit = $validated['deposit'] ?? round(($monthlyRent * $rentMonths) + ($serviceCharge * $scMonths), 2);
+        $groupId = $shares > 1 ? (string) \Illuminate\Support\Str::uuid() : null;
+
+        $base = [
             'property_id' => $propertyId,
-            'tenant_id' => $tenantId,
             'unit_id' => $validated['unit_id'],
             'start_date' => $validated['start_date'],
             'end_date' => $validated['end_date'],
@@ -223,37 +270,43 @@ class LeaseController extends Controller
             'wht_rate' => (float) ($validated['wht_rate'] ?? 10),
             'service_charge_rate' => (float) ($validated['service_charge_rate'] ?? 5),
             'vat_rate' => (float) ($validated['vat_rate'] ?? 18),
-            'monthly_rent' => $validated['monthly_rent'],
-            'service_charge' => round((float) ($unit->service_charge ?? 0) / (Lease::where('unit_id', $unit->id)->whereIn('status', ['active', 'expiring', 'overdue'])->whereDate('end_date', '>', $validated['rent_start_date'] ?? $validated['start_date'])->count() + 1), 2),
-            'deposit' => $validated['deposit'] ?? (function () use ($validated, $unit) {
-                $rentMonths = (float) SystemSetting::get('deposit_rent_months', 1);
-                $scMonths   = (float) SystemSetting::get('deposit_service_charge_months', 1);
-                return round(($validated['monthly_rent'] * $rentMonths) + (($unit->service_charge ?? 0) * $scMonths), 2);
-            })(),
+            'monthly_rent' => $monthlyRent,
+            'service_charge' => $serviceCharge,
+            'deposit' => $deposit,
             'terms' => $validated['terms'] ?? null,
             'status' => $status,
             'approval_log' => $approvalLog,
+            'co_tenant_group' => $groupId,
         ];
 
-        DB::transaction(function () use (&$lease, $data, $unit) {
-            $data['lease_number'] = $this->leaseNumberService->generateNumber();
-            $lease = Lease::create($data);
-            if ($lease->status !== 'terminated') {
+        $created = collect();
+        DB::transaction(function () use ($tenantIds, $base, $unit, &$created) {
+            foreach ($tenantIds as $id) {
+                $created->push(Lease::create($base + [
+                    'tenant_id' => $id,
+                    'lease_number' => $this->leaseNumberService->generateNumber(),
+                ]));
+            }
+            if ($base['status'] !== 'terminated') {
                 $unit->update(['status' => 'occupied']);
             }
-            // If auto-approved, generate installments and post deposit GL entry
-            if ($lease->status === 'active') {
-                $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->issueDepositInvoice($lease->fresh());
-                $this->rebalanceUnit($lease->fresh());
+            // Auto-approved: every lease in the group goes live together, then the shares are settled once.
+            if ($base['status'] === 'active') {
+                foreach ($created as $l) {
+                    $this->ensureInstallmentsGenerated($l->fresh());
+                    $this->issueDepositInvoice($l->fresh());
+                }
+                $this->rebalanceUnit($created->first()->fresh());
             }
         });
+        $lease = $created->first();
+        $tenant = Tenant::whereIn('id', $tenantIds)->orderBy('id')->get();
 
         $propertyName = Property::where('id', $propertyId)->value('name');
         $this->logAudit(
             request: $request,
             action: 'Lease created',
-            resource: sprintf('%s - %s', $unit->unit_number, $tenant->name ?? 'N/A'),
+            resource: sprintf('%s - %s', $unit->unit_number, $tenant->pluck('name')->join(' & ') ?: 'N/A'),
             propertyName: $propertyName,
             category: 'lease',
             propertyId: (int) $propertyId,
@@ -298,45 +351,35 @@ class LeaseController extends Controller
                 'date' => now()->toDateString(),
                 'text' => 'Approved by superuser.',
             ];
-            $this->requireDepositRate($lease, $request->input('deposit_rate'));
-            DB::transaction(function () use ($lease, $log) {
-                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
-                $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->issueDepositInvoice($lease->fresh());
-                $this->rebalanceUnit($lease->fresh());
-            });
+            $this->activateGroup($lease, $log, $request->input('deposit_rate'));
         } elseif ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
             // Only superuser can approve
             abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 1, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
-            $this->requireDepositRate($lease, $request->input('deposit_rate'));
-            DB::transaction(function () use ($lease, $log) {
-                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
-                $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->issueDepositInvoice($lease->fresh());
-                $this->rebalanceUnit($lease->fresh());
-            });
+            $this->activateGroup($lease, $log, $request->input('deposit_rate'));
         } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
             // Only superuser can approve
             abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 2, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
-            $this->requireDepositRate($lease, $request->input('deposit_rate'));
-            DB::transaction(function () use ($lease, $log) {
-                $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
-                $this->ensureInstallmentsGenerated($lease->fresh());
-                $this->issueDepositInvoice($lease->fresh());
-                $this->rebalanceUnit($lease->fresh());
-            });
+            $this->activateGroup($lease, $log, $request->input('deposit_rate'));
         } elseif ($action === 'reject') {
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 0, 'action' => 'rejected', 'by' => $user->name, 'date' => now()->toDateString(), 'reason' => $request->input('reason', ''), 'text' => 'Lease rejected.'];
-            $lease->update(['status' => 'rejected', 'approval_log' => json_encode($log)]);
+            foreach ($this->pendingGroup($lease) as $member) {
+                $memberLog = json_decode($member->approval_log, true) ?? [];
+                $memberLog[] = end($log);
+                $member->update(['status' => 'rejected', 'approval_log' => json_encode($memberLog)]);
+            }
         } elseif ($action === 'resubmit') {
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 0, 'action' => 'submitted', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease resubmitted after rejection.'];
-            $lease->update(['status' => 'pending_accountant', 'approval_log' => json_encode($log)]);
+            foreach ($this->pendingGroup($lease) as $member) {
+                $memberLog = json_decode($member->approval_log, true) ?? [];
+                $memberLog[] = end($log);
+                $member->update(['status' => 'pending_accountant', 'approval_log' => json_encode($memberLog)]);
+            }
 
             $superusers = User::where('role', 'superuser')->get();
             Notification::send(
@@ -395,6 +438,14 @@ class LeaseController extends Controller
             ]);
 
             $editData = $this->normalizeLeaseTiming($editData);
+
+            $targetUnit = Unit::find($editData['unit_id']);
+            if ((int) $editData['unit_id'] !== (int) $lease->unit_id
+                && ($lease->co_tenant_group || $targetUnit?->allows_co_tenants)) {
+                throw ValidationException::withMessages([
+                    'unit_id' => 'A co-tenant lease cannot be moved to or from a co-tenant unit. Create the leases again for the new unit.',
+                ]);
+            }
 
             DB::transaction(function () use ($lease, $editData) {
                 $oldUnitId     = $lease->unit_id;
@@ -633,6 +684,34 @@ class LeaseController extends Controller
         $propertyId = $this->effectivePropertyId($request);
         if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
         $query->where($column, $propertyId);
+    }
+
+    /** Leases created together with this one that are still in the same state, this lease included. */
+    private function pendingGroup(Lease $lease)
+    {
+        return $lease->groupMembers()->filter(fn (Lease $l) => $l->status === $lease->status)->values();
+    }
+
+    /** Approve a lease together with its co-tenants, then settle the unit's shares once. */
+    private function activateGroup(Lease $lease, array $log, mixed $depositRate): void
+    {
+        $members = $this->pendingGroup($lease);
+        foreach ($members as $member) {
+            $this->requireDepositRate($member, $depositRate);
+        }
+
+        DB::transaction(function () use ($members, $log) {
+            foreach ($members as $member) {
+                $memberLog = json_decode($member->approval_log, true) ?? [];
+                $memberLog[] = end($log);
+                $member->update(['status' => 'active', 'approval_log' => json_encode($memberLog)]);
+            }
+            foreach ($members as $member) {
+                $this->ensureInstallmentsGenerated($member->fresh());
+                $this->issueDepositInvoice($member->fresh());
+            }
+            $this->rebalanceUnit($members->first()->fresh());
+        });
     }
 
     private ?string $rebalanceNote = null;

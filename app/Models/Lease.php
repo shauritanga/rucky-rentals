@@ -34,6 +34,7 @@ class Lease extends Model
         'terms',
         'status',
         'approval_log',
+        'co_tenant_group',
     ];
 
     protected $appends = ['display_rate', 'monthly_service_charge'];
@@ -64,6 +65,16 @@ class Lease extends Model
     public function getMonthlyServiceChargeAttribute(): float
     {
         return (float) ($this->service_charge ?? $this->unit?->service_charge ?? 0);
+    }
+
+    /** This lease and the leases created together with it for the same co-tenant unit. */
+    public function groupMembers()
+    {
+        if (!$this->co_tenant_group) {
+            return collect([$this]);
+        }
+
+        return static::where('co_tenant_group', $this->co_tenant_group)->orderBy('id')->get();
     }
 
     public function property()

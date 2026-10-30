@@ -65,11 +65,11 @@ class LeaseTerminationTest extends TestCase
         $property = $this->createProperty();
         $superuser = $this->createSuperuser();
         $unit = $this->createUnit($property->id);
+        $unit->update(['allows_co_tenants' => true, 'co_tenant_count' => 2]);
         $tenantA = $this->createTenant($property->id, 'a@example.com');
         $tenantB = $this->createTenant($property->id, 'b@example.com');
 
-        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantA->id, $unit->id));
-        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantB->id, $unit->id));
+        $this->actingAsPropertySuperuser($superuser, $property->id)->post('/leases', $this->leasePayload($tenantA->id, $unit->id) + ['tenant_ids' => [$tenantA->id, $tenantB->id]]);
 
         $leaseA = Lease::where('tenant_id', $tenantA->id)->firstOrFail();
 

@@ -231,7 +231,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const depositScMonths   = Number(settings.deposit_service_charge_months ?? 1);
 
   const { data, setData, post, processing, reset } = useForm({
-    tenant_id:'', unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
+    tenant_id:'', tenant_ids:[], unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     possession_date:'2026-04-01', rent_start_date:'2026-04-01', fitout_enabled:false, fitout_to_date:'', fitout_days:0,
     wht_rate:10, service_charge_rate:5, vat_rate:LEASE_VAT_RATE,
@@ -266,12 +266,15 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const cycle = Number(data.payment_cycle) || 0;
     const duration = Number(data.duration_months) || 0;
     // Only co-tenants still running when this lease's rent starts share the unit with it.
-    const coTenantCount = leases.filter(l =>
-      String(l.unit_id) === String(data.unit_id)
-      && ['active', 'expiring', 'overdue'].includes(l.status)
-      && String(l.id) !== String(editingLeaseId)
-      && (!rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate)
-    ).length;
+    const summaryUnit = units.find(u => String(u.id) === String(data.unit_id));
+    const coTenantCount = editingLeaseId
+      ? leases.filter(l =>
+          String(l.unit_id) === String(data.unit_id)
+          && ['active', 'expiring', 'overdue'].includes(l.status)
+          && String(l.id) !== String(editingLeaseId)
+          && (!rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate)
+        ).length
+      : (summaryUnit?.allows_co_tenants ? Math.max(2, Number(summaryUnit.co_tenant_count) || 2) - 1 : 0);
     const shares = coTenantCount + 1;
     const serviceCharge = (units.find(u => String(u.id) === String(data.unit_id))?.service_charge ?? 0) / shares;
     // Keep full cent precision through every step — rounding vat/wht/etc.
@@ -344,8 +347,14 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
   const annualContractValueTzs = useMemo(() => monthlyRevenueTzs * 12, [monthlyRevenueTzs]);
 
-  const currentTenant = tenants.find(t => String(t.id) === String(data.tenant_id));
+  // A co-tenant unit takes its whole group at once; any other unit takes one tenant.
+  const unitForTenants = units.find(u => String(u.id) === String(data.unit_id));
+  const neededTenants = editingLeaseId ? 1 : (unitForTenants?.allows_co_tenants ? Math.max(2, Number(unitForTenants.co_tenant_count) || 2) : 1);
+  const chosenTenantIds = editingLeaseId ? [data.tenant_id].filter(Boolean) : data.tenant_ids;
+  const chosenTenants = chosenTenantIds.map(id => tenants.find(t => String(t.id) === String(id))).filter(Boolean);
+  const tenantsComplete = chosenTenants.length === neededTenants;
   const filteredTenants = tenants.filter(t => {
+    if (chosenTenantIds.some(id => String(id) === String(t.id))) return false;
     const q = tenantSearch.toLowerCase().trim();
     if (!q) return true;
     return t.name?.toLowerCase().includes(q) || t.email?.toLowerCase().includes(q) || t.phone?.toLowerCase().includes(q);
@@ -400,6 +409,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       payment_cycle: 3,
       unit_id: '',
       tenant_id: '',
+      tenant_ids: [],
       monthly_rent: '',
       deposit: '',
       terms: '',
@@ -443,23 +453,34 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   };
 
   const selectTenant = (tenant) => {
-    setData('tenant_id', tenant.id);
+    if (editingLeaseId) {
+      setData('tenant_id', tenant.id);
+    } else if (neededTenants === 1) {
+      setData(d => ({ ...d, tenant_ids: [tenant.id] }));
+    } else if (data.tenant_ids.length < neededTenants && !data.tenant_ids.includes(tenant.id)) {
+      setData(d => ({ ...d, tenant_ids: [...d.tenant_ids, tenant.id] }));
+    }
     setTenantSearch('');
     setShowTenantDropdown(false);
+  };
+
+  const removeTenant = (id) => {
+    if (editingLeaseId) setData('tenant_id', '');
+    else setData(d => ({ ...d, tenant_ids: d.tenant_ids.filter(x => x !== id) }));
   };
 
   const onUnitChange = (unitId) => {
     const u = units.find(x => String(x.id) === String(unitId));
     const uCurrency = resolveCurrency(u?.currency);
     setData(d => {
-      const coTenantCount = (activeLeasesByUnit[String(unitId)] || []).filter(l => !rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate).length;
-      const shares = coTenantCount + 1;
+      const shares = u?.allows_co_tenants ? Math.max(2, Number(u.co_tenant_count) || 2) : 1;
       const splitRent = u ? u.rent / shares : '';
       const splitServiceCharge = u ? (u.service_charge ?? 0) / shares : 0;
       const autoDeposit = u ? (splitRent * depositRentMonths) + (splitServiceCharge * depositScMonths) : '';
       return {
         ...d,
         unit_id: unitId,
+        tenant_ids: u?.allows_co_tenants ? d.tenant_ids.slice(0, shares) : d.tenant_ids.slice(0, 1),
         monthly_rent: splitRent,
         deposit: autoDeposit,
       };
@@ -471,8 +492,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     if (editingLeaseId || !data.unit_id) return;
     const u = units.find(x => String(x.id) === String(data.unit_id));
     if (!u) return;
-    const shares = (activeLeasesByUnit[String(data.unit_id)] || [])
-      .filter(l => !rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate).length + 1;
+    const shares = u.allows_co_tenants ? Math.max(2, Number(u.co_tenant_count) || 2) : 1;
     const rent = u.rent / shares;
     const sc = (u.service_charge ?? 0) / shares;
     setData(d => ({ ...d, monthly_rent: rent, deposit: (rent * depositRentMonths) + (sc * depositScMonths) }));
@@ -542,6 +562,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     }
     router.post('/leases', {
       ...data,
+      tenant_id: data.tenant_ids[0] || '',
       possession_date: possessionDate || data.start_date,
       rent_start_date: rentStartDate || data.start_date,
       fitout_enabled: fitoutEnabled,
@@ -570,6 +591,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     setData(d => ({
       ...d,
       tenant_id: lease.tenant_id || lease.tenant?.id || '',
+      tenant_ids: [lease.tenant_id || lease.tenant?.id].filter(Boolean),
       unit_id: lease.unit_id || lease.unit?.id || '',
       start_date: lease.end_date || lease.start_date || '2026-04-01',
       duration_months: lease.duration_months || 12,
@@ -906,6 +928,29 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
             <button className="modal-close" onClick={() => setShowDeleteConfirm(false)}>✕</button>
           </div>
           <div className="modal-body">
+              <div className="form-row">
+                <div className="form-group"><label className="form-label">Unit *</label>
+                  <select className="form-input form-select" value={data.unit_id} onChange={e=>onUnitChange(e.target.value)} required>
+                    <option value="">Select unit…</option>
+                    {unitsByFloor.map(([floor, floorUnits]) => (
+                      <optgroup key={floor} label={`Floor ${floor}`}>
+                        {floorUnits.map(u => {
+                          const coTenants = activeLeasesByUnit[String(u.id)] || [];
+                          const coTenantLabel = coTenants.length > 0
+                            ? ` — occupied (${coTenants.map(l => l.tenant?.name).filter(Boolean).join(', ')})`
+                            : (u.allows_co_tenants ? ` — ${u.co_tenant_count} co-tenants` : '');
+                          return (
+                            <option key={u.id} value={u.id} disabled={!editingLeaseId && coTenants.length > 0}>
+                              {u.unit_number} — {u.type} ({formatMoney(u.rent, u.currency)}/mo){coTenantLabel}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
             <p style={{margin: 0, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6}}>
               Are you sure you want to delete the lease for{' '}
               <strong>{selected?.tenant?.name}</strong> on unit{' '}
@@ -957,8 +1002,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
           <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
             <div className="modal-body" style={{overflowY:'auto',flex:1,minHeight:0}}>
               <div style={{marginBottom:14}}>
-                <label className="form-label" style={{marginBottom:8,display:'block'}}>Tenant *</label>
-                <div style={{position:'relative'}}>
+                <label className="form-label" style={{marginBottom:8,display:'block'}}>{neededTenants > 1 ? `Tenants * (${chosenTenants.length} of ${neededTenants})` : 'Tenant *'}</label>
+                <div style={{position:'relative',display:(!editingLeaseId && neededTenants > 1 && tenantsComplete) ? 'none' : undefined}}>
                   <div className="search-box" style={{width:'100%',background:'var(--bg-elevated)'}}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
                     <input
@@ -990,14 +1035,21 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   </div>
                 </div>
 
-                {currentTenant && (
-                  <div className="nl-selected-card" style={{marginTop:10}}>
-                    <div className="nl-selected-avatar" style={{background:currentTenant.color,color:currentTenant.text_color}}>{currentTenant.initials}</div>
+                {chosenTenants.map((ct, i) => (
+                  <div className="nl-selected-card" style={{marginTop:10}} key={ct.id}>
+                    <div className="nl-selected-avatar" style={{background:ct.color,color:ct.text_color}}>{ct.initials}</div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div className="nl-selected-name">{currentTenant.name}</div>
-                      <div className="nl-selected-meta">{currentTenant.email} · {currentTenant.phone || '—'}</div>
+                      <div className="nl-selected-name">{neededTenants > 1 ? `${i + 1}. ` : ''}{ct.name}</div>
+                      <div className="nl-selected-meta">{ct.email} · {ct.phone || '—'}</div>
                     </div>
-                    <button type="button" className="nl-selected-clear" onClick={()=>setData('tenant_id','')} title="Clear selection">✕</button>
+                    <button type="button" className="nl-selected-clear" onClick={()=>removeTenant(ct.id)} title="Remove">✕</button>
+                  </div>
+                ))}
+                {!editingLeaseId && data.unit_id && neededTenants > 1 && (
+                  <div style={{marginTop:8,fontSize:12,color:tenantsComplete ? 'var(--green)' : 'var(--amber)'}}>
+                    {tenantsComplete
+                      ? `All ${neededTenants} co-tenants chosen. Rent, service charge and deposit are split equally.`
+                      : `This unit takes ${neededTenants} co-tenants: choose ${neededTenants - chosenTenants.length} more. They are all added on one lease together.`}
                   </div>
                 )}
               </div>
@@ -1005,26 +1057,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
               <div style={{height:1,background:'var(--border-subtle)',margin:'16px 0'}}></div>
 
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Unit *</label>
-                  <select className="form-input form-select" value={data.unit_id} onChange={e=>onUnitChange(e.target.value)} required>
-                    <option value="">Select unit…</option>
-                    {unitsByFloor.map(([floor, floorUnits]) => (
-                      <optgroup key={floor} label={`Floor ${floor}`}>
-                        {floorUnits.map(u => {
-                          const coTenants = activeLeasesByUnit[String(u.id)] || [];
-                          const coTenantLabel = coTenants.length > 0
-                            ? ` — ${coTenants.length} co-tenant${coTenants.length > 1 ? 's' : ''} (${coTenants.map(l => l.tenant?.name).filter(Boolean).join(', ')})`
-                            : '';
-                          return (
-                            <option key={u.id} value={u.id}>
-                              {u.unit_number} — {u.type} ({formatMoney(u.rent, u.currency)}/mo){coTenantLabel}
-                            </option>
-                          );
-                        })}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
                 <div className="form-group"><label className="form-label">Payment Cycle *</label>
                   <select className="form-input form-select" value={data.payment_cycle} onChange={e=>setData('payment_cycle',e.target.value)}>
                     <option value={3}>Quarterly — every 3 months</option><option value={4}>Every 4 months</option><option value={6}>Semi-Annual — every 6 months</option><option value={12}>Annual — once a year</option>
@@ -1098,7 +1130,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
               {data.unit_id && summary.coTenantCount > 0 && (
                 <div style={{marginBottom:12,padding:'10px 12px',border:'1px solid var(--accent)',borderRadius:8,background:'rgba(59,130,246,.08)',color:'var(--accent)',fontSize:12.5}}>
-                  This unit already has {summary.coTenantCount} co-tenant{summary.coTenantCount > 1 ? 's' : ''}. Splitting rent into {summary.shares} equal shares of {formatMoney(summary.rent, selectedUnitCurrency)} each while they overlap; once a co-tenant's lease ends, this lease's share goes back up automatically.
+                  {editingLeaseId ? `This unit has ${summary.coTenantCount} other co-tenant${summary.coTenantCount > 1 ? 's' : ''}. Rent is split into ${summary.shares} equal shares of ${formatMoney(summary.rent, selectedUnitCurrency)} each while they overlap; once a co-tenant's lease ends, this lease's share goes back up automatically.` : `Co-tenant unit: ${summary.shares} tenants share it equally. Each tenant pays ${formatMoney(summary.rent, selectedUnitCurrency)} rent, ${formatMoney(summary.serviceCharge, selectedUnitCurrency)} service charge and a deposit of ${formatMoney(summary.deposit, selectedUnitCurrency)} per month/lease, on identical lease terms.`}
                 </div>
               )}
               <div className="form-row">
@@ -1147,7 +1179,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing}>
+              <button type="submit" className="btn-primary" disabled={processing || !tenantsComplete}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 {editingLeaseId ? 'Save Changes' : 'Create Lease'}
               </button>
