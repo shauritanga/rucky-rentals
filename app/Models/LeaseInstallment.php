@@ -18,6 +18,7 @@ class LeaseInstallment extends Model
         'currency',
         'status',
         'paid_amount',
+        'remark',
     ];
 
     public function lease()

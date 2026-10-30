@@ -234,6 +234,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
         active={activeTab}
         tabs={[
           ...TABS.map((tab) => ({ key: tab.key, label: tab.label, onClick: () => setActiveTab(tab.key) })),
+          { key: 'floor', label: 'Floor Schedule', href: route('reports.floor-schedule') },
           { key: 'builder', label: 'Custom Reports', href: route('reports.builder') },
         ]}
       />

@@ -361,6 +361,7 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
           { key: 'ar_aging', label: 'AR Aging', href: route('reports') },
           { key: 'leases', label: 'Lease Expiry', href: route('reports') },
           { key: 'tenants', label: 'Tenant Summary', href: route('reports') },
+          { key: 'floor', label: 'Floor Schedule', href: route('reports.floor-schedule') },
           { key: 'builder', label: 'Custom Reports', onClick: () => {} },
         ]}
       />

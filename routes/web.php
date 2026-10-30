@@ -15,6 +15,7 @@ use App\Http\Controllers\ClearanceController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ElectricityController;
+use App\Http\Controllers\FloorScheduleController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportBuilderController;
 use App\Http\Controllers\ProfileController;
@@ -91,6 +92,9 @@ Route::middleware('auth')->group(function () {
 
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
         Route::get('reports/export', [ReportController::class, 'export'])->name('reports.export');
+        Route::get('reports/floor-schedule', [FloorScheduleController::class, 'index'])->name('reports.floor-schedule');
+        Route::get('reports/floor-schedule/export', [FloorScheduleController::class, 'export'])->name('reports.floor-schedule.export');
+        Route::patch('reports/floor-schedule/installments/{installment}/remark', [FloorScheduleController::class, 'updateRemark'])->name('reports.floor-schedule.remark');
         Route::get('reports/builder', [ReportBuilderController::class, 'index'])->name('reports.builder');
         Route::get('reports/builder/column-options', [ReportBuilderController::class, 'columnOptions'])->name('reports.builder.column-options');
         Route::post('reports/builder/preview', [ReportBuilderController::class, 'preview'])->name('reports.builder.preview');
