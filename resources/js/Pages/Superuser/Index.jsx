@@ -239,7 +239,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         <div className="modal" style={{ width: 'min(460px, calc(100vw - 24px))' }}>
           <div className="modal-header"><div className="modal-title">Delete {deleteTarget?.name}?</div><button type="button" className="modal-close" onClick={() => setDeleteTarget(null)} disabled={deleting}>✕</button></div>
           <div className="modal-body">
-            <p style={{ fontSize: 13.5, lineHeight: 1.55, marginBottom: 12 }}>This permanently removes the property and its chart of accounts. It only works for a property with no units, tenants, leases, invoices, payments or other records; otherwise it is refused and you should set it to Inactive instead.</p>
+            <p style={{ fontSize: 13.5, lineHeight: 1.55, marginBottom: 12 }}>This permanently removes the property. It only works for a property with no units, tenants, leases, invoices, payments or other records; otherwise it is refused and you should set it to Inactive instead.</p>
             <label className="form-label">Type the property name to confirm</label>
             <input className="form-input" value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} placeholder={deleteTarget?.name || ''} autoComplete="off" />
           </div>

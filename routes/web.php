@@ -15,7 +15,6 @@ use App\Http\Controllers\ClearanceController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ElectricityController;
-use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportBuilderController;
 use App\Http\Controllers\ProfileController;
@@ -92,7 +91,6 @@ Route::middleware('auth')->group(function () {
         Route::post('electricity/settings/submeter', [ElectricityController::class, 'updateSubmeterSettings'])->name('electricity.settings.submeter');
         Route::post('electricity/settings/generator', [ElectricityController::class, 'updateGenSettings'])->name('electricity.settings.generator');
 
-        Route::get('accounting', [AccountingController::class, 'index'])->name('accounting');
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
         Route::get('reports/export', [ReportController::class, 'export'])->name('reports.export');
         Route::get('reports/builder', [ReportBuilderController::class, 'index'])->name('reports.builder');
@@ -128,7 +126,6 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/invoices/{invoice}/approve', [SuperuserController::class, 'approveInvoice'])->name('superuser.invoices.approve');
         Route::post('superuser/invoices/{invoice}/reject', [SuperuserController::class, 'rejectInvoice'])->name('superuser.invoices.reject');
         Route::get('superuser/revenue', [SuperuserController::class, 'ownerRevenue'])->name('superuser.revenue');
-        Route::post('superuser/revenue/post-fee', [SuperuserController::class, 'postManagementFee'])->name('superuser.revenue.post-fee');
         Route::get('superuser/notifications', [SuperuserController::class, 'getNotifications'])->name('superuser.notifications.index');
         Route::post('superuser/notifications/read', [SuperuserController::class, 'markNotificationsRead'])->name('superuser.notifications.read');
         Route::delete('superuser/notifications', [SuperuserController::class, 'clearNotifications'])->name('superuser.notifications.clear');
@@ -138,9 +135,6 @@ Route::middleware('auth')->group(function () {
         Route::patch('profile', [ProfileController::class, 'updateProfile'])->name('profile.update');
         Route::patch('profile/password', [ProfileController::class, 'changePassword'])->name('profile.password.change');
         Route::post('profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update');
-        Route::post('accounting/accounts', [AccountingController::class, 'storeAccount'])->name('accounting.accounts.store');
-        Route::post('accounting/journal-entries', [AccountingController::class, 'storeJournalEntry'])->name('accounting.journal.store');
-        Route::patch('accounting/journal-entries/{journalEntry}', [AccountingController::class, 'updateJournalEntry'])->name('accounting.journal.update');
 
         Route::get('exchange-rate', function (Request $request, ExchangeRate $exchangeRate) {
             $base = strtoupper($request->query('base', 'USD'));

@@ -117,25 +117,13 @@ class ReportQueryBuilder
             }
         }
 
-        // Narrow edge case: accounts.code = journal_lines.account_code can collide
-        // across properties, so whenever both are joined without journal_entries
-        // already anchoring the property, pull journal_entries in too and pin the
-        // property match explicitly (mirrors ReportController::expenseRowsForRange()).
-        $needsJournalEntriesGuard = isset($required['accounts'], $required['journal_lines']) && !isset($required['journal_entries']);
-        if ($needsJournalEntriesGuard) {
-            $required['journal_entries'] = true;
-        }
-
         $orderedNodes = array_keys($required);
         usort($orderedNodes, fn ($a, $b) => ($tree[$a]['distance'] ?? PHP_INT_MAX) <=> ($tree[$b]['distance'] ?? PHP_INT_MAX));
 
         $query = DB::table($this->entities[$primary]['table'] . ' as ' . $primary);
 
         foreach ($orderedNodes as $node) {
-            if ($node === $primary || ($node === 'journal_entries' && $needsJournalEntriesGuard)) {
-                // The guard node is joined explicitly below, off journal_lines directly,
-                // regardless of what the BFS tree thinks its shortest path is — this
-                // keeps the guard join independent of any other selected entities.
+            if ($node === $primary) {
                 continue;
             }
 
@@ -159,12 +147,6 @@ class ReportQueryBuilder
                     $query->leftJoin($toTable, fn ($join) => $closure($join, $node, $parent));
                 }
             }
-        }
-
-        if ($needsJournalEntriesGuard) {
-            $toTable = $this->entities['journal_entries']['table'] . ' as journal_entries';
-            $query->leftJoin($toTable, 'journal_entries.id', '=', 'journal_lines.journal_entry_id');
-            $query->whereColumn('accounts.property_id', 'journal_entries.property_id');
         }
 
         foreach ($orderedNodes as $node) {

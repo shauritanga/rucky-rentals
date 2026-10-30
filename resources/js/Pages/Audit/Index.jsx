@@ -13,7 +13,6 @@ const MODULE_COLORS = {
   maintenance: { bg:'var(--red-dim)', color:'var(--red)' },
   document: { bg:'var(--accent-dim)', color:'var(--accent)' },
   team: { bg:'rgba(167,139,250,.12)', color:'#a78bfa' },
-  accounting: { bg:'var(--amber-dim)', color:'var(--amber)' },
   settings: { bg:'var(--bg-elevated)', color:'var(--text-muted)' },
 };
 
@@ -133,7 +132,6 @@ export default function AuditIndex({ auditLogs = [] }) {
           <option value="maintenance">Maintenance</option>
           <option value="document">Documents</option>
           <option value="team">Team</option>
-          <option value="accounting">Accounting</option>
         </select>
 
         <select className="form-input form-select" style={{width:130,height:36,fontSize:13}} value={resultFilter} onChange={(e) => { setResultFilter(e.target.value); setPage(0); }}>

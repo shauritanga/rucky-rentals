@@ -2,14 +2,8 @@
 
 namespace App\Providers;
 
-use App\Models\Invoice;
 use App\Models\Lease;
-use App\Models\MaintenanceRecord;
-use App\Models\Payment;
-use App\Observers\InvoiceObserver;
 use App\Observers\LeaseObserver;
-use App\Observers\MaintenanceRecordObserver;
-use App\Observers\PaymentObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -27,10 +21,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register model observers for automatic accounting event handling
-        Invoice::observe(InvoiceObserver::class);
         Lease::observe(LeaseObserver::class);
-        Payment::observe(PaymentObserver::class);
-        MaintenanceRecord::observe(MaintenanceRecordObserver::class);
     }
 }

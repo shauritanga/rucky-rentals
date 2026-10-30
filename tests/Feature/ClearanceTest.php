@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\JournalEntry;
 use App\Models\Lease;
 use App\Models\Property;
 use App\Models\Tenant;
@@ -97,22 +96,6 @@ class ClearanceTest extends TestCase
         $this->assertEquals(250.0, (float) $clearance->total_deductions);
         $this->assertEquals(250.0, (float) $clearance->refund_amount);
         $this->assertEquals(0.0, (float) $clearance->shortfall_amount);
-
-        $entry = JournalEntry::where('reference', 'DEP-REF-' . $lease->id)
-            ->where('status', 'posted')
-            ->with('lines')
-            ->firstOrFail();
-
-        $debit = (float) $entry->lines->sum('debit');
-        $credit = (float) $entry->lines->sum('credit');
-        $this->assertEquals(500.0, $debit);
-        $this->assertEquals(500.0, $credit);
-        $this->assertEquals(250.0, (float) $entry->lines->where('account_code', '1000')->sum('credit'));
-        $this->assertEquals(250.0, (float) $entry->lines->where('account_code', '4110')->sum('credit'));
-
-        // The original deposit-received entry must be voided, not left posted alongside the settlement.
-        $original = JournalEntry::where('reference', 'DEP-' . $lease->id)->first();
-        $this->assertSame('void', $original->status);
     }
 
     public function test_shortfall_when_damage_exceeds_deposit_floors_the_refund_at_zero(): void
@@ -136,10 +119,6 @@ class ClearanceTest extends TestCase
         $clearance->refresh();
         $this->assertEquals(0.0, (float) $clearance->refund_amount);
         $this->assertEquals(200.0, (float) $clearance->shortfall_amount);
-
-        $entry = JournalEntry::where('reference', 'DEP-REF-' . $lease->id)->where('status', 'posted')->with('lines')->firstOrFail();
-        $this->assertEquals(0.0, (float) $entry->lines->where('account_code', '1000')->sum('credit'));
-        $this->assertEquals(500.0, (float) $entry->lines->where('account_code', '4110')->sum('credit'));
     }
 
     public function test_plain_terminate_is_blocked_when_the_lease_has_a_deposit_on_file(): void

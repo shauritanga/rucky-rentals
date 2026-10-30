@@ -4,11 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
-use App\Services\AccountingService;
 use App\Models\FuelLog;
 use App\Models\Invoice;
 use App\Models\Payment;
-use App\Support\AccountingAutoPoster;
 use App\Support\FloorConfig;
 use App\Models\Lease;
 use App\Models\MaintenanceRecord;
@@ -34,6 +32,7 @@ use Inertia\Inertia;
 class SuperuserController extends Controller
 {
     use LogsAudit;
+    use \App\Support\ComputesPaymentRevenue;
     public function index()
     {
         $properties = Property::with('manager:id,name,email')
@@ -331,8 +330,6 @@ class SuperuserController extends Controller
 
         $property = Property::create($data);
 
-        app(AccountingAutoPoster::class)->seedChartOfAccounts((int) $property->id);
-
         if (!empty($data['manager_user_id'])) {
             User::where('id', $data['manager_user_id'])->update([
                 'role' => 'manager',
@@ -354,7 +351,7 @@ class SuperuserController extends Controller
 
     /**
      * Delete a property that has never been used. A property with units, leases, tenants,
-     * invoices, payments, ledger entries, repairs or clearances is refused so financial
+     * invoices, payments, repairs or clearances is refused so financial
      * records are never lost; set it Inactive instead.
      */
     public function destroyProperty(Request $request, Property $property)
@@ -367,7 +364,6 @@ class SuperuserController extends Controller
             'tenants'               => 'tenants',
             'invoices'              => 'invoices',
             'payments'              => 'payments',
-            'journal_entries'       => 'ledger entries',
             'maintenance_tickets'   => 'repair tickets',
             'scheduled_maintenance' => 'scheduled maintenance',
             'unit_clearances'       => 'clearances',
@@ -396,9 +392,7 @@ class SuperuserController extends Controller
         $name = $property->name;
         $code = $property->code;
         DB::transaction(function () use ($property) {
-            // The chart of accounts created with the property is removed with it.
-            DB::table('accounts')->where('property_id', $property->id)->delete();
-            $property->delete();
+                $property->delete();
         });
 
         $this->logAudit(
@@ -1158,54 +1152,57 @@ class SuperuserController extends Controller
         [$start, $end] = $this->resolveRevenuePeriod($request);
         $feeRate = (float) SystemSetting::get('management_fee_rate', 0) / 100;
 
-        // GL-backed helper: sum debit or credit for an account code within the period
-        $glSum = function (string $accountCode, string $side, ?int $pid = null, ?string $refPattern = null) use ($start, $end): float {
-            return (float) DB::table('journal_lines')
-                ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
-                ->where('journal_entries.status', 'posted')
-                ->where('journal_lines.account_code', $accountCode)
-                ->whereBetween('journal_entries.entry_date', [$start, $end])
-                ->when($pid !== null, fn($q) => $q->where('journal_entries.property_id', $pid))
-                ->when($refPattern !== null, fn($q) => $q->where('journal_entries.reference', 'like', $refPattern))
-                ->sum("journal_lines.{$side}");
+        // Paid rent in the period (security deposits are not income), split into net rent, service charge, VAT and WHT.
+        $payments = Payment::query()
+            ->with(['invoice.items', 'invoice.lease:id,vat_rate,wht_rate,service_charge_rate'])
+            ->where('status', 'paid')
+            ->whereBetween('paid_date', [$start, $end])
+            ->where(fn ($q) => $q->whereNull('invoice_id')->orWhereNotIn('invoice_id', Invoice::where('kind', 'deposit')->select('id')))
+            ->when($propertyId !== null, fn ($q) => $q->where('property_id', $propertyId))
+            ->get();
+
+        $summarise = function ($rows) {
+            $gross = $wht = $vat = $sc = $netRent = 0.0;
+            foreach ($rows as $payment) {
+                $summary = $this->paymentNetRevenueSummary($payment);
+                $base    = $this->paymentBaseAmount($payment);
+                $gross  += $base;
+                $wht    += $this->calculatePaymentWhtTotal($payment);
+                $vat    += max(0, $base - $summary['value']);
+                $sc     += $summary['service_charge'];
+                $netRent += $summary['rent'];
+            }
+
+            return [round($gross, 2), round($wht, 2), round($vat, 2), round($sc, 2), round($netRent, 2)];
         };
 
-        // Waterfall sourced from GL accounts
-        $gross       = $glSum('1000', 'debit',  $propertyId, 'PAY-%');
-        $wht         = $glSum('1120', 'debit',  $propertyId);
-        $vat         = $glSum('2200', 'credit', $propertyId);
-        $sc          = $glSum('4100', 'credit', $propertyId);
-        $netRent     = $glSum('4000', 'credit', $propertyId);
-        $maintenance = $glSum('5000', 'debit',  $propertyId);
-        $mgmtFee     = $glSum('5500', 'debit',  $propertyId);
+        // Repairs and fuel come straight from their own records.
+        $maintenanceFor = fn (?int $pid) => (float) MaintenanceRecord::query()
+            ->where('status', 'resolved')
+            ->whereBetween('reported_date', [$start, $end])
+            ->when($pid !== null, fn ($q) => $q->where('property_id', $pid))
+            ->sum(DB::raw('COALESCE(cost_in_base, cost, 0)'));
+        $fuelFor = fn (?int $pid) => (float) FuelLog::query()
+            ->whereBetween('log_date', [$start, $end])
+            ->when($pid !== null, fn ($q) => $q->where('property_id', $pid))
+            ->sum('total_cost');
 
-        // Fuel: account 5200 if posted; fall back to raw FuelLog for legacy/unposted logs
-        $fuel = $glSum('5200', 'debit', $propertyId);
-        if ($fuel <= 0) {
-            $fuel = (float) FuelLog::query()
-                ->when($propertyId, fn($q) => $q->where('property_id', $propertyId))
-                ->whereBetween('log_date', [$start, $end])
-                ->sum('total_cost');
-        }
+        [$gross, $wht, $vat, $sc, $netRent] = $summarise($payments);
+        $maintenance = $maintenanceFor($propertyId);
+        $fuel        = $fuelFor($propertyId);
+        $mgmtFee     = round($gross * $feeRate, 2);
 
         $net = $netRent - $maintenance - $fuel - $mgmtFee;
 
         // Per-property breakdown
         $properties = Property::with('manager:id,name')->orderBy('name')->get(['id', 'name'])
-            ->map(function ($prop) use ($start, $end, $feeRate, $glSum) {
+            ->map(function ($prop) use ($payments, $summarise, $maintenanceFor, $fuelFor, $feeRate) {
                 $pid   = $prop->id;
-                $g     = $glSum('1000', 'debit',  $pid, 'PAY-%');
-                $maint = $glSum('5000', 'debit',  $pid);
-                $fee   = $glSum('5500', 'debit',  $pid);
-                if ($fee <= 0) {
-                    $fee = round($g * $feeRate, 2);
-                }
-                $fl = $glSum('5200', 'debit', $pid);
-                if ($fl <= 0) {
-                    $fl = (float) FuelLog::where('property_id', $pid)
-                        ->whereBetween('log_date', [$start, $end])
-                        ->sum('total_cost');
-                }
+                [$g, , , , $rent] = $summarise($payments->where('property_id', $pid));
+                $maint = $maintenanceFor($pid);
+                $fee   = round($g * $feeRate, 2);
+                $fl    = $fuelFor($pid);
+
                 return [
                     'id'          => $pid,
                     'name'        => $prop->name,
@@ -1223,70 +1220,6 @@ class SuperuserController extends Controller
             'waterfall'  => compact('gross', 'wht', 'vat', 'sc', 'netRent', 'maintenance', 'fuel', 'mgmtFee', 'net'),
             'fee_rate'   => $feeRate * 100,
             'properties' => $properties,
-        ]);
-    }
-
-    /**
-     * Post management fee GL entry for a given period and property (or all properties).
-     *
-     * POST /superuser/revenue/post-fee
-     * Body: { period, property_id? }
-     *   period      — same preset values as ownerRevenue (this_month, last_month, …)
-     *   property_id — optional; if omitted, posts fee for all properties separately
-     */
-    public function postManagementFee(Request $request, AccountingService $accounting): \Illuminate\Http\JsonResponse
-    {
-        abort_if($request->user()->role !== 'superuser', 403);
-
-        $propertyId = $request->filled('property_id') ? (int) $request->input('property_id') : null;
-        [$start, $end] = $this->resolveRevenuePeriod($request);
-        $feeRate  = (float) SystemSetting::get('management_fee_rate', 0) / 100;
-        $payExpr  = 'COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))';
-
-        // Derive a clean period key from the date range (e.g. "2026-03")
-        $periodKey = Carbon::parse($start)->format('Y-m');
-
-        $posted = [];
-
-        $query = Property::query()->orderBy('name');
-        if ($propertyId) {
-            $query->where('id', $propertyId);
-        }
-
-        foreach ($query->get(['id', 'name']) as $property) {
-            $gross = (float) Payment::query()
-                ->where('property_id', $property->id)
-                ->where('status', 'paid')
-                ->whereBetween('paid_date', [$start, $end])
-                ->sum(DB::raw($payExpr));
-
-            $fee = round($gross * $feeRate, 2);
-            if ($fee <= 0) {
-                continue;
-            }
-
-            $entry = $accounting->postManagementFee(
-                propertyId: $property->id,
-                amount: $fee,
-                period: $periodKey,
-                entryDate: $end,
-            );
-
-            $posted[] = [
-                'property_id'   => $property->id,
-                'property_name' => $property->name,
-                'amount'        => $fee,
-                'journal_entry' => $entry->entry_number,
-            ];
-        }
-
-        if (empty($posted)) {
-            return response()->json(['message' => 'No management fee to post for this period.'], 200);
-        }
-
-        return response()->json([
-            'message' => count($posted) . ' management fee entr' . (count($posted) === 1 ? 'y' : 'ies') . ' posted.',
-            'entries' => $posted,
         ]);
     }
 

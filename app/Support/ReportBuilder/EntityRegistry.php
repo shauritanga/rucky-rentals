@@ -134,7 +134,7 @@ class EntityRegistry
                     'wht_amount' => [
                         'label' => 'WHT Amount (expected)',
                         'type' => 'currency',
-                        // Mirrors AccountingService::postPayment's WHT calc: rent at the
+                        // Mirrors the Reports page WHT calc: rent at the
                         // lease's wht_rate, service charge at its service_charge_rate —
                         // only meaningful for tax invoices, not proformas.
                         'sql' => "
@@ -194,46 +194,6 @@ class EntityRegistry
                     'resolved_date' => ['label' => 'Resolved Date', 'type' => 'date'],
                 ],
             ],
-            'accounts' => [
-                'label' => 'GL Accounts',
-                'group' => 'Accounting',
-                'table' => 'accounts',
-                'property_key' => 'property_id',
-                'columns' => [
-                    'code' => ['label' => 'Code', 'type' => 'enum'],
-                    'name' => ['label' => 'Account Name', 'type' => 'enum'],
-                    'type' => ['label' => 'Type', 'type' => 'enum', 'options' => ['asset', 'liability', 'equity', 'revenue', 'expense', 'contra']],
-                    'category' => ['label' => 'Category', 'type' => 'enum'],
-                    'balance' => ['label' => 'Balance', 'type' => 'currency'],
-                    'ytd_activity' => ['label' => 'YTD Activity', 'type' => 'currency'],
-                ],
-            ],
-            'journal_entries' => [
-                'label' => 'Journal Entries',
-                'group' => 'Accounting',
-                'table' => 'journal_entries',
-                'property_key' => 'property_id',
-                'columns' => [
-                    'entry_number' => ['label' => 'Entry Number', 'type' => 'enum'],
-                    'entry_date' => ['label' => 'Entry Date', 'type' => 'date'],
-                    'description' => ['label' => 'Description', 'type' => 'string'],
-                    'reference' => ['label' => 'Reference', 'type' => 'string'],
-                    'status' => ['label' => 'Status', 'type' => 'enum', 'options' => ['draft', 'posted', 'void']],
-                    'source_type' => ['label' => 'Source Type', 'type' => 'enum'],
-                ],
-            ],
-            'journal_lines' => [
-                'label' => 'Journal Lines',
-                'group' => 'Accounting',
-                'table' => 'journal_lines',
-                'property_key' => null,
-                'columns' => [
-                    'account_code' => ['label' => 'Account Code', 'type' => 'enum'],
-                    'account_name' => ['label' => 'Account Name', 'type' => 'enum'],
-                    'debit' => ['label' => 'Debit', 'type' => 'currency'],
-                    'credit' => ['label' => 'Credit', 'type' => 'currency'],
-                ],
-            ],
             'meter_readings' => [
                 'label' => 'Meter Readings',
                 'group' => 'Electricity',
@@ -280,9 +240,6 @@ class EntityRegistry
             ['tenants', 'id', 'payments', 'tenant_id'],
             ['properties', 'id', 'maintenance_records', 'property_id'],
             ['units', 'id', 'maintenance_records', 'unit_id'],
-            ['properties', 'id', 'accounts', 'property_id'],
-            ['properties', 'id', 'journal_entries', 'property_id'],
-            ['journal_entries', 'id', 'journal_lines', 'journal_entry_id'],
             ['properties', 'id', 'meter_readings', 'property_id'],
             ['units', 'id', 'meter_readings', 'unit_id'],
             ['properties', 'id', 'electricity_sales', 'property_id'],
@@ -296,18 +253,7 @@ class EntityRegistry
      */
     public static function customEdges(): array
     {
-        return [
-            [
-                'accounts',
-                'journal_lines',
-                function ($join, string $accountsTable, string $journalLinesTable) {
-                    $join->on($accountsTable . '.code', '=', $journalLinesTable . '.account_code');
-                },
-                // accounts <-> journal_lines is only meaningful once journal_entries is also
-                // joined in the path (for the property_id match) — QueryBuilder adds that
-                // extra condition when journal_entries is present in the resolved path.
-            ],
-        ];
+        return [];
     }
 
     public static function entity(string $key): ?array

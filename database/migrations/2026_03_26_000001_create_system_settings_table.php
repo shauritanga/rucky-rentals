@@ -46,7 +46,7 @@ return new class extends Migration
             // Role permissions JSON
             'role_permissions'     => json_encode([
                 'manager'   => ['Dashboard','Units','Tenants','Leases','Payments','Invoices','Reports'],
-                'accountant'=> ['Dashboard','Tenants','Leases','Payments','Accounting','Reports'],
+                'accountant'=> ['Dashboard','Tenants','Leases','Payments','Reports'],
                 'viewer'    => ['Dashboard','Units','Tenants','Reports'],
             ]),
         ];

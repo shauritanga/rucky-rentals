@@ -10,7 +10,6 @@ use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use App\Notifications\MaintenanceApprovalNotification;
-use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
@@ -211,12 +210,9 @@ class MaintenanceController extends Controller
         return back()->with('success', 'Ticket created.');
     }
 
-    public function update(Request $request, MaintenanceRecord $maintenanceTicket, AccountingAutoPoster $poster)
+    public function update(Request $request, MaintenanceRecord $maintenanceTicket)
     {
         $this->authorizeTicketProperty($request, $maintenanceTicket);
-
-        $previousStatus = $maintenanceTicket->status;
-        $previousCost   = (float) ($maintenanceTicket->cost ?? 0);
 
         if ($request->has('note')) {
             $notes        = json_decode($maintenanceTicket->notes ?? '[]', true);
@@ -262,37 +258,6 @@ class MaintenanceController extends Controller
         } else {
             $allowed = ['status', 'assignee', 'cost'];
             $maintenanceTicket->update($request->only($allowed));
-
-            // GL posting for status transitions (open→resolved, resolved→open) is handled
-            // exclusively by MaintenanceRecordObserver to avoid double-posting.
-            //
-            // The controller only handles the case the observer cannot: a cost amount change
-            // while the ticket is ALREADY resolved (status stays 'resolved', only cost changes).
-            $currentCost = (float) ($maintenanceTicket->cost ?? 0);
-            $propertyId  = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;
-            $reference   = 'MAINT-' . $maintenanceTicket->id;
-
-            if ($previousStatus === 'resolved' && $maintenanceTicket->status === 'resolved') {
-                if ($currentCost <= 0) {
-                    // Cost zeroed out on an already-resolved ticket — void the GL entry.
-                    $poster->voidByReference($propertyId, $reference);
-                } elseif (abs($previousCost - $currentCost) > 0.00001) {
-                    // Cost changed while already resolved — void old, re-post with new amount.
-                    $poster->voidByReference($propertyId, $reference);
-                    $poster->post(
-                        propertyId: $propertyId,
-                        entryDate: now()->toDateString(),
-                        description: 'Maintenance expense updated',
-                        reference: $reference,
-                        sourceType: 'maintenance',
-                        sourceId: $maintenanceTicket->id,
-                        lines: [
-                            ['account_code' => '5000', 'debit' => $currentCost, 'credit' => 0],
-                            ['account_code' => '2000', 'debit' => 0,            'credit' => $currentCost],
-                        ]
-                    );
-                }
-            }
         }
 
         $ticketPropertyId = $maintenanceTicket->property_id ?? $maintenanceTicket->unit?->property_id;

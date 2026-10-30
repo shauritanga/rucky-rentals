@@ -219,8 +219,8 @@ export default function Electricity({
                     {toast.msg}
                 </div>
             )}
-            <div className="acc-layout">
-                <aside className="acc-sidebar">
+            <div className="side-layout">
+                <aside className="side-layout-nav">
                     {[
                         ['overview', 'Overview'],
                         ['direct', 'Generator Billing'],
@@ -230,7 +230,7 @@ export default function Electricity({
                     ].map(([id, label]) => (
                         <div
                             key={id}
-                            className={`acc-nav-item ${tab === id ? 'active' : ''}`}
+                            className={`side-layout-item ${tab === id ? 'active' : ''}`}
                             onClick={() => setActiveTab(id)}
                         >
                             {label}
@@ -238,7 +238,7 @@ export default function Electricity({
                     ))}
                 </aside>
 
-                <main className="acc-content" style={{ overflowY: 'auto', padding: 26 }}>
+                <main className="side-layout-content" style={{ overflowY: 'auto', padding: 26 }}>
                     {tab === 'overview' && (
                         <OverviewTab
                             currentMonth={currentMonth}

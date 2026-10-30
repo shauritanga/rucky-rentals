@@ -570,7 +570,7 @@
                     <em>from one place.</em>
                 </div>
                 <div class="hero-desc">
-                    Leases, invoices, maintenance, electricity billing and accounting - all in one system built for Dar es Salaam commercial real estate.
+                    Leases, invoices, maintenance, electricity billing and reporting - all in one system built for Dar es Salaam commercial real estate.
                 </div>
                 <div class="hero-features">
                     <div class="hero-feature">

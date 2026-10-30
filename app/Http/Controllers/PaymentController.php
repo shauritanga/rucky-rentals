@@ -10,7 +10,6 @@ use App\Models\LeaseInstallment;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\UnitClearance;
-use App\Services\AccountingService;
 use App\Services\InvoiceNumberService;
 use App\Services\PaymentReceiptService;
 use App\Support\MockRentalData;
@@ -133,7 +132,7 @@ class PaymentController extends Controller
         ]);
     }
 
-    public function store(Request $request, AccountingService $accountingService, PaymentReceiptService $paymentReceiptService)
+    public function store(Request $request, PaymentReceiptService $paymentReceiptService)
     {
         $effectivePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
@@ -234,7 +233,7 @@ class PaymentController extends Controller
             isPartialPayment: $isPartialPayment
         );
 
-        DB::transaction(function () use ($data, $accountingService, $paymentReceiptService) {
+        DB::transaction(function () use ($data, $paymentReceiptService) {
             $payment = Payment::create($data);
             if ($data['issue_receipt'] ?? false) {
                 $invoice = !empty($payment->invoice_id) ? Invoice::with('items')->find($payment->invoice_id) : null;
@@ -242,7 +241,6 @@ class PaymentController extends Controller
                 $payment->update(['receipt_id' => $receipt->id]);
             }
 
-            // Service layer handles posting logic (observer will also watch for status changes)
             if ($data['status'] === 'paid') {
                 Unit::find($data['unit_id'])?->update(['status' => 'occupied']);
             }
@@ -337,11 +335,7 @@ class PaymentController extends Controller
             ->sum(DB::raw('COALESCE(amount_in_base, amount * COALESCE(exchange_rate, 1))'));
         $fullyPaid = $invoiceTotal > 0 && $paidTotal + 0.01 >= $invoiceTotal;
 
-        // A proforma stays a proforma until the full amount (WHT included) is paid.
-        // Step A: updateQuietly() changes type without firing the observer
-        //         (avoids a premature postInvoice() while status is still 'proforma').
-        // Step B: $invoice->save() fires InvoiceObserver::updated() which sees the
-        //         status transition from 'proforma' → paid and calls postInvoice().
+        // A proforma stays a proforma until the full amount (WHT included) is paid; it is then promoted to a tax invoice.
         // A security-deposit proforma never becomes a tax invoice: it is just marked paid (a receipt is issued).
         if ($invoice->kind === 'deposit') {
             $invoice->status = $fullyPaid ? 'paid' : ($paidTotal > 0 ? 'partially_paid' : 'proforma');

@@ -1213,9 +1213,9 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                   </div>
                 </div>
 
-                {/* Accounting Calculation */}
+                {/* Deposit calculation */}
                 <div className="drawer-section">
-                  <div className="drawer-section-title">Deposit Accounting</div>
+                  <div className="drawer-section-title">Deposit Calculation</div>
                   <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', fontSize: 12.5 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
                       <span style={{ color: 'var(--text-muted)' }}>Initial Lease Deposit</span>

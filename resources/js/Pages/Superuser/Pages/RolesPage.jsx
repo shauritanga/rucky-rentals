@@ -3,11 +3,11 @@ import { router } from '@inertiajs/react';
 
 const DEFAULT_PERMS = {
   manager:   ['Dashboard','Units','Tenants','Leases','Payments','Invoices','Reports'],
-  accountant:['Dashboard','Tenants','Leases','Payments','Accounting','Reports'],
+  accountant:['Dashboard','Tenants','Leases','Payments','Reports'],
   viewer:    ['Dashboard','Units','Tenants','Reports'],
 };
 
-const ALL_MODULES = ['Dashboard','Units','Tenants','Leases','Payments','Invoices','Accounting','Reports','Maintenance','Documents','Electricity'];
+const ALL_MODULES = ['Dashboard','Units','Tenants','Leases','Payments','Invoices','Reports','Maintenance','Documents','Electricity'];
 
 function parsePerms(settings) {
   try {

@@ -14,9 +14,6 @@ class CleanSlateSeeder extends Seeder
         // --- 1. Wipe all data tables using TRUNCATE ... CASCADE (PostgreSQL) ---
         // CASCADE automatically handles FK dependencies without needing to order tables.
         $tables = implode(', ', [
-            'journal_lines',
-            'accounting_events',
-            'journal_entries',
             'audit_logs',
             'notifications',
             'lease_installments',
@@ -34,7 +31,6 @@ class CleanSlateSeeder extends Seeder
             'units',
             'tenants',
             'users',
-            'accounts',
             'properties',
         ]);
 
@@ -51,9 +47,5 @@ class CleanSlateSeeder extends Seeder
             'status'              => 'active',
             'must_change_password' => false,
         ]);
-
-        // Accounts are auto-created per-property by AccountingAutoPoster when GL entries
-        // are posted. Seeding null-property accounts causes duplicate codes in the CoA
-        // and pollutes P&L/Balance Sheet reports. Let AutoPoster handle account creation.
     }
 }

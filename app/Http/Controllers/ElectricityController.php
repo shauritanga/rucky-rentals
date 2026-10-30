@@ -14,7 +14,6 @@ use App\Models\Property;
 use App\Models\SystemSetting;
 use App\Models\Unit;
 use App\Services\InvoiceNumberService;
-use App\Support\AccountingAutoPoster;
 use App\Support\FloorConfig;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -408,7 +407,7 @@ class ElectricityController extends Controller
         return back()->with('success', 'Outage logged.');
     }
 
-    public function storeFuelLog(Request $request, AccountingAutoPoster $poster)
+    public function storeFuelLog(Request $request)
     {
         $data = $request->validate([
             'log_date' => 'required|date',
@@ -429,26 +428,11 @@ class ElectricityController extends Controller
 
         $totalCost = $data['litres'] * $data['price_per_litre'];
 
-        $log = FuelLog::create(array_merge($data, [
+        FuelLog::create(array_merge($data, [
             'property_id' => $propertyId,
             'total_cost' => $totalCost,
             'recorded_by' => $user->name,
         ]));
-
-        if ($totalCost > 0) {
-            $poster->post(
-                propertyId: $propertyId,
-                entryDate: $data['log_date'],
-                description: 'Fuel/generator purchase' . ($data['supplier'] ? ' — ' . $data['supplier'] : ''),
-                reference: 'FUEL-' . $log->id,
-                lines: [
-                    ['account_code' => '5100', 'account_name' => 'Utilities Expense', 'debit' => $totalCost, 'credit' => 0],
-                    ['account_code' => '1000', 'account_name' => 'Cash at Bank', 'debit' => 0, 'credit' => $totalCost],
-                ],
-                sourceType: 'fuel_log',
-                sourceId: $log->id,
-            );
-        }
 
         return back()->with('success', 'Fuel log saved.');
     }

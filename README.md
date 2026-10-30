@@ -1,7 +1,7 @@
 # Rucky Rentals
 
 A commercial property management system built with **Laravel 13**, **React 19**, and **Inertia.js**.  
-Handles units, tenants, leases, invoices, payments, maintenance, electricity billing, and accounting — all in one place.
+Handles units, tenants, leases, invoices, payments, maintenance, and electricity billing — all in one place.
 
 ---
 
@@ -197,5 +197,4 @@ If `git pull` complains about untracked files in `public/build` (first pull afte
 - **Backend**: Laravel 13, PostgreSQL or MySQL/MariaDB
 - **Frontend**: React 19, Inertia.js v2, Vite
 - **Auth**: Session-based, role-scoped (`superuser`, `manager`, `staff`)
-- **Accounting**: Double-entry GL posted automatically on invoices and payments
 - **Currency**: TZS everywhere; USD exists only as a unit's rate basis (see Billing rules)

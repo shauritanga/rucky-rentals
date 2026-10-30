@@ -12,7 +12,6 @@ const RESOURCES = [
   { key:'maintenance', label:'Maintenance', icon:'🔧', actions:['create','read','update','delete'], desc:'Submit and manage maintenance requests' },
   { key:'documents', label:'Documents', icon:'📁', actions:['create','read','delete'], desc:'Upload, view and remove documents' },
   { key:'electricity', label:'Electricity', icon:'⚡', actions:['create','read','update'], desc:'Post readings and manage billing' },
-  { key:'accounting', label:'Accounting', icon:'💰', actions:['create','read'], desc:'Post journal entries, view accounts' },
   { key:'reports', label:'Reports', icon:'📈', actions:['read'], desc:'View financial and operational reports' },
   { key:'team', label:'Team Management', icon:'👤', actions:['create','read','update','delete'], desc:'Add, edit and remove staff members' },
   { key:'audit', label:'Audit Trail', icon:'📋', actions:['read'], desc:'View activity log (always read-only)' },

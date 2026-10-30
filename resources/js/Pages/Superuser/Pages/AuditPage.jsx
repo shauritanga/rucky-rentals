@@ -11,7 +11,6 @@ const MODULE_COLORS = {
   maintenance: { bg:'var(--red-dim)',       color:'var(--red)' },
   document:    { bg:'var(--accent-dim)',    color:'var(--accent)' },
   team:        { bg:'rgba(167,139,250,.12)', color:'#a78bfa' },
-  accounting:  { bg:'var(--amber-dim)',     color:'var(--amber)' },
   user:        { bg:'var(--accent-dim)',    color:'var(--accent)' },
   settings:    { bg:'var(--bg-elevated)',   color:'var(--text-muted)' },
 };
@@ -82,7 +81,6 @@ export default function AuditPage({ auditLogs = [] }) {
             <option value="maintenance">Maintenance</option>
             <option value="document">Documents</option>
             <option value="team">Team</option>
-            <option value="accounting">Accounting</option>
             <option value="user">User Management</option>
             <option value="settings">Settings</option>
           </select>

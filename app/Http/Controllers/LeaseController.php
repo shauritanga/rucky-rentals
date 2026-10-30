@@ -11,7 +11,6 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Notifications\LeaseApprovalRequestNotification;
 use App\Services\LeaseNumberService;
-use App\Support\AccountingAutoPoster;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -356,9 +355,6 @@ class LeaseController extends Controller
             $log[] = ['step' => 0, 'action' => 'terminated', 'by' => $user->name, 'date' => now()->toDateString(), 'text' => 'Lease terminated.'];
 
             DB::transaction(function () use ($lease, $log) {
-                $this->voidDepositEntry($lease);
-                app(\App\Services\AccountingService::class)->postDepositRefund($lease);
-
                 $lease->update(['status' => 'terminated', 'approval_log' => json_encode($log)]);
                 app(\App\Services\LeaseBillingCloser::class)->closeFutureBilling($lease);
 
@@ -550,9 +546,6 @@ class LeaseController extends Controller
         $resource     = sprintf('Lease #%d', $lease->id);
 
         DB::transaction(function () use ($lease) {
-            $this->voidDepositEntry($lease);
-            app(\App\Services\AccountingService::class)->postDepositRefund($lease);
-
             $unitId = $lease->unit_id;
             // Soft-delete first so hasOtherActiveLeases() below excludes this lease.
             $lease->delete();
@@ -578,14 +571,6 @@ class LeaseController extends Controller
         );
 
         return back()->with('success', 'Lease terminated.' . $this->rebalanceNote);
-    }
-
-    private function voidDepositEntry(Lease $lease): void
-    {
-        app(AccountingAutoPoster::class)->voidByReference(
-            $lease->property_id,
-            'DEP-' . $lease->id,
-        );
     }
 
     /**
@@ -628,13 +613,11 @@ class LeaseController extends Controller
         app(\App\Services\DepositInvoiceService::class)->issueFor($lease, auth()->id());
     }
 
-    /** A changed deposit on an active lease: reprice an unpaid deposit proforma, else re-book the legacy entry. */
+    /** A changed deposit on an active lease: reissue an unpaid deposit proforma (leases without one have nothing to update). */
     private function resyncDeposit(Lease $lease): void
     {
         $invoice = \App\Models\Invoice::with('items')->where('lease_id', $lease->id)->where('kind', 'deposit')->first();
         if (!$invoice) {
-            $this->voidDepositEntry($lease);
-            $this->postDepositEntry($lease);
             return;
         }
 
@@ -642,31 +625,6 @@ class LeaseController extends Controller
         $invoice->items()->delete();
         $invoice->delete();
         $this->issueDepositInvoice($lease);
-    }
-
-    private function postDepositEntry(Lease $lease): void
-    {
-        $deposit = (float) ($lease->deposit ?? 0);
-        if ($deposit <= 0) return;
-
-        // USD-unit leases book the deposit in TZS at the rate typed at approval.
-        $isUsd = strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD';
-        $depositTzs = $isUsd
-            ? round($deposit * (float) $lease->exchange_rate, 2)
-            : $deposit;
-
-        app(AccountingAutoPoster::class)->post(
-            propertyId: $lease->property_id,
-            entryDate: $lease->start_date,
-            description: 'Security deposit received',
-            reference: 'DEP-' . $lease->id,
-            lines: [
-                ['account_code' => '1000', 'account_name' => 'Cash at Bank',     'debit' => $depositTzs, 'credit' => 0],
-                ['account_code' => '2100', 'account_name' => 'Deposits Payable', 'debit' => 0,           'credit' => $depositTzs],
-            ],
-            sourceType: 'lease',
-            sourceId: $lease->id,
-        );
     }
 
     private function scopeByUserProperty($query, Request $request, string $column): void

@@ -86,7 +86,7 @@ class ExchangeRate extends Model
      * which is the same source the UI header rate badge uses. This guarantees
      * every dashboard figure uses the same rate the user sees on screen.
      *
-     * DO NOT use this for accounting/GL posting — use getRate($date) instead,
+     * Do not use this for dated records — use getRate($date) instead,
      * which reads historical DB rates for immutable, auditable transaction records.
      */
     public static function getLiveRate(string $fromCurrency, string $toCurrency): float

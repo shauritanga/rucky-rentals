@@ -55,8 +55,6 @@ export default function OwnerRevenuePage({ properties = [] }) {
   const [data, setData]           = useState(null);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
-  const [postingFee, setPostingFee] = useState(false);
-  const [feeResult, setFeeResult]   = useState('');
   const abortRef = useRef(null);
 
   const fetchRevenue = useCallback(() => {
@@ -81,25 +79,6 @@ export default function OwnerRevenuePage({ properties = [] }) {
   }, [period, propertyId, fromDate, toDate]);
 
   useEffect(() => { fetchRevenue(); }, [fetchRevenue]);
-
-  const handlePostFee = () => {
-    if (postingFee) return;
-    setPostingFee(true);
-    setFeeResult('');
-    const body = { period };
-    if (propertyId) body.property_id = propertyId;
-    if (period === 'custom' && fromDate) body.from = fromDate;
-    if (period === 'custom' && toDate)   body.to   = toDate;
-
-    fetch('/superuser/revenue/post-fee', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? '') },
-      body: JSON.stringify(body),
-    })
-      .then((r) => r.json())
-      .then((json) => { setFeeResult(json.message ?? 'Done.'); setPostingFee(false); fetchRevenue(); })
-      .catch(() => { setFeeResult('Failed to post fee.'); setPostingFee(false); });
-  };
 
   const w = data?.waterfall ?? {};
 
@@ -144,17 +123,8 @@ export default function OwnerRevenuePage({ properties = [] }) {
           <button className="btn btn-secondary" onClick={fetchRevenue} disabled={loading} style={{ minWidth: 90 }}>
             {loading ? 'Loading…' : 'Refresh'}
           </button>
-          <button className="btn btn-primary" onClick={handlePostFee} disabled={postingFee || loading} style={{ minWidth: 140 }}>
-            {postingFee ? 'Posting…' : 'Post Mgmt Fee'}
-          </button>
         </div>
       </div>
-
-      {feeResult && (
-        <div style={{ padding: '10px 16px', background: 'var(--green-dim)', color: 'var(--green)', borderRadius: 8, marginBottom: 12, fontSize: 13.5 }}>
-          {feeResult}
-        </div>
-      )}
 
       {error && (
         <div style={{ padding: '12px 16px', background: 'var(--red-dim)', color: 'var(--red)', borderRadius: 8, marginBottom: 16 }}>

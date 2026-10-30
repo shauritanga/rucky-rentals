@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Schema;
  *
  * decimal(10,2) overflows above ~99.9 million TZS.
  * decimal(15,2) supports up to ~999 billion TZS — sufficient for any property value.
- * journal_lines already uses (15,2); this brings all other tables into alignment.
  */
 return new class extends Migration
 {

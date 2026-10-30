@@ -10,8 +10,6 @@ use App\Models\UnitClearance;
 use App\Models\UnitClearanceItem;
 use App\Models\User;
 use App\Notifications\ClearanceReviewNotification;
-use App\Services\AccountingService;
-use App\Support\AccountingAutoPoster;
 use App\Traits\LogsAudit;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -283,7 +281,7 @@ class ClearanceController extends Controller
         return back()->with('success', 'Clearance submitted. The superuser has been notified to review it.');
     }
 
-    public function finalize(Request $request, UnitClearance $clearance, AccountingService $accountingService)
+    public function finalize(Request $request, UnitClearance $clearance)
     {
         $this->authorizeClearanceProperty($request, $clearance);
 
@@ -295,12 +293,9 @@ class ClearanceController extends Controller
 
         $lease = Lease::findOrFail($clearance->lease_id);
 
-        DB::transaction(function () use ($clearance, $lease, $user, $accountingService) {
+        DB::transaction(function () use ($clearance, $lease, $user) {
             $clearance->recalculateTotals();
             $clearance->refresh();
-
-            app(AccountingAutoPoster::class)->voidByReference($lease->property_id, 'DEP-' . $lease->id);
-            $accountingService->postClearanceSettlement($clearance);
 
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = [
