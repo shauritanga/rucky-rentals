@@ -893,6 +893,7 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 
 /* ══ Phones & small tablets (≤768px): slide-over menu, stacked layouts, scrollable tables ══ */
 .sidebar-backdrop{display:none}
+.toggle-btn .ico-menu,.sidebar-close{display:none}
 @media (max-width:768px){
 html,body{overflow-x:hidden}
 .app-layout{height:100vh;height:100dvh}
@@ -911,6 +912,9 @@ html,body{overflow-x:hidden}
 .topbar-title span{display:none}
 .topbar .search-box{display:none}
 .toggle-btn{width:38px;height:38px}
+.toggle-btn .ico-panel{display:none}
+.toggle-btn .ico-menu{display:block}
+.sidebar-close{display:flex;align-items:center;justify-content:center;margin-left:auto;width:36px;height:36px;border-radius:8px;border:none;background:var(--bg-elevated);color:var(--text-secondary);cursor:pointer}
 .icon-btn{width:38px;height:38px}
 .content{padding:14px 12px 28px}
 .page-header{align-items:flex-start;margin-bottom:14px}

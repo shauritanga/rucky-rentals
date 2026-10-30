@@ -490,6 +490,9 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
         <div className="sidebar-header">
           <div className="logo-mark">M</div>
           <span className="logo-text">Mwamba Properties</span>
+          <button type="button" className="sidebar-close" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </button>
         </div>
 
         <nav className="nav" ref={navRef} style={{ position: 'relative' }}>
@@ -620,9 +623,12 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
             aria-label="Toggle menu"
             aria-expanded={mobileOpen || !collapsed}
           >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <svg className="ico-panel" width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="1.5" y="1.5" width="15" height="15" rx="3" stroke="currentColor" strokeWidth="1.5"/>
               <line x1="6" y1="1.5" x2="6" y2="16.5" stroke="currentColor" strokeWidth="1.5"/>
+            </svg>
+            <svg className="ico-menu" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
             </svg>
           </button>
           <div className="topbar-title">{title} {subtitle && <span>- {subtitle}</span>}</div>
