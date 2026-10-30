@@ -455,8 +455,13 @@ class ElectricityController extends Controller
 
             // Generator proformas: already ready to send — just email and confirm
             if ($invoice->type === 'proforma' || $invoice->status === 'proforma') {
-                $this->sendProformaEmail($invoice);
-                return back()->with('success', 'Proforma invoice ' . $invoice->invoice_number . ' sent to tenant.');
+                if (empty($invoice->tenant_email)) {
+                    return back()->with('warning', 'Proforma ' . $invoice->invoice_number . ' was not sent: the tenant has no email address.');
+                }
+                if (! $this->sendProformaEmail($invoice)) {
+                    return back()->with('error', 'Proforma ' . $invoice->invoice_number . ' could not be emailed. Please try again.');
+                }
+                return back()->with('success', 'Proforma ' . $invoice->invoice_number . ' emailed to ' . $invoice->tenant_email . '.');
             }
 
             if ($invoice->status !== 'draft') {
@@ -469,23 +474,7 @@ class ElectricityController extends Controller
 
         // Batch issue by kind
         $kind = $data['kind'] ?? 'all';
-        $directEmailCount  = 0;
         $submeterIssueIds  = collect();
-
-        // Generator (direct): proformas are already issued — send email to tenants
-        if (in_array($kind, ['direct', 'all'], true)) {
-            $directQ = MeterReading::with(['invoice.items'])
-                ->whereNotNull('invoice_id')
-                ->whereHas('unit', fn ($query) => $query->where('electricity_type', 'direct'));
-            $this->scopeForUser($directQ, $request);
-
-            $directQ->get()
-                ->filter(fn (MeterReading $r) => $r->invoice?->status === 'proforma')
-                ->each(function (MeterReading $r) use (&$directEmailCount) {
-                    $this->sendProformaEmail($r->invoice);
-                    $directEmailCount++;
-                });
-        }
 
         // Submeter: draft → unpaid (tax invoice, triggers GL via observer)
         if (in_array($kind, ['submeter', 'all'], true) && $this->hasElectricitySalesTable()) {
@@ -508,16 +497,13 @@ class ElectricityController extends Controller
             }
         }
 
-        $total = $directEmailCount + $submeterIssueIds->count();
+        $total = $submeterIssueIds->count();
 
         if ($total === 0) {
             return back()->with('success', 'No electricity invoices were available to process.');
         }
 
         $parts = [];
-        if ($directEmailCount > 0) {
-            $parts[] = "{$directEmailCount} generator proforma(s) emailed to tenants";
-        }
         if ($submeterIssueIds->isNotEmpty()) {
             $parts[] = $submeterIssueIds->count() . ' submeter invoice(s) issued';
         }
@@ -594,8 +580,10 @@ class ElectricityController extends Controller
             'generator_base_amount' => round($amounts['base_amount'], 2),
             'generator_vat_amount' => round($amounts['vat_amount'], 2),
             'generator_total_amount' => round($amounts['total_amount'], 2),
+            'invoice_id' => $reading->invoice_id,
             'invoice_status' => $reading->invoice?->status,
             'invoice_number' => $reading->invoice?->invoice_number,
+            'invoice_email' => $reading->invoice?->tenant_email,
         ];
     }
 
@@ -802,18 +790,22 @@ class ElectricityController extends Controller
         return $invoice;
     }
 
-    private function sendProformaEmail(Invoice $invoice): void
+    private function sendProformaEmail(Invoice $invoice): bool
     {
         if (empty($invoice->tenant_email)) {
-            return;
+            return false;
         }
         try {
             if ($invoice->items->isEmpty()) {
                 $invoice->load('items');
             }
             Mail::to($invoice->tenant_email)->send(new ProformaInvoiceMail($invoice, $invoice->items));
+
+            return true;
         } catch (\Exception $e) {
             \Log::warning('Generator proforma email failed for invoice #' . $invoice->id . ': ' . $e->getMessage());
+
+            return false;
         }
     }
 }

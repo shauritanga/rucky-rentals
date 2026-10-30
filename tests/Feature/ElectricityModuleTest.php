@@ -12,6 +12,7 @@ use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -46,6 +47,42 @@ class ElectricityModuleTest extends TestCase
         $this->assertEquals(112000.00, $reading->invoice->items->firstWhere('description', 'Electricity — Generator Charge')->total);
         $this->assertEquals(20160.00, $reading->invoice->items->firstWhere('description', 'Electricity — Generator VAT')->total);
         $this->assertEquals(132160.00, $reading->invoice->items->sum('total'));
+    }
+
+    public function test_a_generator_proforma_is_emailed_one_invoice_at_a_time(): void
+    {
+        Mail::fake();
+        ['user' => $user, 'unit' => $unit] = $this->createLeaseContext('direct');
+
+        $this->actingAs($user)->post('/electricity/readings', [
+            'unit_id' => $unit->id, 'reading_date' => '2026-04-01', 'prev_reading' => 100, 'curr_reading' => 180,
+        ]);
+        $invoice = MeterReading::with('invoice')->firstOrFail()->invoice;
+        $invoice->update(['tenant_email' => 'tenant@example.com']);
+
+        $this->actingAs($user)
+            ->post('/electricity/invoices/issue', ['invoice_id' => $invoice->id])
+            ->assertSessionHas('success');
+
+        Mail::assertSent(\App\Mail\ProformaInvoiceMail::class, 1);
+    }
+
+    public function test_a_proforma_without_a_tenant_email_is_not_sent_and_says_so(): void
+    {
+        Mail::fake();
+        ['user' => $user, 'unit' => $unit] = $this->createLeaseContext('direct');
+
+        $this->actingAs($user)->post('/electricity/readings', [
+            'unit_id' => $unit->id, 'reading_date' => '2026-04-01', 'prev_reading' => 100, 'curr_reading' => 180,
+        ]);
+        $invoice = MeterReading::with('invoice')->firstOrFail()->invoice;
+        $invoice->update(['tenant_email' => null]);
+
+        $this->actingAs($user)
+            ->post('/electricity/invoices/issue', ['invoice_id' => $invoice->id])
+            ->assertSessionHas('warning');
+
+        Mail::assertNothingSent();
     }
 
     public function test_saving_same_direct_date_updates_existing_proforma_invoice(): void

@@ -317,11 +317,6 @@ export default function Electricity({
                                         Direct units are prompted quarterly and billed only for generator use at {fmtTZS(generatorRate)} per kWh plus {generatorVat}% VAT.
                                     </div>
                                 </div>
-                                <div className="actions">
-                                    <button className="btn-primary" onClick={() => post('/electricity/invoices/issue', { kind: 'direct' })}>
-                                        Issue Generator Proforma
-                                    </button>
-                                </div>
                             </div>
 
                             <div className="grid-2-equal" style={{ marginBottom: 16 }}>
@@ -423,6 +418,7 @@ export default function Electricity({
                                         <col style={{ width: 148 }} />
                                         <col style={{ width: 140 }} />
                                         <col style={{ width: 164 }} />
+                                        <col style={{ width: 150 }} />
                                     </colgroup>
                                     <thead>
                                         <tr>
@@ -436,6 +432,7 @@ export default function Electricity({
                                             <th className="num">Total</th>
                                             <th>Status</th>
                                             <th>Invoice</th>
+                                            <th></th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -451,9 +448,21 @@ export default function Electricity({
                                                 <td className="num" style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtTZS(reading.generator_total_amount)}</td>
                                                 <td><InvoiceBadge status={reading.invoice_status} /></td>
                                                 <td>{reading.invoice_number ?? 'Pending'}</td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    {reading.invoice_id && reading.invoice_status === 'proforma' && (
+                                                        <button
+                                                            className="btn-ghost"
+                                                            title={reading.invoice_email ? `Email to ${reading.invoice_email}` : 'The tenant has no email address'}
+                                                            disabled={!reading.invoice_email}
+                                                            onClick={() => post('/electricity/invoices/issue', { invoice_id: reading.invoice_id })}
+                                                        >
+                                                            Email to tenant
+                                                        </button>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}
-                                        {directReadings.length === 0 && <tr><td colSpan={10} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>No direct readings recorded for {directReadingPrompt.label ?? fmtMonth(currentMonth)}</td></tr>}
+                                        {directReadings.length === 0 && <tr><td colSpan={11} style={{ textAlign: 'center', padding: 28, color: 'var(--text-muted)' }}>No direct readings recorded for {directReadingPrompt.label ?? fmtMonth(currentMonth)}</td></tr>}
                                     </tbody>
                                 </table>
                             </div>
