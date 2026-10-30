@@ -489,9 +489,11 @@ export default function TenantsIndex({ tenants }) {
               {/* Company fields */}
               {data.tenant_type === 'company' && (
                 <>
-                  <div className="form-group">
-                    <label className="form-label">Company Name *</label>
-                    <input className="form-input" value={data.company_name} onChange={e=>setData('company_name',e.target.value)} required />
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label">Company Name *</label>
+                      <input className="form-input" value={data.company_name} onChange={e=>setData('company_name',e.target.value)} required />
+                    </div>
                   </div>
                   <div className="form-row">
                     <div className="form-group"><label className="form-label">Contact Person *</label><input className="form-input" value={data.contact_person} onChange={e=>setData('contact_person',e.target.value)} required /></div>
