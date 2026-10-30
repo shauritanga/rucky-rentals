@@ -43,6 +43,7 @@ class ReportBuilderController extends Controller
                     'config' => $t->config,
                 ]),
             'properties' => $properties,
+            'presets' => $this->presets(),
         ]);
     }
 
@@ -247,6 +248,73 @@ class ReportBuilderController extends Controller
      * a JSON string (hidden-form export submit, where nested objects can't be
      * expressed as plain form fields).
      */
+    /** Ready-made reports for the owner: money owed, and withholding tax paid and outstanding. */
+    private function presets(): array
+    {
+        $col = fn (string $entity, string $field) => ['entity' => $entity, 'field' => $field];
+
+        return [
+            [
+                'key' => 'unpaid-rent',
+                'name' => 'Unpaid rent and service charge',
+                'description' => 'Every approved invoice that still has a balance, oldest due date first.',
+                'config' => [
+                    'primary_entity' => 'invoices',
+                    'entities' => ['invoices'],
+                    'columns' => [
+                        $col('invoices', 'invoice_number'), $col('invoices', 'tenant_name'), $col('invoices', 'unit_ref'),
+                        $col('invoices', 'period'), $col('invoices', 'due_date'), $col('invoices', 'rent_amount'),
+                        $col('invoices', 'service_charge_amount'), $col('invoices', 'vat_amount'), $col('invoices', 'total_due'),
+                        $col('invoices', 'amount_paid'), $col('invoices', 'balance_due'),
+                    ],
+                    'filters' => [
+                        'invoices.balance_due' => ['min' => '0.01'],
+                        'invoices.approval_status' => ['in' => ['approved']],
+                    ],
+                    'sort' => ['entity' => 'invoices', 'field' => 'due_date', 'dir' => 'asc'],
+                ],
+            ],
+            [
+                'key' => 'wht-outstanding',
+                'name' => 'Withholding tax not yet confirmed',
+                'description' => 'Invoices with payments received where the WHT has not been fully confirmed.',
+                'config' => [
+                    'primary_entity' => 'invoices',
+                    'entities' => ['invoices'],
+                    'columns' => [
+                        $col('invoices', 'invoice_number'), $col('invoices', 'tenant_name'), $col('invoices', 'unit_ref'),
+                        $col('invoices', 'period'), $col('invoices', 'amount_paid'), $col('invoices', 'wht_due'),
+                        $col('invoices', 'wht_paid'), $col('invoices', 'wht_outstanding'),
+                    ],
+                    'filters' => [
+                        'invoices.amount_paid' => ['min' => '0.01'],
+                        'invoices.wht_outstanding' => ['min' => '0.01'],
+                    ],
+                    'sort' => ['entity' => 'invoices', 'field' => 'issued_date', 'dir' => 'asc'],
+                ],
+            ],
+            [
+                'key' => 'wht-paid',
+                'name' => 'Withholding tax paid',
+                'description' => 'Payments where the tenant has confirmed the WHT, with its reference.',
+                'config' => [
+                    'primary_entity' => 'payments',
+                    'entities' => ['payments', 'invoices', 'tenants'],
+                    'columns' => [
+                        $col('tenants', 'name'), $col('invoices', 'invoice_number'), $col('invoices', 'unit_ref'),
+                        $col('payments', 'paid_date'), $col('payments', 'amount'), $col('payments', 'wht_amount'),
+                        $col('payments', 'wht_reference'),
+                    ],
+                    'filters' => [
+                        'payments.wht_confirmed' => ['in' => [true]],
+                        'payments.status' => ['in' => ['paid']],
+                    ],
+                    'sort' => ['entity' => 'payments', 'field' => 'paid_date', 'dir' => 'desc'],
+                ],
+            ],
+        ];
+    }
+
     private function validatedConfig(Request $request): array
     {
         $raw = $request->input('config');

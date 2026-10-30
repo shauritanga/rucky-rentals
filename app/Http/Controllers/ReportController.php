@@ -281,40 +281,8 @@ class ReportController extends Controller
         })->all();
 
         // --- Unpaid invoices by age (internal key: ar_aging) ---
-        $today          = Carbon::today();
-        $unpaidInvoices = Invoice::query()
-            ->with('items')
-            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-            ->where('type', 'invoice')
-            ->whereIn('status', ['unpaid', 'overdue', 'partially_paid'])
-            ->whereNotNull('due_date')
-            ->get();
-
-        $arAging = [
-            ['label' => 'Not yet due or up to 30 days late', 'count' => 0, 'amount' => 0.0, 'color' => 'green'],
-            ['label' => '31–60 days late',           'count' => 0, 'amount' => 0.0, 'color' => 'amber'],
-            ['label' => '61–90 days late',           'count' => 0, 'amount' => 0.0, 'color' => 'orange'],
-            ['label' => 'Over 90 days late',             'count' => 0, 'amount' => 0.0, 'color' => 'red'],
-        ];
-
-        foreach ($unpaidInvoices as $inv) {
-            $daysOverdue = (int) Carbon::parse($inv->due_date)->diffInDays($today, false);
-            $lineTotal   = (float) $inv->items->sum('total');
-            $amount      = !empty($inv->total_in_base)
-                ? (float) $inv->total_in_base
-                : (($inv->currency ?? 'TZS') !== 'TZS' && !empty($inv->exchange_rate)
-                    ? $lineTotal * (float) $inv->exchange_rate
-                    : $lineTotal);
-
-            $bucket = match (true) {
-                $daysOverdue <= 30 => 0,
-                $daysOverdue <= 60 => 1,
-                $daysOverdue <= 90 => 2,
-                default            => 3,
-            };
-            $arAging[$bucket]['count']++;
-            $arAging[$bucket]['amount'] += $amount;
-        }
+        $today   = Carbon::today();
+        $arAging = $this->unpaidInvoiceAging($propertyId);
 
         // --- Lease Expiry (next 90 days) ---
         $leaseExpiry = Lease::query()
@@ -453,34 +421,7 @@ class ReportController extends Controller
                     fputcsv($out, ['Unpaid Invoices by Age', 'As of: ' . Carbon::today()->toDateString()]);
                     fputcsv($out, ['Age Bucket', 'Invoice Count', 'Amount (TZS)']);
 
-                    $today          = Carbon::today();
-                    $unpaidInvoices = Invoice::query()
-                        ->with('items')
-                        ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-                        ->where('type', 'invoice')
-                        ->whereIn('status', ['unpaid', 'overdue', 'partially_paid'])
-                        ->whereNotNull('due_date')
-                        ->get();
-
-                    $buckets = [
-                        ['label' => 'Not yet due or up to 30 days late', 'count' => 0, 'amount' => 0.0],
-                        ['label' => '31-60 days late',           'count' => 0, 'amount' => 0.0],
-                        ['label' => '61-90 days late',           'count' => 0, 'amount' => 0.0],
-                        ['label' => 'Over 90 days late',             'count' => 0, 'amount' => 0.0],
-                    ];
-
-                    foreach ($unpaidInvoices as $inv) {
-                        $days   = (int) Carbon::parse($inv->due_date)->diffInDays($today, false);
-                        $lt     = (float) $inv->items->sum('total');
-                        $amount = !empty($inv->total_in_base) ? (float) $inv->total_in_base
-                            : (($inv->currency ?? 'TZS') !== 'TZS' && !empty($inv->exchange_rate)
-                                ? $lt * (float) $inv->exchange_rate : $lt);
-                        $b = match (true) { $days <= 30 => 0, $days <= 60 => 1, $days <= 90 => 2, default => 3 };
-                        $buckets[$b]['count']++;
-                        $buckets[$b]['amount'] += $amount;
-                    }
-
-                    foreach ($buckets as $row) {
+                    foreach ($this->unpaidInvoiceAging($propertyId) as $row) {
                         fputcsv($out, [$row['label'], $row['count'], number_format($row['amount'], 2)]);
                     }
 
@@ -748,5 +689,54 @@ class ReportController extends Controller
         }
 
         return round($deposit * (float) ($lease->exchange_rate ?: 0), 2);
+    }
+
+    /**
+     * What tenants still owe, grouped by how late it is. Counts every approved invoice with a
+     * balance: lease bills stay proformas until they are fully paid, so proformas must be included.
+     * Security deposits are refundable and are not counted.
+     *
+     * @return array<int, array{label: string, count: int, amount: float, color: string}>
+     */
+    private function unpaidInvoiceAging(?int $propertyId): array
+    {
+        $today = Carbon::today();
+        $invoices = Invoice::query()
+            ->with(['items', 'lease', 'payments'])
+            ->when($propertyId !== null, fn ($q) => $q->where('property_id', $propertyId))
+            ->where(fn ($q) => $q->where('kind', '!=', 'deposit')->orWhereNull('kind'))
+            ->whereIn('status', ['proforma', 'unpaid', 'overdue', 'partially_paid'])
+            ->where(fn ($q) => $q->where('type', 'invoice')->orWhere(fn ($q) => $q->where('type', 'proforma')->where('approval_status', 'approved')))
+            ->whereNotNull('due_date')
+            ->get();
+
+        $buckets = [
+            ['label' => 'Not yet due or up to 30 days late', 'count' => 0, 'amount' => 0.0, 'color' => 'green'],
+            ['label' => '31–60 days late', 'count' => 0, 'amount' => 0.0, 'color' => 'amber'],
+            ['label' => '61–90 days late', 'count' => 0, 'amount' => 0.0, 'color' => 'orange'],
+            ['label' => 'Over 90 days late', 'count' => 0, 'amount' => 0.0, 'color' => 'red'],
+        ];
+
+        foreach ($invoices as $invoice) {
+            $fx = $this->invoiceFx($invoice);
+            $due = ((float) $invoice->items->sum('total') + $this->leaseVatAmountForInvoice($invoice)) * $fx;
+            $paid = (float) $invoice->payments->where('status', 'paid')->sum(fn (Payment $p) => $this->paymentBaseAmount($p));
+            $balance = round($due - $paid, 2);
+            if ($balance <= 0) {
+                continue;
+            }
+
+            $daysLate = (int) Carbon::parse($invoice->due_date)->diffInDays($today, false);
+            $bucket = match (true) {
+                $daysLate <= 30 => 0,
+                $daysLate <= 60 => 1,
+                $daysLate <= 90 => 2,
+                default => 3,
+            };
+            $buckets[$bucket]['count']++;
+            $buckets[$bucket]['amount'] += $balance;
+        }
+
+        return $buckets;
     }
 }

@@ -187,12 +187,13 @@ class ReportQueryBuilder
                 continue;
             }
             $colDef = $this->entities[$entityKey]['columns'][$field] ?? null;
-            if (!$colDef || !empty($colDef['sql'])) {
-                // Computed (raw-expression) columns aren't filterable — they're
-                // scalar subqueries, not plain columns you can compare directly.
+            if (!$colDef) {
                 continue;
             }
-            $column = "{$entityKey}.{$field}";
+            // A computed column is a scalar subquery; compare against the expression itself.
+            $column = !empty($colDef['sql'])
+                ? DB::raw('(' . $colDef['sql'] . ')')
+                : "{$entityKey}.{$field}";
 
             switch ($colDef['type']) {
                 case 'string':
@@ -202,11 +203,18 @@ class ReportQueryBuilder
                     break;
                 case 'number':
                 case 'currency':
+                    // A computed column has no numeric affinity, so some databases (SQLite) would compare it
+                    // with a bound string; inline the cast-to-float number instead (safe: it is a float).
+                    $computed = !empty($colDef['sql']);
                     if (isset($filter['min']) && $filter['min'] !== '') {
-                        $query->where($column, '>=', $filter['min']);
+                        $computed
+                            ? $query->whereRaw('(' . $colDef['sql'] . ') >= ' . sprintf('%F', (float) $filter['min']))
+                            : $query->where($column, '>=', (float) $filter['min']);
                     }
                     if (isset($filter['max']) && $filter['max'] !== '') {
-                        $query->where($column, '<=', $filter['max']);
+                        $computed
+                            ? $query->whereRaw('(' . $colDef['sql'] . ') <= ' . sprintf('%F', (float) $filter['max']))
+                            : $query->where($column, '<=', (float) $filter['max']);
                     }
                     break;
                 case 'date':

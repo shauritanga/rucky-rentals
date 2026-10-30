@@ -11,6 +11,21 @@ class EntityRegistry
 {
     public static function entities(): array
     {
+        // Shared SQL for the invoice money columns (what is billed, paid, still owed, and the WHT on it).
+        $itemsOf = fn (string $types) => "COALESCE((SELECT SUM(ii.total) FROM invoice_items ii WHERE ii.invoice_id = invoices.id AND ii.item_type IN ({$types})), 0)";
+        $leaseRate = fn (string $col) => "COALESCE((SELECT l.{$col} FROM leases l WHERE l.id = invoices.lease_id), 0)";
+        $rentSql = $itemsOf("'rent'");
+        $scSql = $itemsOf("'service_charge'");
+        $allItemsSql = "COALESCE((SELECT SUM(ii.total) FROM invoice_items ii WHERE ii.invoice_id = invoices.id), 0)";
+        $vatSql = "(({$rentSql}) + ({$scSql})) * {$leaseRate('vat_rate')} / 100";
+        $totalDueSql = "ROUND({$allItemsSql} + {$vatSql}, 2)";
+        $paidSql = "COALESCE((SELECT SUM(COALESCE(p.amount_in_base, p.amount)) FROM payments p WHERE p.invoice_id = invoices.id AND p.status = 'paid'), 0)";
+        $balanceSql = "CASE WHEN ({$totalDueSql}) - ({$paidSql}) > 0 THEN ROUND(({$totalDueSql}) - ({$paidSql}), 2) ELSE 0 END";
+        $whtDueSql = "ROUND(({$rentSql}) * {$leaseRate('wht_rate')} / 100 + ({$scSql}) * {$leaseRate('service_charge_rate')} / 100, 2)";
+        $whtPaidSql = "COALESCE((SELECT SUM(COALESCE(p.breakdown_rent, 0) * lw.wht_rate / 100 + COALESCE(p.breakdown_service_charge, 0) * lw.service_charge_rate / 100) FROM payments p JOIN invoices pi ON pi.id = p.invoice_id JOIN leases lw ON lw.id = pi.lease_id WHERE p.invoice_id = invoices.id AND p.status = 'paid' AND p.wht_confirmed IS TRUE), 0)";
+        $whtOutstandingSql = "CASE WHEN ({$whtDueSql}) - ({$whtPaidSql}) > 0 THEN ROUND(({$whtDueSql}) - ({$whtPaidSql}), 2) ELSE 0 END";
+        $paymentWhtSql = "ROUND(COALESCE(payments.breakdown_rent, 0) * COALESCE((SELECT l.wht_rate FROM leases l JOIN invoices i ON i.lease_id = l.id WHERE i.id = payments.invoice_id), 0) / 100 + COALESCE(payments.breakdown_service_charge, 0) * COALESCE((SELECT l.service_charge_rate FROM leases l JOIN invoices i ON i.lease_id = l.id WHERE i.id = payments.invoice_id), 0) / 100, 2)";
+
         return [
             'properties' => [
                 'label' => 'Properties',
@@ -153,6 +168,14 @@ class EntityRegistry
                             2)
                         ",
                     ],
+                    'rent_amount' => ['label' => 'Rent Amount (excl. VAT)', 'type' => 'currency', 'sql' => $rentSql],
+                    'service_charge_amount' => ['label' => 'Service Charge Amount (excl. VAT)', 'type' => 'currency', 'sql' => $scSql],
+                    'total_due' => ['label' => 'Invoice Total (incl. VAT)', 'type' => 'currency', 'sql' => $totalDueSql],
+                    'amount_paid' => ['label' => 'Amount Paid', 'type' => 'currency', 'sql' => $paidSql],
+                    'balance_due' => ['label' => 'Balance Owing', 'type' => 'currency', 'sql' => $balanceSql],
+                    'wht_due' => ['label' => 'WHT Due (rent + service charge)', 'type' => 'currency', 'sql' => $whtDueSql],
+                    'wht_paid' => ['label' => 'WHT Paid (confirmed)', 'type' => 'currency', 'sql' => $whtPaidSql],
+                    'wht_outstanding' => ['label' => 'WHT Outstanding', 'type' => 'currency', 'sql' => $whtOutstandingSql],
                 ],
             ],
             'payments' => [
@@ -172,6 +195,9 @@ class EntityRegistry
                     'breakdown_rent' => ['label' => 'Rent Portion', 'type' => 'currency'],
                     'breakdown_service_charge' => ['label' => 'Service Charge Portion', 'type' => 'currency'],
                     'breakdown_electricity' => ['label' => 'Electricity Portion', 'type' => 'currency'],
+                    'wht_confirmed' => ['label' => 'WHT Confirmed', 'type' => 'boolean'],
+                    'wht_reference' => ['label' => 'WHT Reference', 'type' => 'string'],
+                    'wht_amount' => ['label' => 'WHT Amount (this payment)', 'type' => 'currency', 'sql' => $paymentWhtSql],
                     'created_at' => ['label' => 'Created At', 'type' => 'date'],
                 ],
             ],
