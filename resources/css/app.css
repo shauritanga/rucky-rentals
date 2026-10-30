@@ -923,15 +923,10 @@ html,body{overflow-x:hidden}
 @media (max-width:768px){.unit-number-input input{font-size:16px}}
 
 /* Page layout with a side tab list (Electricity) */
-.side-layout{display:grid;grid-template-columns:240px 1fr;gap:16px;align-items:start}
-.side-layout-nav{background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:var(--shadow-card);position:sticky;top:8px}
-.side-layout-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:500;color:var(--text-secondary);cursor:pointer;transition:background .12s,color .12s}
+.side-layout{display:flex;flex-direction:column;gap:16px}
+.side-layout-nav{display:flex;gap:4px;overflow-x:auto;background:var(--bg-surface);border:1px solid var(--border);border-radius:12px;padding:6px;box-shadow:var(--shadow-card)}
+.side-layout-item{display:flex;align-items:center;justify-content:center;gap:9px;flex:1;white-space:nowrap;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:500;color:var(--text-secondary);cursor:pointer;transition:background .12s,color .12s}
 .side-layout-item:hover{background:var(--bg-hover);color:var(--text-primary)}
 .side-layout-item.active{background:var(--accent-dim);color:var(--accent);font-weight:600}
 .side-layout-item svg{width:15px;height:15px;flex-shrink:0}
 .side-layout-content{min-width:0}
-@media (max-width: 1080px){
-	.side-layout{grid-template-columns:1fr}
-	.side-layout-nav{position:static;display:flex;gap:6px;overflow:auto;padding:10px}
-	.side-layout-item{white-space:nowrap;border:1px solid var(--border)}
-}
