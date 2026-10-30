@@ -54,6 +54,7 @@ export default function Electricity({
     const [toast, setToast] = useState({ msg: '', type: '' });
     const [tab, setTab] = useRemember(resolveActiveTab(url), 'electricity.active-tab');
     const [savingReading, setSavingReading] = useState(false);
+    const [showReadingAlert, setShowReadingAlert] = useState(false);
 
     useEffect(() => {
         const show = (msg, type, ms) => {
@@ -137,7 +138,21 @@ export default function Electricity({
     const floorSelectOptions = ['All floors', ...floorOptions.filter((label) => label !== 'All floors')];
     const selectedDirectUnit = directUnits.find((unit) => String(unit.id) === String(readingForm.unit_id));
     const quarterlyMissingUnits = directReadingPrompt.missing_units ?? [];
-    const quarterlyPromptComplete = (directReadingPrompt.total_units ?? 0) > 0 && quarterlyMissingUnits.length === 0;
+    const readingAlertKey = `electricity-reading-alert:${directReadingPrompt.label ?? 'current'}`;
+
+    // Shown once per browser session, the first time the page is opened.
+    useEffect(() => {
+        if (quarterlyMissingUnits.length === 0) return;
+        try {
+            if (window.sessionStorage.getItem(readingAlertKey)) return;
+        } catch (e) { /* storage unavailable: just show it */ }
+        setShowReadingAlert(true);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const closeReadingAlert = () => {
+        setShowReadingAlert(false);
+        try { window.sessionStorage.setItem(readingAlertKey, '1'); } catch (e) { /* ignore */ }
+    };
 
     const setActiveTab = (nextTab) => {
         setTab(nextTab);
@@ -208,6 +223,29 @@ export default function Electricity({
 
     return (
         <AppLayout title="Electricity">
+            <div className={`modal-overlay ${showReadingAlert ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeReadingAlert()}>
+                <div className="modal" style={{ width: 'min(480px, calc(100vw - 24px))' }}>
+                    <div className="modal-header">
+                        <div className="modal-title">{directReadingPrompt.label ?? 'Current quarter'} electricity readings</div>
+                        <button className="modal-close" onClick={closeReadingAlert}>✕</button>
+                    </div>
+                    <div className="modal-body">
+                        <p style={{ margin: 0, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                            {quarterlyMissingUnits.length} of {directReadingPrompt.total_units ?? directUnits.length} direct unit(s) still need a quarterly reading.
+                        </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                            {quarterlyMissingUnits.map((unit) => (
+                                <span key={unit.id} className="badge muted">
+                                    {unit.unit_number}{unit.tenant_name ? ` - ${unit.tenant_name}` : ''}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="modal-footer">
+                        <button className="btn-primary" onClick={closeReadingAlert}>Got it</button>
+                    </div>
+                </div>
+            </div>
             {toast.msg && (
                 <div style={{
                     position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
@@ -281,31 +319,6 @@ export default function Electricity({
                                     <button className="btn-primary" onClick={() => post('/electricity/invoices/issue', { kind: 'direct' })}>
                                         Issue Generator Proforma
                                     </button>
-                                </div>
-                            </div>
-
-                            <div
-                                className="info-box"
-                                style={{
-                                    marginBottom: 16,
-                                    borderColor: quarterlyMissingUnits.length ? 'var(--amber)' : 'rgba(34, 197, 94, 0.35)',
-                                    background: quarterlyMissingUnits.length ? 'var(--amber-dim)' : 'var(--green-dim)',
-                                }}
-                            >
-                                <div className="info-box-text">
-                                    <strong>{directReadingPrompt.label ?? 'Current quarter'} electricity reading prompt:</strong>{' '}
-                                    {quarterlyPromptComplete
-                                        ? 'all direct units have a reading for this quarter.'
-                                        : `${quarterlyMissingUnits.length} of ${directReadingPrompt.total_units ?? directUnits.length} direct unit(s) still need a quarterly reading.`}
-                                    {quarterlyMissingUnits.length > 0 && (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                                            {quarterlyMissingUnits.map((unit) => (
-                                                <span key={unit.id} className="badge muted">
-                                                    {unit.unit_number}{unit.tenant_name ? ` - ${unit.tenant_name}` : ''}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
 
