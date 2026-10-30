@@ -123,6 +123,33 @@ class MaintenanceStaffGlobalAccessTest extends TestCase
         $this->assertSame(0, MaintenanceRecord::count());
     }
 
+    public function test_manager_can_update_and_delete_a_ticket_in_their_own_property(): void
+    {
+        $property = $this->createProperty('Gamma Tower', 'GAM');
+        $manager = $this->createManager($property);
+        $ticket = MaintenanceRecord::create([
+            'property_id' => $property->id,
+            'ticket_number' => 'MT-0001',
+            'title' => 'Leaking tap',
+            'description' => 'Tap in the lobby',
+            'unit_ref' => 'F1.01',
+            'category' => 'Plumbing',
+            'priority' => 'medium',
+            'status' => 'open',
+            'workflow_status' => 'open',
+            'reported_by' => $manager->name,
+            'reported_date' => now()->toDateString(),
+        ]);
+
+        $this->actingAs($manager)
+            ->patch("/maintenance/{$ticket->id}", ['workflow_status' => 'in_progress'])
+            ->assertRedirect();
+        $this->assertSame('in_progress', $ticket->fresh()->workflow_status);
+
+        $this->actingAs($manager)->delete("/maintenance/{$ticket->id}")->assertRedirect();
+        $this->assertDatabaseMissing('maintenance_tickets', ['id' => $ticket->id]);
+    }
+
     private function createProperty(string $name, string $code): Property
     {
         return Property::create([

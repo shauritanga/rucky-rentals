@@ -52,7 +52,7 @@ Route::middleware('auth')->group(function () {
         Route::get('leases/{lease}/pdf', [LeaseController::class, 'downloadAgreement'])->name('leases.pdf');
         Route::post('leases/{lease}/deposit-invoice', [LeaseController::class, 'issueDeposit'])->name('leases.deposit-invoice');
         Route::resource('payments', PaymentController::class)->only(['index', 'store', 'update', 'destroy']);
-        Route::resource('maintenance', MaintenanceController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::resource('maintenance', MaintenanceController::class)->only(['index', 'store', 'update', 'destroy'])->parameters(['maintenance' => 'maintenanceTicket']);
         Route::resource('clearance', ClearanceController::class)->only(['index', 'store', 'update', 'destroy']);
         Route::post('clearance/{clearance}/items', [ClearanceController::class, 'storeItem'])->name('clearance.items.store');
         Route::patch('clearance/{clearance}/items/{item}', [ClearanceController::class, 'updateItem'])->name('clearance.items.update');
