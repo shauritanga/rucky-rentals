@@ -34,16 +34,8 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
   const [showManagerModal, setShowManagerModal] = useState(false);
   const [creatingManager, setCreatingManager] = useState(false);
   const [managerErrors, setManagerErrors] = useState({});
-  const [toast, setToast] = useState({ msg: '', type: '' });
 
   const { props } = usePage();
-  const flash = props.flash ?? {};
-
-  useEffect(() => {
-    if (flash.success) { setToast({ msg: flash.success, type: 'success' }); window.setTimeout(() => setToast({ msg: '', type: '' }), 3500); }
-    if (flash.warning) { setToast({ msg: flash.warning, type: 'warning' }); window.setTimeout(() => setToast({ msg: '', type: '' }), 5000); }
-    if (flash.error)   { setToast({ msg: flash.error,   type: 'error'   }); window.setTimeout(() => setToast({ msg: '', type: '' }), 4000); }
-  }, [flash.success, flash.warning, flash.error]);
 
   const [managerForm, setManagerForm] = useState({
     name: '',
@@ -374,13 +366,6 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           </form>
         </div>
       </div>
-
-      {toast.msg && (
-        <div className={`toast show`} style={{
-          background: toast.type === 'warning' ? 'var(--amber)' : toast.type === 'error' ? 'var(--red)' : undefined,
-          color: (toast.type === 'warning' || toast.type === 'error') ? '#fff' : undefined,
-        }}>{toast.msg}</div>
-      )}
     </SuperuserLayout>
   );
 }

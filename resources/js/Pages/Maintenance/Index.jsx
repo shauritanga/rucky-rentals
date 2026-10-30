@@ -135,7 +135,6 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
     assignee: '',
     notes: '',
   });
-  const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState('');
   const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
   const [workflowStatusByTicket, setWorkflowStatusByTicket] = useState(() => {
@@ -159,11 +158,6 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
 
   const { formatTzs, formatCompactTzs } = useExchangeRate();
 
-  useEffect(() => {
-    if (!submitMessage) return;
-    const t = setTimeout(() => setSubmitMessage(''), 4000);
-    return () => clearTimeout(t);
-  }, [submitMessage]);
 
   const normalizedTickets = useMemo(() => {
     return tickets.map((ticket) => {
@@ -377,7 +371,6 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
         setMaterials([]);
         setImages([]);
         setShowModal(false);
-        setSubmitMessage('Ticket submitted. Accountants have been notified for review.');
       },
       onError: () => setSubmitError('Failed to submit ticket. Please check all required fields.'),
     });
@@ -391,9 +384,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
       {
         onSuccess: () => {
           setSelected((s) => (s ? { ...s, workflow_status: nextWorkflowStatus } : null));
-          setSubmitMessage('Status updated successfully.');
         },
-        onError: () => setSubmitMessage(''),
       },
     );
   };
@@ -403,7 +394,6 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
     router.patch(`/maintenance/${selected.id}`, { note }, {
       onSuccess: () => {
         setNote('');
-        setSubmitMessage('Note added.');
       },
     });
   };
@@ -482,12 +472,6 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
         </div>
       </div>
 
-      {submitMessage && (
-        <div style={{ background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid var(--green)', borderRadius: 9, padding: '10px 14px', fontSize: 13, fontWeight: 500, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          {submitMessage}
-        </div>
-      )}
 
       <div className="team-tabs" style={{ marginBottom: 18 }}>
         <button className={`team-tab ${tab === 'requests' ? 'active' : ''}`} onClick={() => setTab('requests')}>Requests</button>
@@ -625,7 +609,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 const FREQ = { weekly:'Weekly', monthly:'Monthly', quarterly:'Quarterly', biannual:'Every 6 months', annual:'Annual' };
                 const unitRef = task.unit_ref || task.unit || '—';
                 const nextDue = formatDisplayDate(task.next_due);
-                return <tr key={task.id}><td><div style={{fontWeight:600}}>{task.title}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{normalizeCategory(task.category)}</div></td><td>{unitRef}</td><td style={{fontSize:13}}>{FREQ[task.frequency] || task.frequency}</td><td style={{color:isOverdue?'var(--red)':'var(--text-secondary)',fontWeight:isOverdue?600:400}}>{nextDue}</td><td style={{fontSize:13}}>{task.assignee || '—'}</td><td><span style={{fontSize:12,fontWeight:600,color:isOverdue?'var(--red)':isCompleted?'var(--green)':'var(--accent)'}}>● {isOverdue?'Overdue':isCompleted?'Completed':'Upcoming'}</span></td><td style={{display:'flex',gap:6}}>{!isCompleted && <button className="btn-ghost" style={{fontSize:12,padding:'4px 8px'}} onClick={() => router.patch(`/scheduled-maintenance/${task.id}`, { status: 'completed' }, { onSuccess: () => setSubmitMessage('Task marked complete.') })}>Done</button>}<button className="btn-ghost" style={{fontSize:12,padding:'4px 8px',color:'var(--red)'}} onClick={() => router.delete(`/scheduled-maintenance/${task.id}`, {}, { onSuccess: () => setSubmitMessage('Task removed.') })}>Remove</button></td></tr>;
+                return <tr key={task.id}><td><div style={{fontWeight:600}}>{task.title}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{normalizeCategory(task.category)}</div></td><td>{unitRef}</td><td style={{fontSize:13}}>{FREQ[task.frequency] || task.frequency}</td><td style={{color:isOverdue?'var(--red)':'var(--text-secondary)',fontWeight:isOverdue?600:400}}>{nextDue}</td><td style={{fontSize:13}}>{task.assignee || '—'}</td><td><span style={{fontSize:12,fontWeight:600,color:isOverdue?'var(--red)':isCompleted?'var(--green)':'var(--accent)'}}>● {isOverdue?'Overdue':isCompleted?'Completed':'Upcoming'}</span></td><td style={{display:'flex',gap:6}}>{!isCompleted && <button className="btn-ghost" style={{fontSize:12,padding:'4px 8px'}} onClick={() => router.patch(`/scheduled-maintenance/${task.id}`, { status: 'completed' })}>Done</button>}<button className="btn-ghost" style={{fontSize:12,padding:'4px 8px',color:'var(--red)'}} onClick={() => router.delete(`/scheduled-maintenance/${task.id}`)}>Remove</button></td></tr>;
               })}</tbody>
             </table>
           </div>
@@ -829,7 +813,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => updateWorkflowStatus(selected, normalizeWorkflowStatus(selected) === 'resolved' ? 'in_progress' : 'resolved')}>
                   {normalizeWorkflowStatus(selected) === 'resolved' ? '↺ Reopen' : '✓ Mark Resolved'}
                 </button>
-                <button className="btn-danger" onClick={() => { router.delete(`/maintenance/${selected.id}`, {}, { onSuccess: () => { setSelected(null); setSubmitMessage('Ticket deleted.'); } }); }}>
+                <button className="btn-danger" onClick={() => { router.delete(`/maintenance/${selected.id}`, {}, { onSuccess: () => { setSelected(null); } }); }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                 </button>
               </div>
@@ -998,7 +982,6 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                 onSuccess: () => {
                   setScheduleForm({ title: '', unit_ref: '', category: 'General', frequency: 'monthly', next_due: '', assignee: '', notes: '' });
                   setShowScheduleModal(false);
-                  setSubmitMessage('Task scheduled successfully.');
                   setScheduleSubmitting(false);
                 },
                 onError: () => setScheduleSubmitting(false),

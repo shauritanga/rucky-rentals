@@ -3,6 +3,7 @@ import { Link, usePage, router } from '@inertiajs/react';
 import useIdleLogout from '@/hooks/useIdleLogout';
 import echo from '@/echo';
 import DueInvoicesPopup from '@/Components/DueInvoicesPopup';
+import Toaster from '@/Components/Toaster';
 
 /* ─── Notification Bell ──────────────────────────────────────────── */
 function timeAgo(ts) {
@@ -644,6 +645,7 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
       </div>
 
       <DueInvoicesPopup user={user} />
+      <Toaster />
     </div>
   );
 }

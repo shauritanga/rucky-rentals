@@ -127,7 +127,6 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   const [month, setMonth] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
-  const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
   const [submitError, setSubmitError] = useState('');
 
   const [depositFilter, setDepositFilter] = useState('all');
@@ -510,7 +509,6 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
     if (!canSubmit) return;
 
     setSubmitError('');
-    setSubmitMessage({ type: '', text: '' });
 
     const selectedInv = eligibleInvoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
     const tenantFallback = selectedInv
@@ -544,7 +542,6 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
     post('/payments', {
       preserveScroll: true,
       onSuccess: () => {
-        setSubmitMessage({ type: 'success', text: 'Payment recorded successfully.' });
         reset();
         setSelectedInvoiceId('');
         setShowModal(false);
@@ -612,12 +609,6 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
         </button>
         <button className={`team-tab ${activeTab === 'pay-credits' ? 'active' : ''}`} onClick={() => setActiveTab('pay-credits')}>Tenant Credits</button>
       </div>
-
-      {submitMessage.type === 'success' && (
-        <div style={{ marginBottom: 14, background: 'var(--green-dim)', border: '1px solid var(--green)', color: 'var(--green)', borderRadius: 10, padding: '10px 12px', fontSize: 13, fontWeight: 600 }}>
-          {submitMessage.text}
-        </div>
-      )}
 
       {activeTab === 'pay-ledger' && (
         <>

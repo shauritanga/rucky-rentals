@@ -1,13 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 
 export default function SettingsIndex({ property }) {
-    const { props } = usePage();
-    const flash = props?.flash ?? {};
 
     const [processing, setProcessing] = useState(false);
-    const [successMsg, setSuccessMsg] = useState('');
     const [errors, setErrors] = useState({});
 
     const [info, setInfo] = useState({
@@ -24,24 +21,11 @@ export default function SettingsIndex({ property }) {
         swift_code:        property?.swift_code        ?? '',
     });
 
-    // Auto-dismiss success
-    useEffect(() => {
-        if (!successMsg) return;
-        const t = setTimeout(() => setSuccessMsg(''), 4000);
-        return () => clearTimeout(t);
-    }, [successMsg]);
-
-    // Show server flash on first load
-    useEffect(() => {
-        if (flash.success) setSuccessMsg(flash.success);
-    }, [flash.success]);
-
     const save = () => {
         setProcessing(true);
         setErrors({});
         router.patch('/settings', { ...info, ...bank }, {
             preserveScroll: true,
-            onSuccess: () => setSuccessMsg('Settings saved successfully.'),
             onError: (errs) => setErrors(errs),
             onFinish: () => setProcessing(false),
         });
@@ -65,12 +49,6 @@ export default function SettingsIndex({ property }) {
                     {processing ? <><span className="btn-spinner" />Saving…</> : 'Save Settings'}
                 </button>
             </div>
-
-            {successMsg && (
-                <div className="alert-success" style={{ marginBottom: 16 }}>
-                    {successMsg}
-                </div>
-            )}
 
             <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr', alignItems: 'start' }}>
 

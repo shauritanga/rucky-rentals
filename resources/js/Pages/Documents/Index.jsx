@@ -30,7 +30,6 @@ export default function DocumentsIndex({ documents, units, tenants = [] }) {
   const [showUpload, setShowUpload] = useState(false);
   const [page, setPage] = useState(1);
   const [dragOver, setDragOver] = useState(false);
-  const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
   const [submitError,   setSubmitError]   = useState('');
 
   const { data, setData, post, processing, reset } = useForm({ file: null, document_type:'lease_agreement', unit_ref:'', tenant_id:'', description:'' });
@@ -71,7 +70,6 @@ export default function DocumentsIndex({ documents, units, tenants = [] }) {
         setData('tenant_id', '');
         setData('unit_ref', '');
         setShowUpload(false);
-        setSubmitMessage({ type: 'success', text: 'Document uploaded successfully.' });
       },
       onError: (errors) => {
         const first = Object.values(errors || {}).flat().find(v => typeof v === 'string' && v.trim());
@@ -80,22 +78,11 @@ export default function DocumentsIndex({ documents, units, tenants = [] }) {
     });
   };
 
-  useEffect(() => {
-    if (!submitMessage.type) return;
-    const t = setTimeout(() => setSubmitMessage({ type: '', text: '' }), 4000);
-    return () => clearTimeout(t);
-  }, [submitMessage]);
 
   return (
     <AppLayout title="Documents" subtitle={`${documents.length} files`}>
       <Head title="Documents" />
 
-      {submitMessage.type === 'success' && (
-        <div style={{ marginBottom: 14, background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          {submitMessage.text}
-        </div>
-      )}
 
       <div className="tn-stats-row">
         <div className="tn-stat"><div className="tn-stat-value">{counts.all}</div><div className="tn-stat-label">Total Files</div></div>

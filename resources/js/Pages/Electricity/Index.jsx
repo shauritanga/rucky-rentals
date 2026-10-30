@@ -3,6 +3,7 @@ import { playChime } from '../../Components/DueInvoicesPopup';
 import { router, usePage, useRemember } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import MoneyInput from '@/Components/MoneyInput';
+import { notify } from '@/Components/Toaster';
 
 const fmtNum = (value) => Number(value ?? 0).toLocaleString();
 const fmtTZS = (value) => `TZS ${fmtNum(Math.round(Number(value ?? 0)))}`;
@@ -49,23 +50,12 @@ export default function Electricity({
     directReadingPrompt = {},
 }) {
     const { props, url } = usePage();
-    const flash = props.flash ?? {};
     const errors = props.errors ?? {};
     const floorOptions = props.floorOptions ?? [];
-    const [toast, setToast] = useState({ msg: '', type: '' });
     const [tab, setTab] = useRemember(resolveActiveTab(url), 'electricity.active-tab');
     const [savingReading, setSavingReading] = useState(false);
     const [showReadingAlert, setShowReadingAlert] = useState(false);
 
-    useEffect(() => {
-        const show = (msg, type, ms) => {
-            setToast({ msg, type });
-            window.setTimeout(() => setToast({ msg: '', type: '' }), ms);
-        };
-        if (flash.success) show(flash.success, 'success', 3500);
-        if (flash.warning) show(flash.warning, 'warning', 5000);
-        if (flash.error)   show(flash.error,   'error',   4000);
-    }, [flash.success, flash.warning, flash.error]);
     const [generatorDataTab, setGeneratorDataTab] = useState('fuel-logs');
     const today = new Date().toISOString().slice(0, 10);
     const generatorRate = Number(generatorSettings.generator_rate_per_kwh ?? 1400);
@@ -133,8 +123,10 @@ export default function Electricity({
     const totalGenKwh = directReadings.reduce((sum, reading) => sum + Number(reading.gen_kwh ?? 0), 0);
     const directReadingError = errors.direct_reading ?? null;
     const submeterSaleError = errors.submeter_sale ?? null;
-    const flashError = flash.error ?? null;
-    const flashSuccess = flash.success ?? null;
+    useEffect(() => {
+        if (directReadingError) notify('error', directReadingError);
+        if (submeterSaleError) notify('error', submeterSaleError);
+    }, [directReadingError, submeterSaleError]);
     const floorSelectOptions = ['All floors', ...floorOptions.filter((label) => label !== 'All floors')];
     const selectedDirectUnit = directUnits.find((unit) => String(unit.id) === String(readingForm.unit_id));
     const quarterlyMissingUnits = directReadingPrompt.missing_units ?? [];
@@ -216,8 +208,7 @@ export default function Electricity({
             onSuccess,
             onError: (errs) => {
                 const first = Object.values(errs)[0];
-                setToast({ msg: first || 'Something went wrong. Please try again.', type: 'error' });
-                window.setTimeout(() => setToast({ msg: '', type: '' }), 5000);
+                notify('error', first || 'Something went wrong. Please try again.');
             },
         });
     };
@@ -246,17 +237,6 @@ export default function Electricity({
                     <button type="button" className="due-invoices-popup-footer" onClick={closeReadingAlert} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer' }}>
                         {quarterlyMissingUnits.length} of {directReadingPrompt.total_units ?? directUnits.length} direct units need a reading
                     </button>
-                </div>
-            )}
-            {toast.msg && (
-                <div style={{
-                    position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-                    background: toast.type === 'success' ? 'var(--green)' : toast.type === 'warning' ? '#f59e0b' : '#e53935',
-                    color: '#fff', borderRadius: 10, padding: '12px 20px',
-                    fontSize: 13.5, fontWeight: 500, boxShadow: '0 4px 20px rgba(0,0,0,.25)',
-                    maxWidth: 360,
-                }}>
-                    {toast.msg}
                 </div>
             )}
             <div className="side-layout">
@@ -296,20 +276,6 @@ export default function Electricity({
 
                     {tab === 'direct' && (
                         <div>
-                            {flashSuccess && (
-                                <div className="info-box" style={{ marginBottom: 16, border: '1px solid rgba(34, 197, 94, 0.35)', background: 'var(--green-dim)' }}>
-                                    <div className="info-box-text" style={{ color: 'var(--green)' }}>
-                                        {flashSuccess}
-                                    </div>
-                                </div>
-                            )}
-                            {(directReadingError || flashError) && (
-                                <div className="info-box" style={{ marginBottom: 16, border: '1px solid rgba(239, 68, 68, 0.35)', background: 'var(--red-dim)' }}>
-                                    <div className="info-box-text" style={{ color: 'var(--red)' }}>
-                                        {directReadingError ?? flashError}
-                                    </div>
-                                </div>
-                            )}
                             <div className="page-header">
                                 <div>
                                     <div className="page-title">Direct Generator Billing</div>
@@ -471,13 +437,6 @@ export default function Electricity({
 
                     {tab === 'submeter' && (
                         <div>
-                            {(submeterSaleError || flashError) && (
-                                <div className="info-box" style={{ marginBottom: 16, border: '1px solid rgba(239, 68, 68, 0.35)', background: 'var(--red-dim)' }}>
-                                    <div className="info-box-text" style={{ color: 'var(--red)' }}>
-                                        {submeterSaleError ?? flashError}
-                                    </div>
-                                </div>
-                            )}
                             <div className="page-header">
                                 <div>
                                     <div className="page-title">Submeter Sales</div>

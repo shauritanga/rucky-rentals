@@ -80,7 +80,6 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
-  const [submitMessage, setSubmitMessage] = useState('');
 
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
@@ -106,11 +105,6 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
 
-  useEffect(() => {
-    if (!submitMessage) return;
-    const t = setTimeout(() => setSubmitMessage(''), 4000);
-    return () => clearTimeout(t);
-  }, [submitMessage]);
 
   // Open the wizard directly for a lease when arriving via "Start Clearance" from the Leases page.
   useEffect(() => {
@@ -228,7 +222,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
       note: checklist[cat].note || '',
     }));
     router.patch(`/clearance/${wizardClearance.id}`, { inspection_checklist: rows }, {
-      onSuccess: () => { setChecklistSaving(false); setSubmitMessage('Inspection saved.'); setWizardStep(3); },
+      onSuccess: () => { setChecklistSaving(false); setWizardStep(3); },
       onError: () => setChecklistSaving(false),
     });
   };
@@ -260,7 +254,6 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
         setItemDraft(EMPTY_ITEM_DRAFT);
         setItemImages([]);
         setAddingItem(false);
-        setSubmitMessage('Damage item added.');
       },
       onError: () => setAddingItem(false),
     });
@@ -269,7 +262,6 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const removeItem = (itemId) => {
     if (!wizardClearance) return;
     router.delete(`/clearance/${wizardClearance.id}/items/${itemId}`, {
-      onSuccess: () => setSubmitMessage('Item removed.'),
     });
   };
 
@@ -277,7 +269,6 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
     if (!wizardClearance) return;
     setSubmittingReview(true);
     router.post(`/clearance/${wizardClearance.id}/submit-review`, {}, {
-      onSuccess: () => setSubmitMessage('Clearance submitted. The superuser has been notified to review it.'),
       onFinish: () => setSubmittingReview(false),
     });
   };
@@ -286,7 +277,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
     if (!wizardClearance || !confirmChecked) return;
     setFinalizing(true);
     router.post(`/clearance/${wizardClearance.id}/finalize`, { confirm: true }, {
-      onSuccess: () => { setFinalizing(false); setSubmitMessage('Clearance finalized. Lease terminated and deposit settled.'); },
+      onSuccess: () => { setFinalizing(false); },
       onError: () => setFinalizing(false),
     });
   };
@@ -294,7 +285,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
   const cancelClearance = () => {
     if (!wizardClearance || !cancelReason.trim()) return;
     router.patch(`/clearance/${wizardClearance.id}`, { cancel: true, cancelled_reason: cancelReason }, {
-      onSuccess: () => { setShowCancelConfirm(false); setCancelReason(''); closeWizard(); setSubmitMessage('Clearance cancelled.'); },
+      onSuccess: () => { setShowCancelConfirm(false); setCancelReason(''); closeWizard(); },
     });
   };
 
@@ -332,12 +323,6 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
         </div>
       </div>
 
-      {submitMessage && (
-        <div style={{ background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid var(--green)', borderRadius: 9, padding: '10px 14px', fontSize: 13, fontWeight: 500, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          {submitMessage}
-        </div>
-      )}
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <div className="filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -493,7 +478,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                     <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => window.open(`/clearance/${selected.id}/pdf`, '_blank')}>Download Certificate</button>
                   )}
                   {selected.status === 'scheduled' && canManage && (
-                    <button className="btn-danger" onClick={() => { router.delete(`/clearance/${selected.id}`, { onSuccess: () => { setSelected(null); setSubmitMessage('Clearance deleted.'); } }); }}>
+                    <button className="btn-danger" onClick={() => { router.delete(`/clearance/${selected.id}`, { onSuccess: () => { setSelected(null); } }); }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                     </button>
                   )}

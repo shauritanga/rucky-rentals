@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
 import MoneyInput from '@/Components/MoneyInput';
+import { notify } from '@/Components/Toaster';
 
 function logoSrc(path) {
   return path ? `/storage/${path}` : '';
@@ -18,7 +19,6 @@ function Toggle({ value, onChange }) {
 
 export default function SettingsPage({ settings = {}, properties = [] }) {
   const [tab, setTab] = useState('general');
-  const [submitMessage, setSubmitMessage] = useState('');
   const [processing, setProcessing] = useState(false);
 
   // ── Electricity — submeter price per property ────────────────────────────
@@ -101,18 +101,10 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
     notif_system_errors:   settings.notif_system_errors   === '1',
   });
 
-  // Auto-dismiss success banner
-  useEffect(() => {
-    if (!submitMessage) return;
-    const t = setTimeout(() => setSubmitMessage(''), 4000);
-    return () => clearTimeout(t);
-  }, [submitMessage]);
-
   const save = (payload) => {
     setProcessing(true);
     router.patch('/superuser/settings', payload, {
       preserveScroll: true,
-      onSuccess: () => setSubmitMessage('Settings saved successfully.'),
       onFinish: () => setProcessing(false),
     });
   };
@@ -133,12 +125,12 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
       const json = await res.json().catch(() => ({}));
       if (res.ok) {
         setLogoUrl(json?.logo_url || '');
-        setSubmitMessage('Company logo saved.');
+        notify('success', 'Company logo saved.');
       } else {
-        setSubmitMessage(json?.message || (json?.errors?.logo?.[0]) || 'Logo upload failed — try again.');
+        notify('error', json?.message || (json?.errors?.logo?.[0]) || 'Logo upload failed — try again.');
       }
     } catch {
-      setSubmitMessage('Logo upload failed — try again.');
+      notify('error', 'Logo upload failed — try again.');
     } finally {
       setLogoUploading(false);
       event.target.value = '';
@@ -148,7 +140,7 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
   const onLogoRemove = () => {
     router.delete('/superuser/settings/logo', {
       preserveScroll: true,
-      onSuccess: () => { setLogoUrl(''); setSubmitMessage('Company logo removed.'); },
+      onSuccess: () => { setLogoUrl(''); },
     });
   };
 
@@ -175,12 +167,6 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
       <div className="page-header">
         <div><div className="page-title">System Settings</div><div className="page-sub">Global configuration for the Mwamba Properties platform</div></div>
       </div>
-
-      {submitMessage && (
-        <div className="alert-success" style={{ marginBottom: 16 }}>
-          {submitMessage}
-        </div>
-      )}
 
       <div className="settings-tabs">
         <button type="button" className={`stab ${tab === 'general'       ? 'active' : ''}`} onClick={() => setTab('general')}>General</button>

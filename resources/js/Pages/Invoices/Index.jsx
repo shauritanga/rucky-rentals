@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { notify } from '@/Components/Toaster';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
@@ -197,7 +198,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const { props } = usePage();
   const flashData = props.flash ?? {};
   const [baseItems, setBaseItems] = useState(null); // USD-basis lines for a USD lease; converted with the typed rate
-  const [toast, setToast] = useState({ msg: '', type: '' });
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('date-desc');
@@ -397,16 +397,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     }
   }, [flash?.created_invoice_id, invoices]);
 
-  useEffect(() => {
-    const show = (msg, type, ms) => {
-      setToast({ msg, type });
-      window.setTimeout(() => setToast({ msg: '', type: '' }), ms);
-    };
-    if (flashData.success) show(flashData.success, 'success', 3500);
-    if (flashData.warning) show(flashData.warning, 'warning', 5000);
-    if (flashData.error)   show(flashData.error,   'error',   4000);
-  }, [flashData.success, flashData.warning, flashData.error]);
-
   const openInvoiceModal = () => {
     setEditingInvoice(null);
     setInvType('proforma');
@@ -520,10 +510,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
   const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
-  const showError = (msg) => {
-    setToast({ msg, type: 'error' });
-    window.setTimeout(() => setToast({ msg: '', type: '' }), 5000);
-  };
+  const showError = (msg) => notify('error', msg);
 
   const submit = (e, action = 'send') => {
     e.preventDefault();
@@ -560,8 +547,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       },
       onError: (errs) => {
         const first = Object.values(errs)[0];
-        setToast({ msg: first || 'Failed to create invoice. Please check the form.', type: 'error' });
-        window.setTimeout(() => setToast({ msg: '', type: '' }), 5000);
+        notify('error', first || 'Failed to create invoice. Please check the form.');
       },
     };
 
@@ -579,18 +565,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   return (
     <AppLayout title="Invoices" subtitle="All invoices">
       <Head title="Invoices" />
-
-      {toast.msg && (
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-          background: toast.type === 'success' ? 'var(--green)' : toast.type === 'warning' ? '#f59e0b' : '#e53935',
-          color: '#fff', borderRadius: 10, padding: '12px 20px',
-          fontSize: 13.5, fontWeight: 500, boxShadow: '0 4px 20px rgba(0,0,0,.25)',
-          maxWidth: 360,
-        }}>
-          {toast.msg}
-        </div>
-      )}
 
       <div className="tn-stats-row">
         <div className="tn-stat"><div className="tn-stat-value">{counts.all}</div><div className="tn-stat-label">Total Invoices</div></div>

@@ -30,7 +30,6 @@ export default function TenantsIndex({ tenants }) {
   const [selected, setSelected] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
   const [submitError,   setSubmitError]   = useState('');
 
   const { data, setData, post, put, processing, reset, errors } = useForm({
@@ -88,7 +87,6 @@ export default function TenantsIndex({ tenants }) {
       reset();
       setShowModal(false);
       setEditingId(null);
-      setSubmitMessage({ type: 'success', text: editingId ? 'Tenant updated successfully.' : 'Tenant created successfully.' });
     };
     const onError = (errors) => {
       const first = Object.values(errors || {}).flat().find(v => typeof v === 'string' && v.trim());
@@ -119,11 +117,6 @@ export default function TenantsIndex({ tenants }) {
     setShowModal(true);
   };
 
-  useEffect(() => {
-    if (!submitMessage.type) return;
-    const t = setTimeout(() => setSubmitMessage({ type: '', text: '' }), 4000);
-    return () => clearTimeout(t);
-  }, [submitMessage]);
 
   const toMonYear = (date) => {
     if (!date) return '—';
@@ -162,12 +155,6 @@ export default function TenantsIndex({ tenants }) {
       <Head title="Tenants" />
 
       {/* Success banner */}
-      {submitMessage.type === 'success' && (
-        <div style={{ marginBottom: 14, background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-          {submitMessage.text}
-        </div>
-      )}
 
       {/* Stats bar */}
       <div className="tn-stats-row">
@@ -207,7 +194,7 @@ export default function TenantsIndex({ tenants }) {
             <button className={`vt-btn ${view==='card'?'active':''}`} onClick={()=>setView('card')} title="Cards"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg></button>
             <button className={`vt-btn ${view==='list'?'active':''}`} onClick={()=>setView('list')} title="List"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
           </div>
-          <button className="btn-primary" onClick={()=>{ reset(); setEditingId(null); setShowModal(true); setSubmitError(''); setSubmitMessage({ type:'', text:'' }); }}>
+          <button className="btn-primary" onClick={()=>{ reset(); setEditingId(null); setShowModal(true); setSubmitError(''); }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Tenant
           </button>

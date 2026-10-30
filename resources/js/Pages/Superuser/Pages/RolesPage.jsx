@@ -22,13 +22,7 @@ function parsePerms(settings) {
 export default function RolesPage({ settings = {} }) {
   const [permissions, setPermissions] = useState(() => parsePerms(settings));
   const [processing, setProcessing]   = useState(false);
-  const [submitMessage, setSubmitMessage] = useState('');
 
-  useEffect(() => {
-    if (!submitMessage) return;
-    const t = setTimeout(() => setSubmitMessage(''), 4000);
-    return () => clearTimeout(t);
-  }, [submitMessage]);
 
   const toggle = (role, module) => {
     setPermissions(prev => {
@@ -44,7 +38,6 @@ export default function RolesPage({ settings = {} }) {
     setProcessing(true);
     router.patch('/superuser/roles', { permissions }, {
       preserveScroll: true,
-      onSuccess: () => setSubmitMessage('Role permissions saved.'),
       onFinish:  () => setProcessing(false),
     });
   };
@@ -84,9 +77,6 @@ export default function RolesPage({ settings = {} }) {
         </div>
       </div>
 
-      {submitMessage && (
-        <div className="alert-success" style={{ marginBottom: 16 }}>{submitMessage}</div>
-      )}
 
       <div className="grid-3">
         {renderRole('manager',    'Property Manager', 'Full property operations', 'manager')}
