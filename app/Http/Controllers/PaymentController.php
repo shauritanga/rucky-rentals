@@ -17,6 +17,7 @@ use App\Traits\LogsAudit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -178,6 +179,12 @@ class PaymentController extends Controller
         $unit = Unit::findOrFail($data['unit_id']);
         $tenant = Tenant::findOrFail($data['tenant_id']);
         $invoice = !empty($data['invoice_id']) ? Invoice::with('items')->findOrFail($data['invoice_id']) : null;
+
+        if ($invoice && $invoice->type === 'proforma' && $invoice->approval_status !== 'approved') {
+            throw ValidationException::withMessages([
+                'invoice_id' => 'Invoice ' . $invoice->invoice_number . ' is awaiting superuser approval. A payment can be recorded once it is approved.',
+            ]);
+        }
 
         $propertyId = (int) ($unit->property_id ?: $tenant->property_id ?: 0);
 

@@ -455,12 +455,16 @@ class ElectricityController extends Controller
 
             // Generator proformas: already ready to send — just email and confirm
             if ($invoice->type === 'proforma' || $invoice->status === 'proforma') {
+                if ($invoice->approval_status !== 'approved') {
+                    return back()->with('warning', 'Proforma ' . $invoice->invoice_number . ' must be approved by a superuser before it can be emailed.');
+                }
                 if (empty($invoice->tenant_email)) {
                     return back()->with('warning', 'Proforma ' . $invoice->invoice_number . ' was not sent: the tenant has no email address.');
                 }
                 if (! $this->sendProformaEmail($invoice)) {
                     return back()->with('error', 'Proforma ' . $invoice->invoice_number . ' could not be emailed. Please try again.');
                 }
+                $invoice->update(['sent_to_tenant_at' => now(), 'sent_to_tenant_by' => $request->user()?->id]);
                 return back()->with('success', 'Proforma ' . $invoice->invoice_number . ' emailed to ' . $invoice->tenant_email . '.');
             }
 
@@ -584,6 +588,8 @@ class ElectricityController extends Controller
             'invoice_status' => $reading->invoice?->status,
             'invoice_number' => $reading->invoice?->invoice_number,
             'invoice_email' => $reading->invoice?->tenant_email,
+            'invoice_approval' => $reading->invoice?->approval_status,
+            'invoice_sent' => $reading->invoice?->sent_to_tenant_at !== null,
         ];
     }
 
@@ -696,6 +702,12 @@ class ElectricityController extends Controller
             'due_date'     => Carbon::parse($reading->reading_date)->addDays(14)->toDateString(),
             'period'       => Carbon::parse($reading->reading_date)->toDateString(),
             'status'       => 'proforma',
+            'approval_status' => 'pending_approval',
+            'approval_requested_at' => now(),
+            'approval_decided_at' => null,
+            'approval_decided_by' => null,
+            'approval_note' => null,
+            'requested_by_user_id' => auth()->id(),
             'currency'     => 'TZS',
             'exchange_rate' => 1,
             'total_in_base' => $amounts['total_amount'],
@@ -712,6 +724,12 @@ class ElectricityController extends Controller
                     'direct_reading' => 'This reading already has an issued invoice and cannot be edited.',
                 ]);
             }
+            if ($invoice->sent_to_tenant_at !== null) {
+                throw ValidationException::withMessages([
+                    'direct_reading' => 'This proforma has already been sent to the tenant, so the reading cannot be changed.',
+                ]);
+            }
+            // A changed bill needs approving again.
             $invoice->update($invoiceData);
             $invoice->items()->delete();
         }

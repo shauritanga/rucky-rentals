@@ -58,13 +58,42 @@ class ElectricityModuleTest extends TestCase
             'unit_id' => $unit->id, 'reading_date' => '2026-04-01', 'prev_reading' => 100, 'curr_reading' => 180,
         ]);
         $invoice = MeterReading::with('invoice')->firstOrFail()->invoice;
-        $invoice->update(['tenant_email' => 'tenant@example.com']);
+        $invoice->update(['tenant_email' => 'tenant@example.com', 'approval_status' => 'approved']);
 
         $this->actingAs($user)
             ->post('/electricity/invoices/issue', ['invoice_id' => $invoice->id])
             ->assertSessionHas('success');
 
         Mail::assertSent(\App\Mail\ProformaInvoiceMail::class, 1);
+        $this->assertNotNull($invoice->fresh()->sent_to_tenant_at);
+    }
+
+    public function test_a_new_generator_proforma_waits_for_superuser_approval_and_cannot_be_emailed_or_paid(): void
+    {
+        Mail::fake();
+        ['user' => $user, 'unit' => $unit, 'tenant' => $tenant] = $this->createLeaseContext('direct');
+
+        $this->actingAs($user)->post('/electricity/readings', [
+            'unit_id' => $unit->id, 'reading_date' => '2026-04-01', 'prev_reading' => 100, 'curr_reading' => 180,
+        ]);
+        $invoice = MeterReading::with('invoice')->firstOrFail()->invoice;
+        $invoice->update(['tenant_email' => 'tenant@example.com']);
+
+        $this->assertSame('pending_approval', $invoice->approval_status);
+
+        $this->actingAs($user)
+            ->post('/electricity/invoices/issue', ['invoice_id' => $invoice->id])
+            ->assertSessionHas('warning');
+        Mail::assertNothingSent();
+
+        $this->actingAs($user)
+            ->post('/payments', [
+                'invoice_id' => $invoice->id, 'tenant_id' => $tenant->id, 'unit_id' => $unit->id,
+                'month' => 'Apr 2026', 'amount' => 1000, 'status' => 'paid', 'paid_date' => '2026-04-02',
+            ])
+            ->assertSessionHasErrors('invoice_id');
+
+        $this->assertSame(0, \App\Models\Payment::count());
     }
 
     public function test_a_proforma_without_a_tenant_email_is_not_sent_and_says_so(): void
@@ -76,7 +105,7 @@ class ElectricityModuleTest extends TestCase
             'unit_id' => $unit->id, 'reading_date' => '2026-04-01', 'prev_reading' => 100, 'curr_reading' => 180,
         ]);
         $invoice = MeterReading::with('invoice')->firstOrFail()->invoice;
-        $invoice->update(['tenant_email' => null]);
+        $invoice->update(['tenant_email' => null, 'approval_status' => 'approved']);
 
         $this->actingAs($user)
             ->post('/electricity/invoices/issue', ['invoice_id' => $invoice->id])

@@ -416,14 +416,20 @@ export default function Electricity({
                                                 <td>{reading.invoice_number ?? 'Pending'}</td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     {reading.invoice_id && reading.invoice_status === 'proforma' && (
-                                                        <button
-                                                            className="btn-ghost"
-                                                            title={reading.invoice_email ? `Email to ${reading.invoice_email}` : 'The tenant has no email address'}
-                                                            disabled={!reading.invoice_email}
-                                                            onClick={() => post('/electricity/invoices/issue', { invoice_id: reading.invoice_id })}
-                                                        >
-                                                            Email to tenant
-                                                        </button>
+                                                        reading.invoice_sent ? (
+                                                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Emailed</span>
+                                                        ) : (
+                                                            <button
+                                                                className="btn-ghost"
+                                                                title={reading.invoice_approval !== 'approved'
+                                                                    ? 'Awaiting superuser approval'
+                                                                    : (reading.invoice_email ? `Email to ${reading.invoice_email}` : 'The tenant has no email address')}
+                                                                disabled={reading.invoice_approval !== 'approved' || !reading.invoice_email}
+                                                                onClick={() => post('/electricity/invoices/issue', { invoice_id: reading.invoice_id })}
+                                                            >
+                                                                {reading.invoice_approval === 'approved' ? 'Email to tenant' : 'Awaiting approval'}
+                                                            </button>
+                                                        )
                                                     )}
                                                 </td>
                                             </tr>

@@ -404,7 +404,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
       }));
   }, [paymentRows]);
 
-  const eligibleInvoices = invoices.filter((i) =>  i.type == 'proforma' && ['proforma', 'unpaid', 'overdue', 'partially_paid'].includes(i.status));
+  const eligibleInvoices = invoices.filter((i) =>  i.type == 'proforma' && i.approval_status === 'approved' && ['proforma', 'unpaid', 'overdue', 'partially_paid'].includes(i.status));
   const selectedInvoice = eligibleInvoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
   const selectedInvoiceUnit = useMemo(() => resolveInvoiceUnit(selectedInvoice), [selectedInvoice, units]);
   const selectedInvoiceCurrency = useMemo(() => getInvoiceCurrency(selectedInvoice, selectedInvoiceUnit), [selectedInvoice, selectedInvoiceUnit]);
