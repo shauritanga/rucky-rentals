@@ -162,7 +162,9 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
     }
     const ids = availableFloors.map(f => f.id);
     if (!ids.includes(data.floor)) {
-      setData('floor', availableFloors[0].id);
+      const first = availableFloors[0].id;
+      const next = nextFreeUnitNumber(first, units.map(u => u.unit_number));
+      setData({ ...data, floor: first, unit_number: next ? `${unitPrefixForFloor(first)}${next}` : '' });
     }
   }, [availableFloors]);
 
@@ -186,11 +188,11 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
   const takenNumbers = units.map(u => u.unit_number);
   const takenExceptSelected = units.filter(u => u.id !== selected?.id).map(u => u.unit_number);
 
-  /** Changing the floor swaps the prefix; keep a number already typed, else suggest the next free one. */
-  const changeFloor = (floorId, current, set, taken) => {
+  /** Changing the floor swaps the prefix. Add suggests the next free number; Edit keeps the unit's number when it is still free. */
+  const changeFloor = (floorId, current, set, taken, keepNumber = false) => {
     const prefix = unitPrefixForFloor(floorId);
     const typed = String(current.unit_number || '').split('.').pop();
-    const keep = /^\d{2}$/.test(typed) && !taken.includes(`${prefix}${typed}`) ? typed : nextFreeUnitNumber(floorId, taken);
+    const keep = keepNumber && /^\d{2}$/.test(typed) && !taken.includes(`${prefix}${typed}`) ? typed : nextFreeUnitNumber(floorId, taken);
     set({ ...current, floor: floorId, unit_number: prefix && keep ? `${prefix}${keep}` : '' });
   };
 
@@ -204,6 +206,19 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
 
   const byFloor = filtered.reduce((acc, u) => { (acc[u.floor] = acc[u.floor] || []).push(u); return acc; }, {});
   const counts = { all: units.length, occupied: units.filter(u=>u.status==='occupied').length, vacant: units.filter(u=>u.status==='vacant').length, overdue: units.filter(u=>u.status==='overdue').length, maintenance: units.filter(u=>u.status==='maintenance').length };
+
+  /** Open Add Unit with the first floor chosen and its next free unit number suggested. */
+  const openCreateModal = () => {
+    if (availableFloors.length > 0) {
+      const floorId = availableFloors.some(f => f.id === data.floor) ? data.floor : availableFloors[0].id;
+      const typed = String(data.unit_number || '').split('.').pop();
+      const next = /^\d{2}$/.test(typed) && data.floor === floorId && !takenNumbers.includes(data.unit_number)
+        ? typed
+        : nextFreeUnitNumber(floorId, takenNumbers);
+      setData({ ...data, floor: floorId, unit_number: next ? `${unitPrefixForFloor(floorId)}${next}` : '' });
+    }
+    setShowModal(true);
+  };
 
   const submit = (e) => { e.preventDefault(); post('/units', { onSuccess: () => { reset(); setShowModal(false); } }); };
 
@@ -296,7 +311,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </button>
           </div>
-          <button className="btn-primary" onClick={()=>setShowModal(true)} disabled={!canCreateUnit || availableFloors.length === 0}>
+          <button className="btn-primary" onClick={openCreateModal} disabled={!canCreateUnit || availableFloors.length === 0}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Add Unit
           </button>
@@ -472,7 +487,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Floor</label>
-                  <select className="form-input form-select" value={editData.floor} onChange={e => changeFloor(e.target.value, editData, setEditData, takenExceptSelected)} required>
+                  <select className="form-input form-select" value={editData.floor} onChange={e => changeFloor(e.target.value, editData, setEditData, takenExceptSelected, true)} required>
                     {availableFloors.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
                   </select>
                 </div>
