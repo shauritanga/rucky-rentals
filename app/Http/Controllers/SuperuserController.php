@@ -590,6 +590,33 @@ class SuperuserController extends Controller
         return back()->with('success', 'Settings saved.');
     }
 
+    /** Submeter electricity price and VAT for one property (read-only on the Electricity page). */
+    public function updateSubmeterPricing(Request $request)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $data = $request->validate([
+            'property_id' => 'required|exists:properties,id',
+            'unit_price'  => 'required|numeric|min:0',
+            'vat_percent' => 'required|numeric|min:0|max:100',
+        ]);
+
+        $prefix = 'p' . $data['property_id'] . '.';
+        SystemSetting::set($prefix . 'elec.submeter.unit_price', $data['unit_price']);
+        SystemSetting::set($prefix . 'elec.submeter.vat_percent', $data['vat_percent']);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Submeter pricing updated',
+            resource: 'Submeter pricing',
+            propertyName: Property::where('id', $data['property_id'])->value('name'),
+            category: 'settings',
+            propertyId: (int) $data['property_id'],
+        );
+
+        return back()->with('success', 'Submeter pricing saved.');
+    }
+
     public function updateLogo(Request $request)
     {
         abort_if(Auth::user()->role !== 'superuser', 403);

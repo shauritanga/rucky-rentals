@@ -95,7 +95,6 @@ export default function Electricity({
         maint_levy: generatorSettings.maint_levy ?? 50,
         tank_size: generatorSettings.tank_size ?? 200,
     });
-    const [submeterPricingForm, setSubmeterPricingForm] = useState({ unit_price: submeterRate, vat_percent: submeterVat });
     const [fuelForm, setFuelForm] = useState({
         log_date: today,
         litres: '',
@@ -551,25 +550,12 @@ export default function Electricity({
                                 <div className="card">
                                     <div className="card-header"><div className="card-title">Submeter Pricing</div></div>
                                     <div style={{ padding: '16px 18px' }}>
-                                        <div className="form-group" style={{ marginBottom: 12 }}>
-                                            <label className="form-label">Default Unit Price (VAT-inclusive)</label>
-                                            <MoneyInput className="form-input" value={submeterPricingForm.unit_price} onChange={(e) => setSubmeterPricingForm((f) => ({ ...f, unit_price: e.target.value }))} />
-                                        </div>
-                                        <div className="form-group" style={{ marginBottom: 12 }}>
-                                            <label className="form-label">VAT Rate (%)</label>
-                                            <input className="form-input" type="number" min="0" max="100" step="0.01" value={submeterPricingForm.vat_percent} onChange={(e) => setSubmeterPricingForm((f) => ({ ...f, vat_percent: e.target.value }))} />
-                                        </div>
-                                        <div className="info-box" style={{ marginBottom: 12 }}>
-                                            <div className="info-box-text">
-                                                Unit price <strong>{fmtTZS(submeterPricingForm.unit_price)}</strong> includes {submeterPricingForm.vat_percent}% VAT.
-                                                Net per unit: <strong>{fmtTZS(Math.round(Number(submeterPricingForm.unit_price) / (1 + Number(submeterPricingForm.vat_percent) / 100)))}</strong>,
-                                                VAT: <strong>{fmtTZS(Math.round(Number(submeterPricingForm.unit_price) - Number(submeterPricingForm.unit_price) / (1 + Number(submeterPricingForm.vat_percent) / 100)))}</strong>.
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                            <button className="btn-primary" disabled={!submeterModuleReady} onClick={() => post('/electricity/settings/submeter', submeterPricingForm)}>
-                                                Save Pricing
-                                            </button>
+                                        <div className="bill-summary-row"><span>Unit price (VAT-inclusive)</span><strong>{fmtTZS(submeterRate)}</strong></div>
+                                        <div className="bill-summary-row"><span>VAT rate</span><strong>{submeterVat}%</strong></div>
+                                        <div className="bill-summary-row"><span>Net per unit</span><strong>{fmtTZS(Math.round(submeterRate / (1 + submeterVat / 100)))}</strong></div>
+                                        <div className="bill-summary-row"><span>VAT per unit</span><strong>{fmtTZS(Math.round(submeterRate - submeterRate / (1 + submeterVat / 100)))}</strong></div>
+                                        <div className="info-box" style={{ marginTop: 12 }}>
+                                            <div className="info-box-text">This price is set by the superuser in Settings.</div>
                                         </div>
                                     </div>
                                 </div>

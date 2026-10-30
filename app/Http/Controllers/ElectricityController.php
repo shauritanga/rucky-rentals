@@ -525,24 +525,6 @@ class ElectricityController extends Controller
         return back()->with('success', implode(', ', $parts) . '.');
     }
 
-    public function updateSubmeterSettings(Request $request)
-    {
-        if (! $this->hasElectricitySalesTable()) {
-            return back()->with('error', 'Submeter sales table is missing. Run php artisan migrate to enable this workflow.');
-        }
-
-        $data = $request->validate([
-            'unit_price'  => 'required|numeric|min:0',
-            'vat_percent' => 'required|numeric|min:0|max:100',
-        ]);
-
-        $prefix = $this->settingPrefix($request);
-        SystemSetting::set($prefix . 'elec.submeter.unit_price', $data['unit_price']);
-        SystemSetting::set($prefix . 'elec.submeter.vat_percent', $data['vat_percent']);
-
-        return back()->with('success', 'Submeter pricing saved.');
-    }
-
     public function updateGenSettings(Request $request)
     {
         $data = $request->validate([

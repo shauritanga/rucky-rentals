@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
+import MoneyInput from '@/Components/MoneyInput';
 
 function logoSrc(path) {
   return path ? `/storage/${path}` : '';
@@ -15,10 +16,27 @@ function Toggle({ value, onChange }) {
   );
 }
 
-export default function SettingsPage({ settings = {} }) {
+export default function SettingsPage({ settings = {}, properties = [] }) {
   const [tab, setTab] = useState('general');
   const [submitMessage, setSubmitMessage] = useState('');
   const [processing, setProcessing] = useState(false);
+
+  // ── Electricity — submeter price per property ────────────────────────────
+  const [pricingPropertyId, setPricingPropertyId] = useState(properties[0]?.id ?? '');
+  const readPricing = (pid) => ({
+    unit_price:  settings[`p${pid}.elec.submeter.unit_price`]  ?? 500,
+    vat_percent: settings[`p${pid}.elec.submeter.vat_percent`] ?? 18,
+  });
+  const [pricing, setPricing] = useState(() => readPricing(properties[0]?.id));
+  const changePricingProperty = (pid) => { setPricingPropertyId(pid); setPricing(readPricing(pid)); };
+  const pricingNet = Math.round(Number(pricing.unit_price) / (1 + Number(pricing.vat_percent) / 100));
+  const savePricing = () => {
+    setProcessing(true);
+    router.patch('/superuser/settings/submeter-pricing', { property_id: pricingPropertyId, ...pricing }, {
+      preserveScroll: true,
+      onFinish: () => setProcessing(false),
+    });
+  };
 
   // ── General — Platform Identity ──────────────────────────────────────────
   const [identity, setIdentity] = useState({
@@ -227,6 +245,35 @@ export default function SettingsPage({ settings = {} }) {
             </div>
             <button type="button" className="btn-primary" onClick={saveIdentity} disabled={processing}>
               {processing ? <><span className="btn-spinner" />Saving…</> : 'Save Changes'}
+            </button>
+          </div>
+
+          {/* Submeter pricing */}
+          <div className="card" style={{ padding: 20 }}>
+            <div className="card-title" style={{ marginBottom: 12 }}>Submeter Electricity Pricing</div>
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label className="form-label">Property</label>
+              <select className="form-input form-select" value={pricingPropertyId} onChange={e => changePricingProperty(e.target.value)}>
+                {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Default Unit Price (VAT-inclusive)</label>
+                <MoneyInput className="form-input" value={pricing.unit_price} onChange={e => setPricing(p => ({ ...p, unit_price: e.target.value }))} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">VAT Rate (%)</label>
+                <input className="form-input" type="number" min="0" max="100" step="0.01" value={pricing.vat_percent} onChange={e => setPricing(p => ({ ...p, vat_percent: e.target.value }))} />
+              </div>
+            </div>
+            <div className="info-box" style={{ marginBottom: 12 }}>
+              <div className="info-box-text">
+                Unit price <strong>TZS {Number(pricing.unit_price || 0).toLocaleString()}</strong> includes {pricing.vat_percent}% VAT. Net per unit: <strong>TZS {pricingNet.toLocaleString()}</strong>.
+              </div>
+            </div>
+            <button type="button" className="btn-primary" onClick={savePricing} disabled={processing || !pricingPropertyId}>
+              {processing ? <><span className="btn-spinner" />Saving…</> : 'Save Pricing'}
             </button>
           </div>
 

@@ -233,7 +233,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       {activeView === 'roles' && <RolesPage settings={settings} />}
       {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingMaintenance={pendingMaintenance} pendingTeamMembers={pendingTeamMembers} pendingUnits={pendingUnits} pendingInvoices={pendingInvoices} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
-      {activeView === 'settings' && <SettingsPage settings={settings} />}
+      {activeView === 'settings' && <SettingsPage settings={settings} properties={effectiveProperties} />}
 
       <div className={`modal-overlay ${deleteTarget ? 'open' : ''}`} style={{ zIndex: 1200 }} onClick={(e) => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}>
         <div className="modal" style={{ width: 'min(460px, calc(100vw - 24px))' }}>
