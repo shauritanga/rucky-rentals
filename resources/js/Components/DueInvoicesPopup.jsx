@@ -3,7 +3,7 @@ import { Link, usePage } from '@inertiajs/react';
 
 const ALLOWED_ROLES = ['superuser', 'manager', 'accountant'];
 
-function playChime() {
+export function playChime() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;

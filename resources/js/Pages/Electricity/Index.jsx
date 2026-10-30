@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { playChime } from '../../Components/DueInvoicesPopup';
 import { router, usePage, useRemember } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import MoneyInput from '@/Components/MoneyInput';
@@ -147,6 +148,7 @@ export default function Electricity({
             if (window.sessionStorage.getItem(readingAlertKey)) return;
         } catch (e) { /* storage unavailable: just show it */ }
         setShowReadingAlert(true);
+        playChime();
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const closeReadingAlert = () => {
@@ -223,29 +225,30 @@ export default function Electricity({
 
     return (
         <AppLayout title="Electricity">
-            <div className={`modal-overlay ${showReadingAlert ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeReadingAlert()}>
-                <div className="modal" style={{ width: 'min(480px, calc(100vw - 24px))' }}>
-                    <div className="modal-header">
-                        <div className="modal-title">{directReadingPrompt.label ?? 'Current quarter'} electricity readings</div>
-                        <button className="modal-close" onClick={closeReadingAlert}>✕</button>
+            {showReadingAlert && quarterlyMissingUnits.length > 0 && (
+                <div className="due-invoices-popup">
+                    <div className="due-invoices-popup-header">
+                        <span>{directReadingPrompt.label ?? 'Current quarter'} Readings Due</span>
+                        <button className="due-invoices-popup-close" onClick={closeReadingAlert} aria-label="Close">✕</button>
                     </div>
-                    <div className="modal-body">
-                        <p style={{ margin: 0, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                            {quarterlyMissingUnits.length} of {directReadingPrompt.total_units ?? directUnits.length} direct unit(s) still need a quarterly reading.
-                        </p>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                            {quarterlyMissingUnits.map((unit) => (
-                                <span key={unit.id} className="badge muted">
-                                    {unit.unit_number}{unit.tenant_name ? ` - ${unit.tenant_name}` : ''}
-                                </span>
-                            ))}
-                        </div>
+                    <div className="due-invoices-popup-list">
+                        {quarterlyMissingUnits.map((unit) => (
+                            <div key={unit.id} className="due-invoices-popup-item">
+                                <div className="due-invoices-popup-item-main">
+                                    <span className="due-invoices-popup-tenant">{unit.tenant_name || 'Vacant'}</span>
+                                    <span className="due-invoices-popup-unit">{unit.unit_number}</span>
+                                </div>
+                                <div className="due-invoices-popup-item-meta">
+                                    <span className="due-invoices-popup-status overdue">No reading yet</span>
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                    <div className="modal-footer">
-                        <button className="btn-primary" onClick={closeReadingAlert}>Got it</button>
-                    </div>
+                    <button type="button" className="due-invoices-popup-footer" onClick={closeReadingAlert} style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        {quarterlyMissingUnits.length} of {directReadingPrompt.total_units ?? directUnits.length} direct units need a reading
+                    </button>
                 </div>
-            </div>
+            )}
             {toast.msg && (
                 <div style={{
                     position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
