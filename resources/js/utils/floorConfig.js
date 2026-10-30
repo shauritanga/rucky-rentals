@@ -80,3 +80,33 @@ export function floorSortOrder(id) {
   const n = parseInt(id, 10);
   return isNaN(n) ? Number.MAX_SAFE_INTEGER : n * 100;
 }
+
+/**
+ * Prefix of every unit number on a floor: B{n}. P. G. M. or F{n}.
+ * Mirrors FloorConfig::unitPrefix() in PHP (upper floors are stored as "3", numbers read F3.01).
+ */
+export function unitPrefixForFloor(floorId) {
+  const id = String(floorId ?? '').toUpperCase();
+  if (!id) return '';
+  if (id === 'P' || id === 'G' || id === 'M') return `${id}.`;
+  if (/^B\d+$/.test(id)) return `${id}.`;
+  if (/^\d+$/.test(id)) return `F${parseInt(id, 10)}.`;
+  return '';
+}
+
+/** Lowest unused two-digit number (01-99) on a floor, as a string; '' when all are taken. */
+export function nextFreeUnitNumber(floorId, existingUnitNumbers = []) {
+  const prefix = unitPrefixForFloor(floorId);
+  if (!prefix) return '';
+  const taken = new Set(
+    existingUnitNumbers
+      .map((n) => String(n).toUpperCase())
+      .filter((n) => n.startsWith(prefix))
+      .map((n) => n.slice(prefix.length)),
+  );
+  for (let i = 1; i <= 99; i++) {
+    const code = String(i).padStart(2, '0');
+    if (!taken.has(code)) return code;
+  }
+  return '';
+}

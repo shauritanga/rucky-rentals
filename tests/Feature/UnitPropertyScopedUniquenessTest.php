@@ -24,21 +24,21 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         $managerA = $this->createManager($propertyA);
         $managerB = $this->createManager($propertyB);
 
-        $responseA = $this->actingAs($managerA)->post('/units', $this->unitPayload('A-101'));
-        $responseB = $this->actingAs($managerB)->post('/units', $this->unitPayload('A-101'));
+        $responseA = $this->actingAs($managerA)->post('/units', $this->unitPayload('F1.01'));
+        $responseB = $this->actingAs($managerB)->post('/units', $this->unitPayload('F1.01'));
 
         $responseA->assertRedirect();
         $responseB->assertRedirect();
 
         $this->assertDatabaseHas('units', [
             'property_id' => $propertyA->id,
-            'unit_number' => 'A-101',
+            'unit_number' => 'F1.01',
             'status' => 'vacant',
         ]);
 
         $this->assertDatabaseHas('units', [
             'property_id' => $propertyB->id,
-            'unit_number' => 'A-101',
+            'unit_number' => 'F1.01',
             'status' => 'vacant',
         ]);
     }
@@ -49,7 +49,7 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         $manager = $this->createManager($property);
 
         foreach (['Apartment', 'Warehouse', 'Other'] as $index => $type) {
-            $unitNumber = 'A-10' . ($index + 1);
+            $unitNumber = 'F1.0' . ($index + 1);
 
             $response = $this->actingAs($manager)->post('/units', $this->unitPayload($unitNumber, $type));
 
@@ -69,13 +69,13 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         $property = $this->createProperty('Gamma Tower', 'GAM');
         $manager = $this->createManager($property);
 
-        Unit::create($this->storedUnitAttributes($property->id, 'A-101'));
+        Unit::create($this->storedUnitAttributes($property->id, 'F1.01'));
 
-        $response = $this->actingAs($manager)->from('/units')->post('/units', $this->unitPayload('A-101'));
+        $response = $this->actingAs($manager)->from('/units')->post('/units', $this->unitPayload('F1.01'));
 
         $response->assertRedirect('/units');
         $response->assertSessionHasErrors('unit_number');
-        $this->assertSame(1, Unit::where('property_id', $property->id)->where('unit_number', 'A-101')->count());
+        $this->assertSame(1, Unit::where('property_id', $property->id)->where('unit_number', 'F1.01')->count());
     }
 
     public function test_document_upload_resolves_duplicate_unit_reference_within_active_property(): void
@@ -86,13 +86,13 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         $propertyB = $this->createProperty('Echo Tower', 'ECH');
         $managerA = $this->createManager($propertyA);
 
-        $unitA = Unit::create($this->storedUnitAttributes($propertyA->id, 'A-101'));
-        Unit::create($this->storedUnitAttributes($propertyB->id, 'A-101'));
+        $unitA = Unit::create($this->storedUnitAttributes($propertyA->id, 'F1.01'));
+        Unit::create($this->storedUnitAttributes($propertyB->id, 'F1.01'));
 
         $response = $this->actingAs($managerA)->post('/documents', [
             'file' => UploadedFile::fake()->create('lease.pdf', 100, 'application/pdf'),
             'document_type' => 'invoice',
-            'unit_ref' => 'A-101',
+            'unit_ref' => 'F1.01',
             'description' => 'Scoped upload',
         ]);
 
@@ -100,7 +100,7 @@ class UnitPropertyScopedUniquenessTest extends TestCase
 
         $document = Document::query()->firstOrFail();
         $this->assertSame($unitA->id, $document->unit_id);
-        $this->assertSame('A-101', $document->unit_ref);
+        $this->assertSame('F1.01', $document->unit_ref);
     }
 
     public function test_scheduled_maintenance_resolves_duplicate_unit_reference_within_active_property(): void
@@ -109,12 +109,12 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         $propertyB = $this->createProperty('Hotel Tower', 'HOT');
         $managerA = $this->createManager($propertyA);
 
-        $unitA = Unit::create($this->storedUnitAttributes($propertyA->id, 'A-101'));
-        Unit::create($this->storedUnitAttributes($propertyB->id, 'A-101'));
+        $unitA = Unit::create($this->storedUnitAttributes($propertyA->id, 'F1.01'));
+        Unit::create($this->storedUnitAttributes($propertyB->id, 'F1.01'));
 
         $response = $this->actingAs($managerA)->post('/scheduled-maintenance', [
             'title' => 'Quarterly inspection',
-            'unit_ref' => 'A-101',
+            'unit_ref' => 'F1.01',
             'category' => 'General',
             'frequency' => 'quarterly',
             'next_due' => '2026-05-01',
@@ -126,7 +126,7 @@ class UnitPropertyScopedUniquenessTest extends TestCase
         $task = ScheduledMaintenance::query()->firstOrFail();
         $this->assertSame($propertyA->id, $task->property_id);
         $this->assertSame($unitA->id, $task->unit_id);
-        $this->assertSame('A-101', $task->unit_ref);
+        $this->assertSame('F1.01', $task->unit_ref);
     }
 
     private function createProperty(string $name, string $code): Property

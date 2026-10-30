@@ -76,6 +76,40 @@ class FloorConfig
     }
 
     /**
+     * Prefix of every unit number on a floor: B{n}. P. G. M. or F{n}.
+     * (upper floors are stored as "3", unit numbers read F3.01).
+     */
+    public static function unitPrefix(string $floor): string
+    {
+        $floor = strtoupper(trim($floor));
+        if (in_array($floor, ['P', 'G', 'M'], true)) {
+            return $floor . '.';
+        }
+        if (preg_match('/^B\d+$/', $floor)) {
+            return $floor . '.';
+        }
+        if (ctype_digit($floor) && $floor !== '') {
+            return 'F' . (int) $floor . '.';
+        }
+
+        return '';
+    }
+
+    /** Error message when a unit number does not fit its floor, otherwise null. */
+    public static function unitNumberProblem(string $unitNumber, string $floor): ?string
+    {
+        $prefix = self::unitPrefix($floor);
+        if ($prefix === '') {
+            return null;
+        }
+        if (!preg_match('/^' . preg_quote($prefix, '/') . '\d{2}$/i', $unitNumber)) {
+            return "Unit number must be {$prefix} followed by two digits (for example {$prefix}01).";
+        }
+
+        return null;
+    }
+
+    /**
      * Return the sort order integer for a single floor code.
      * Used for PHP-side collection sorting.
      */

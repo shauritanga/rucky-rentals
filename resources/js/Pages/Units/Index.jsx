@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { floorSortOrder } from '@/utils/floorConfig';
+import { floorSortOrder, unitPrefixForFloor, nextFreeUnitNumber } from '@/utils/floorConfig';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import CreatableTypeSelect, { ensureOtherAtEnd } from '@/Components/CreatableTypeSelect';
 import MoneyInput from '@/Components/MoneyInput';
@@ -17,20 +17,38 @@ const fmt = (n) => Number(n).toLocaleString();
 const SQM_PER_SQFT = 0.09290304;
 
 // Unit number must be P.01–P.99, G.01–G.99, M.01–M.99, F1.01–F1.99 … F99.99, B1.01–B1.99 … B99.99
-const UNIT_NUMBER_RE = /^(P|G|M|F\d{1,2}|B\d{1,2})\.(?:0[1-9]|[1-9]\d)$/i;
+/**
+ * Unit number = fixed prefix from the floor (F3. / M. / P. / G. / B1.) + a two-digit number the user types.
+ * `value` is the full code ("F3.02"); onChange receives the full code.
+ */
+function UnitNumberField({ floor, value, onChange, error, takenNumbers = [] }) {
+  const prefix = unitPrefixForFloor(floor);
+  const part = prefix && String(value || '').toUpperCase().startsWith(prefix) ? String(value).slice(prefix.length) : '';
+  const full = prefix && part ? `${prefix}${part}` : '';
+  const duplicate = full.length === prefix.length + 2 && takenNumbers.some((n) => String(n).toUpperCase() === full.toUpperCase());
+  const shown = error || (duplicate ? `${full} is already used in this property.` : '');
 
-/** Returns the floor ID that matches a given unit-number prefix, or null. */
-const guessFloorId = (unitNum) => {
-  const u = String(unitNum).toUpperCase();
-  if (/^P/.test(u)) return 'P';
-  if (/^G/.test(u)) return 'G';
-  if (/^M/.test(u)) return 'M';
-  const f = u.match(/^F(\d{1,2})/);
-  if (f) return f[1];          // upper floors stored as String(n) e.g. '1','2'
-  const b = u.match(/^B(\d{1,2})/);
-  if (b) return `B${b[1]}`;   // basements stored as 'B1','B2'
-  return null;
-};
+  return (
+    <>
+      <div className={`unit-number-input${shown ? ' has-error' : ''}${prefix ? '' : ' is-disabled'}`}>
+        <span className="unit-number-prefix">{prefix || '—'}</span>
+        <input
+          inputMode="numeric"
+          maxLength={2}
+          disabled={!prefix}
+          value={part}
+          placeholder={prefix ? '01' : 'Select a floor first'}
+          onChange={(e) => onChange(`${prefix}${e.target.value.replace(/\D/g, '').slice(0, 2)}`)}
+          onBlur={() => { if (prefix && part.length === 1) onChange(`${prefix}${part.padStart(2, '0')}`); }}
+          required
+        />
+      </div>
+      {shown
+        ? <div className="form-error">{shown}</div>
+        : <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{full.length === prefix.length + 2 ? `Unit number: ${full}` : (prefix ? `Type the number after ${prefix} (01 to 99)` : 'Choose the floor first')}</div>}
+    </>
+  );
+}
 
 const unitCurrency = (unit) => (unit?.currency === 'USD' ? 'USD' : 'TZS');
 const unitSizeSqm = (unit) => {
@@ -164,30 +182,16 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
   const editSc      = editSizeSqm * (Number(editData.service_charge_per_sqm) || 0);
   const editDeposit = (editRent * depositRentMonths) + (editSc * depositScMonths);
 
-  // Unit number format validation
-  const unitNumberValid    = !data.unit_number     || UNIT_NUMBER_RE.test(data.unit_number);
-  const editUnitNumberValid = !editData.unit_number || UNIT_NUMBER_RE.test(editData.unit_number);
+  // Unit number = fixed prefix from the floor + the number the user types.
+  const takenNumbers = units.map(u => u.unit_number);
+  const takenExceptSelected = units.filter(u => u.id !== selected?.id).map(u => u.unit_number);
 
-  /** Handler for create-form unit number — enforces allowed chars and auto-selects floor */
-  const onUnitNumberChange = (e) => {
-    const val = e.target.value.toUpperCase().replace(/[^PGMFB0-9.]/g, '');
-    const guessed = guessFloorId(val);
-    if (guessed && availableFloors.some(f => f.id === guessed)) {
-      setData({ ...data, unit_number: val, floor: guessed });
-    } else {
-      setData('unit_number', val);
-    }
-  };
-
-  /** Handler for edit-form unit number — enforces allowed chars and auto-selects floor */
-  const onEditUnitNumberChange = (e) => {
-    const val = e.target.value.toUpperCase().replace(/[^PGMFB0-9.]/g, '');
-    const guessed = guessFloorId(val);
-    if (guessed && availableFloors.some(f => f.id === guessed)) {
-      setEditData({ ...editData, unit_number: val, floor: guessed });
-    } else {
-      setEditData('unit_number', val);
-    }
+  /** Changing the floor swaps the prefix; keep a number already typed, else suggest the next free one. */
+  const changeFloor = (floorId, current, set, taken) => {
+    const prefix = unitPrefixForFloor(floorId);
+    const typed = String(current.unit_number || '').split('.').pop();
+    const keep = /^\d{2}$/.test(typed) && !taken.includes(`${prefix}${typed}`) ? typed : nextFreeUnitNumber(floorId, taken);
+    set({ ...current, floor: floorId, unit_number: prefix && keep ? `${prefix}${keep}` : '' });
   };
 
   const filtered = units.filter(u => {
@@ -467,25 +471,14 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
             <div className="modal-body">
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Unit Number</label>
-                  <input
-                    className={`form-input${editErrors.unit_number || !editUnitNumberValid ? ' input-error' : ''}`}
-                    value={editData.unit_number}
-                    onChange={onEditUnitNumberChange}
-                    placeholder="e.g. P.01 or F1.05"
-                    maxLength={6}
-                    required
-                  />
-                  {editErrors.unit_number && <div className="form-error">{editErrors.unit_number}</div>}
-                  {!editErrors.unit_number && !editUnitNumberValid && (
-                    <div className="form-error">Invalid format — use P.01, G.01, M.03, F1.07, B1.02, etc.</div>
-                  )}
-                </div>
-                <div className="form-group">
                   <label className="form-label">Floor</label>
-                  <select className="form-input form-select" value={editData.floor} onChange={e => setEditData('floor', e.target.value)} required>
+                  <select className="form-input form-select" value={editData.floor} onChange={e => changeFloor(e.target.value, editData, setEditData, takenExceptSelected)} required>
                     {availableFloors.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
                   </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Unit Number</label>
+                  <UnitNumberField floor={editData.floor} value={editData.unit_number} onChange={(v) => setEditData('unit_number', v)} error={editErrors.unit_number} takenNumbers={takenExceptSelected} />
                 </div>
               </div>
               <div className="form-row">
@@ -571,7 +564,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={() => setShowEditModal(false)} disabled={editProcessing}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={editProcessing || !editUnitNumberValid} aria-busy={editProcessing}>
+              <button type="submit" className="btn-primary" disabled={editProcessing} aria-busy={editProcessing}>
                 {editProcessing ? (
                   <><span className="btn-spinner" aria-hidden="true"></span><span>Saving…</span></>
                 ) : (
@@ -635,24 +628,16 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
               )}
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Unit Number</label>
-                  <input
-                    className={`form-input${errors.unit_number || !unitNumberValid ? ' input-error' : ''}`}
-                    value={data.unit_number}
-                    onChange={onUnitNumberChange}
-                    placeholder="e.g. P.01 or F1.05"
-                    maxLength={6}
-                    required
-                  />
-                  {errors.unit_number && <div className="form-error">{errors.unit_number}</div>}
-                  {!errors.unit_number && !unitNumberValid && (
-                    <div className="form-error">Invalid format — use P.01, G.01, M.03, F1.07, B1.02, etc.</div>
-                  )}
+                  <label className="form-label">Floor</label>
+                  <select className={`form-input form-select${errors.floor ? ' input-error' : ''}`} value={data.floor} onChange={e => changeFloor(e.target.value, data, setData, takenNumbers)} required disabled={availableFloors.length===0}>
+                    <option value="" disabled>Select floor</option>
+                    {availableFloors.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  </select>
+                  {errors.floor && <div className="form-error">{errors.floor}</div>}
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Floor</label>
-                  <select className={`form-input form-select${errors.floor ? ' input-error' : ''}`} value={data.floor} onChange={e=>setData('floor',e.target.value)} required disabled={availableFloors.length===0}>{availableFloors.map(f=><option key={f.id} value={f.id}>{f.label}</option>)}</select>
-                  {errors.floor && <div className="form-error">{errors.floor}</div>}
+                  <label className="form-label">Unit Number</label>
+                  <UnitNumberField floor={data.floor} value={data.unit_number} onChange={(v) => setData('unit_number', v)} error={errors.unit_number} takenNumbers={takenNumbers} />
                 </div>
               </div>
               <div className="form-row">
@@ -717,7 +702,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing || !canCreateUnit || availableFloors.length===0 || !unitNumberValid}>Add Unit</button>
+              <button type="submit" className="btn-primary" disabled={processing || !canCreateUnit || availableFloors.length===0}>Add Unit</button>
             </div>
           </form>
         </div>

@@ -273,7 +273,7 @@ class ManualExchangeRateTest extends TestCase
         $unitRate = 2651.9876;
 
         $response = $this->actingAs($manager)->post('/units', [
-            'unit_number' => 'B-201',
+            'unit_number' => 'F1.20',
             'floor' => '1',
             'type' => 'Office Suite',
             'size_sqm' => 50,
@@ -286,7 +286,7 @@ class ManualExchangeRateTest extends TestCase
         $response->assertSessionHasNoErrors();
         $response->assertRedirect();
 
-        $unit = Unit::where('unit_number', 'B-201')->firstOrFail();
+        $unit = Unit::where('unit_number', 'F1.20')->firstOrFail();
         $this->assertSame('USD', $unit->currency);
         $this->assertEquals(2651.9876, (float) $unit->exchange_rate);
     }

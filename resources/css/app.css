@@ -983,3 +983,12 @@ html,body{overflow-x:hidden}
 .stats-grid{grid-template-columns:1fr}
 .drawer-kv-grid,.kv-grid{grid-template-columns:1fr}
 }
+
+/* Unit number: fixed floor prefix + two-digit number */
+.unit-number-input{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:8px;background:var(--bg-elevated);overflow:hidden;transition:border-color .15s,box-shadow .15s}
+.unit-number-input:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.unit-number-input.has-error{border-color:var(--red)}
+.unit-number-prefix{display:flex;align-items:center;padding:0 12px;background:var(--bg-hover);color:var(--text-secondary);font-weight:700;letter-spacing:.3px;border-right:1px solid var(--border);min-width:54px;justify-content:center}
+.unit-number-input input{flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--text-primary);font-family:inherit;font-size:13.5px;padding:8px 11px}
+.unit-number-input.is-disabled{opacity:.6}
+@media (max-width:768px){.unit-number-input input{font-size:16px}}

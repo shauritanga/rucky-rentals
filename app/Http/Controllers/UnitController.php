@@ -87,8 +87,14 @@ class UnitController extends Controller
                 ? $query->whereNull('property_id')
                 : $query->where('property_id', $effectivePropertyId));
 
+        $unitNumberFormatRule = function (string $attribute, mixed $value, \Closure $fail) use ($request) {
+            if ($problem = FloorConfig::unitNumberProblem((string) $value, (string) $request->input('floor'))) {
+                $fail($problem);
+            }
+        };
+
         $data = $request->validate([
-            'unit_number'            => ['required', 'string', $unitNumberUniqueRule],
+            'unit_number'            => ['required', 'string', $unitNumberFormatRule, $unitNumberUniqueRule],
             'floor'                  => $floorRule,
             'type'                   => ['required', 'string', Rule::in($allowedTypes)],
             'size_sqm'               => 'required|numeric|min:0.1',
@@ -183,8 +189,14 @@ class UnitController extends Controller
                 ? $query->whereNull('property_id')
                 : $query->where('property_id', $effectivePropertyId));
 
+        $unitNumberFormatRule = function (string $attribute, mixed $value, \Closure $fail) use ($request) {
+            if ($problem = FloorConfig::unitNumberProblem((string) $value, (string) $request->input('floor'))) {
+                $fail($problem);
+            }
+        };
+
         $data = $request->validate([
-            'unit_number'            => ['required', 'string', $unitNumberUniqueRule],
+            'unit_number'            => ['required', 'string', $unitNumberFormatRule, $unitNumberUniqueRule],
             'floor'                  => $floorRule,
             'type'                   => ['required', 'string', Rule::in($allowedTypes)],
             'size_sqm'               => 'required|numeric|min:0.1',
