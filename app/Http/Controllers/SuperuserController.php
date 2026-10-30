@@ -617,6 +617,43 @@ class SuperuserController extends Controller
         return back()->with('success', 'Submeter pricing saved.');
     }
 
+    /** Generator billing rates and generator settings for one property (read-only on the Electricity page). */
+    public function updateGeneratorBilling(Request $request)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $data = $request->validate([
+            'property_id'            => 'required|exists:properties,id',
+            'generator_rate_per_kwh' => 'required|numeric|min:0',
+            'generator_vat_percent'  => 'required|numeric|min:0',
+            'diesel_price'           => 'required|numeric|min:0',
+            'l_per_hr'               => 'required|numeric|min:0',
+            'output_kw'              => 'required|numeric|min:0',
+            'maint_levy'             => 'required|numeric|min:0',
+            'tank_size'              => 'required|numeric|min:0',
+        ]);
+
+        $prefix = 'p' . $data['property_id'] . '.';
+        SystemSetting::set($prefix . 'elec.direct.generator_rate_per_kwh', $data['generator_rate_per_kwh']);
+        SystemSetting::set($prefix . 'elec.direct.generator_vat_percent', $data['generator_vat_percent']);
+        SystemSetting::set($prefix . 'elec.gen.diesel_price', $data['diesel_price']);
+        SystemSetting::set($prefix . 'elec.gen.l_per_hr', $data['l_per_hr']);
+        SystemSetting::set($prefix . 'elec.gen.output_kw', $data['output_kw']);
+        SystemSetting::set($prefix . 'elec.gen.maint_levy', $data['maint_levy']);
+        SystemSetting::set($prefix . 'elec.gen.tank_size', $data['tank_size']);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Generator billing settings updated',
+            resource: 'Generator billing settings',
+            propertyName: Property::where('id', $data['property_id'])->value('name'),
+            category: 'settings',
+            propertyId: (int) $data['property_id'],
+        );
+
+        return back()->with('success', 'Generator billing settings saved.');
+    }
+
     public function updateLogo(Request $request)
     {
         abort_if(Auth::user()->role !== 'superuser', 403);

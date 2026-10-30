@@ -525,30 +525,6 @@ class ElectricityController extends Controller
         return back()->with('success', implode(', ', $parts) . '.');
     }
 
-    public function updateGenSettings(Request $request)
-    {
-        $data = $request->validate([
-            'generator_rate_per_kwh' => 'required|numeric|min:0',
-            'generator_vat_percent' => 'required|numeric|min:0',
-            'diesel_price' => 'required|numeric|min:0',
-            'l_per_hr' => 'required|numeric|min:0',
-            'output_kw' => 'required|numeric|min:0',
-            'maint_levy' => 'required|numeric|min:0',
-            'tank_size' => 'required|numeric|min:0',
-        ]);
-
-        $prefix = $this->settingPrefix($request);
-        SystemSetting::set($prefix . 'elec.direct.generator_rate_per_kwh', $data['generator_rate_per_kwh']);
-        SystemSetting::set($prefix . 'elec.direct.generator_vat_percent', $data['generator_vat_percent']);
-        SystemSetting::set($prefix . 'elec.gen.diesel_price', $data['diesel_price']);
-        SystemSetting::set($prefix . 'elec.gen.l_per_hr', $data['l_per_hr']);
-        SystemSetting::set($prefix . 'elec.gen.output_kw', $data['output_kw']);
-        SystemSetting::set($prefix . 'elec.gen.maint_levy', $data['maint_levy']);
-        SystemSetting::set($prefix . 'elec.gen.tank_size', $data['tank_size']);
-
-        return back()->with('success', 'Generator settings saved.');
-    }
-
     private function transformUnit(Unit $unit): array
     {
         $lease = $unit->leases->first();

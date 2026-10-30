@@ -86,7 +86,7 @@ export default function Electricity({
         unit_price: submeterRate,
         notes: '',
     });
-    const [generatorForm, setGeneratorForm] = useState({
+    const generatorForm = {
         generator_rate_per_kwh: generatorRate,
         generator_vat_percent: generatorVat,
         diesel_price: generatorSettings.diesel_price ?? 185,
@@ -94,7 +94,7 @@ export default function Electricity({
         output_kw: generatorSettings.output_kw ?? 36,
         maint_levy: generatorSettings.maint_levy ?? 50,
         tank_size: generatorSettings.tank_size ?? 200,
-    });
+    };
     const [fuelForm, setFuelForm] = useState({
         log_date: today,
         litres: '',
@@ -619,44 +619,15 @@ export default function Electricity({
                                 <div className="card">
                                     <div className="card-header"><div className="card-title">Generator Billing Settings</div></div>
                                     <div style={{ padding: '16px 18px' }}>
-                                        <div className="form-row">
-                                            <div className="form-group">
-                                                <label className="form-label">Generator Rate per kWh</label>
-                                                <MoneyInput className="form-input" value={generatorForm.generator_rate_per_kwh} onChange={(e) => setGeneratorForm((form) => ({ ...form, generator_rate_per_kwh: e.target.value }))} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Generator VAT %</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={generatorForm.generator_vat_percent} onChange={(e) => setGeneratorForm((form) => ({ ...form, generator_vat_percent: e.target.value }))} />
-                                            </div>
-                                        </div>
-                                        <div className="form-row">
-                                            <div className="form-group">
-                                                <label className="form-label">Diesel Price</label>
-                                                <MoneyInput className="form-input" value={generatorForm.diesel_price} onChange={(e) => setGeneratorForm((form) => ({ ...form, diesel_price: e.target.value }))} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Litres per Hour</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={generatorForm.l_per_hr} onChange={(e) => setGeneratorForm((form) => ({ ...form, l_per_hr: e.target.value }))} />
-                                            </div>
-                                        </div>
-                                        <div className="form-row">
-                                            <div className="form-group">
-                                                <label className="form-label">Output kW</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={generatorForm.output_kw} onChange={(e) => setGeneratorForm((form) => ({ ...form, output_kw: e.target.value }))} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label className="form-label">Maintenance Levy</label>
-                                                <MoneyInput className="form-input" value={generatorForm.maint_levy} onChange={(e) => setGeneratorForm((form) => ({ ...form, maint_levy: e.target.value }))} />
-                                            </div>
-                                        </div>
-                                        <div className="form-group" style={{ marginBottom: 12 }}>
-                                            <label className="form-label">Tank Size</label>
-                                            <input className="form-input" type="number" min="0" step="0.01" value={generatorForm.tank_size} onChange={(e) => setGeneratorForm((form) => ({ ...form, tank_size: e.target.value }))} />
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                            <button className="btn-primary" onClick={() => post('/electricity/settings/generator', generatorForm)}>
-                                                Save Generator Settings
-                                            </button>
+                                        <div className="bill-summary-row"><span>Generator rate per kWh</span><strong>{fmtTZS(generatorForm.generator_rate_per_kwh)}</strong></div>
+                                        <div className="bill-summary-row"><span>Generator VAT</span><strong>{generatorForm.generator_vat_percent}%</strong></div>
+                                        <div className="bill-summary-row"><span>Diesel price</span><strong>{fmtTZS(generatorForm.diesel_price)}</strong></div>
+                                        <div className="bill-summary-row"><span>Litres per hour</span><strong>{fmtNum(generatorForm.l_per_hr)}</strong></div>
+                                        <div className="bill-summary-row"><span>Output</span><strong>{fmtNum(generatorForm.output_kw)} kW</strong></div>
+                                        <div className="bill-summary-row"><span>Maintenance levy</span><strong>{fmtTZS(generatorForm.maint_levy)}</strong></div>
+                                        <div className="bill-summary-row"><span>Tank size</span><strong>{fmtNum(generatorForm.tank_size)} L</strong></div>
+                                        <div className="info-box" style={{ marginTop: 12 }}>
+                                            <div className="info-box-text">These settings are set by the superuser in Settings.</div>
                                         </div>
                                     </div>
                                 </div>

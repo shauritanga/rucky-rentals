@@ -28,8 +28,26 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
     vat_percent: settings[`p${pid}.elec.submeter.vat_percent`] ?? 18,
   });
   const [pricing, setPricing] = useState(() => readPricing(properties[0]?.id));
-  const changePricingProperty = (pid) => { setPricingPropertyId(pid); setPricing(readPricing(pid)); };
+  const changePricingProperty = (pid) => { setPricingPropertyId(pid); setPricing(readPricing(pid)); setGenerator(readGenerator(pid)); };
   const pricingNet = Math.round(Number(pricing.unit_price) / (1 + Number(pricing.vat_percent) / 100));
+  const readGenerator = (pid) => ({
+    generator_rate_per_kwh: settings[`p${pid}.elec.direct.generator_rate_per_kwh`]  ?? 1400,
+    generator_vat_percent:  settings[`p${pid}.elec.direct.generator_vat_percent`]   ?? 18,
+    diesel_price:           settings[`p${pid}.elec.gen.diesel_price`]               ?? 185,
+    l_per_hr:               settings[`p${pid}.elec.gen.l_per_hr`]                   ?? 6,
+    output_kw:              settings[`p${pid}.elec.gen.output_kw`]                  ?? 36,
+    maint_levy:             settings[`p${pid}.elec.gen.maint_levy`]                 ?? 50,
+    tank_size:              settings[`p${pid}.elec.gen.tank_size`]                  ?? 200,
+  });
+  const [generator, setGenerator] = useState(() => readGenerator(properties[0]?.id));
+  const setGen = (key, value) => setGenerator(g => ({ ...g, [key]: value }));
+  const saveGenerator = () => {
+    setProcessing(true);
+    router.patch('/superuser/settings/generator-billing', { property_id: pricingPropertyId, ...generator }, {
+      preserveScroll: true,
+      onFinish: () => setProcessing(false),
+    });
+  };
   const savePricing = () => {
     setProcessing(true);
     router.patch('/superuser/settings/submeter-pricing', { property_id: pricingPropertyId, ...pricing }, {
@@ -274,6 +292,56 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
             </div>
             <button type="button" className="btn-primary" onClick={savePricing} disabled={processing || !pricingPropertyId}>
               {processing ? <><span className="btn-spinner" />Saving…</> : 'Save Pricing'}
+            </button>
+          </div>
+
+          {/* Generator billing */}
+          <div className="card" style={{ padding: 20 }}>
+            <div className="card-title" style={{ marginBottom: 12 }}>Generator Billing Settings</div>
+            <div className="form-group" style={{ marginBottom: 12 }}>
+              <label className="form-label">Property</label>
+              <select className="form-input form-select" value={pricingPropertyId} onChange={e => changePricingProperty(e.target.value)}>
+                {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Generator Rate per kWh</label>
+                <MoneyInput className="form-input" value={generator.generator_rate_per_kwh} onChange={e => setGen('generator_rate_per_kwh', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Generator VAT %</label>
+                <input className="form-input" type="number" min="0" step="0.01" value={generator.generator_vat_percent} onChange={e => setGen('generator_vat_percent', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Diesel Price</label>
+                <MoneyInput className="form-input" value={generator.diesel_price} onChange={e => setGen('diesel_price', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Litres per Hour</label>
+                <input className="form-input" type="number" min="0" step="0.01" value={generator.l_per_hr} onChange={e => setGen('l_per_hr', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Output kW</label>
+                <input className="form-input" type="number" min="0" step="0.01" value={generator.output_kw} onChange={e => setGen('output_kw', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Maintenance Levy</label>
+                <MoneyInput className="form-input" value={generator.maint_levy} onChange={e => setGen('maint_levy', e.target.value)} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">Tank Size (L)</label>
+                <input className="form-input" type="number" min="0" step="0.01" value={generator.tank_size} onChange={e => setGen('tank_size', e.target.value)} />
+              </div>
+            </div>
+            <button type="button" className="btn-primary" onClick={saveGenerator} disabled={processing || !pricingPropertyId}>
+              {processing ? <><span className="btn-spinner" />Saving…</> : 'Save Generator Settings'}
             </button>
           </div>
 

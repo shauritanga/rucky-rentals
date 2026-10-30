@@ -88,7 +88,6 @@ Route::middleware('auth')->group(function () {
         Route::post('electricity/bills/generate', [ElectricityController::class, 'generateBills'])->name('electricity.bills.generate');
         Route::post('electricity/bills/issue', [ElectricityController::class, 'issueInvoices'])->name('electricity.bills.issue');
         Route::post('electricity/invoices/issue', [ElectricityController::class, 'issueInvoices'])->name('electricity.invoices.issue');
-        Route::post('electricity/settings/generator', [ElectricityController::class, 'updateGenSettings'])->name('electricity.settings.generator');
 
         Route::get('reports', [ReportController::class, 'index'])->name('reports');
         Route::get('reports/export', [ReportController::class, 'export'])->name('reports.export');
@@ -108,6 +107,7 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/managers/{id}/restore', [SuperuserController::class, 'restoreManager'])->name('superuser.managers.restore');
         Route::patch('superuser/properties/{property}/assign-manager', [SuperuserController::class, 'assignManager'])->name('superuser.properties.assign-manager');
         Route::patch('superuser/settings', [SuperuserController::class, 'updateSettings'])->name('superuser.settings.update');
+        Route::patch('superuser/settings/generator-billing', [SuperuserController::class, 'updateGeneratorBilling'])->name('superuser.settings.generator');
         Route::patch('superuser/settings/submeter-pricing', [SuperuserController::class, 'updateSubmeterPricing'])->name('superuser.settings.submeter');
         Route::post('superuser/settings/logo', [SuperuserController::class, 'updateLogo'])->name('superuser.settings.logo.update');
         Route::delete('superuser/settings/logo', [SuperuserController::class, 'removeLogo'])->name('superuser.settings.logo.delete');
