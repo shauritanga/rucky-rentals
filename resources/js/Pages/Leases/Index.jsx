@@ -289,7 +289,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     const deposit = Number(data.deposit) || (rent > 0
       ? (rent * depositRentMonths) + (serviceCharge * depositScMonths)
       : 0);
-    const annual = gross * 12;
     const fitoutDays = fitoutEnabled && possessionDate && fitoutToDate
       ? Math.max(0, Math.round((new Date(`${fitoutToDate}T00:00:00`) - new Date(`${possessionDate}T00:00:00`)) / 86400000) + 1)
       : 0;
@@ -312,7 +311,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       net,
       instalment,
       deposit,
-      annual,
       fitoutDays,
       fitoutExtraSC,
       fitoutExtraVAT,
@@ -1133,7 +1131,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Service charge WHT portion</span><strong>{formatMoneyPrecise(summary.serviceChargeWht, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{formatMoneyPrecise(summary.instalment, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>Security deposit</span><strong>{formatMoneyPrecise(summary.deposit, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Annual value (incl. VAT)</span><strong>{formatMoneyPrecise(summary.annual, selectedUnitCurrency)}</strong></div>
                   <div className="nl-summary-row"><span>Lease period</span><strong>{summary.period}</strong></div>
                   {fitoutEnabled && summary.fitoutDays > 0 && (
                     <div className="nl-summary-row">
