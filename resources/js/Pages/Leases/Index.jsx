@@ -988,6 +988,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                       placeholder="Search tenants..."
                       value={tenantSearch}
                       onFocus={()=>setShowTenantDropdown(true)}
+                      onClick={()=>setShowTenantDropdown(true)}
                       onBlur={()=>setTimeout(()=>setShowTenantDropdown(false),120)}
                       onChange={(e)=>{setTenantSearch(e.target.value);setShowTenantDropdown(true);}}
                     />
