@@ -217,6 +217,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           setStatus={setStatus}
           onOpenPropertyModal={openCreatePropertyModal}
           onEditProperty={openEditPropertyModal}
+          onDeleteProperty={(property) => { setDeleteTarget(property); setDeleteConfirm(''); }}
           onAssignManager={assignManager}
         />
       )}
