@@ -42,7 +42,7 @@ class DepositInvoiceService
 
         return DB::transaction(function () use ($lease, $amount, $rate, $unitRef, $userId) {
             $invoice = Invoice::create([
-                'invoice_number'       => $this->numbers->generateForTenant($lease->tenant, null, now()->toDateString()),
+                'invoice_number'       => $this->numbers->generateForDeposit($lease->tenant, null, now()->toDateString()),
                 'type'                 => 'proforma',
                 'kind'                 => 'deposit',
                 'property_id'          => $lease->property_id,
