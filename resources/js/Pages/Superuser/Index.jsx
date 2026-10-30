@@ -60,7 +60,6 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     address: '',
     city: 'Dar es Salaam',
     country: 'Tanzania',
-    phone: '',
     bank_name: '',
     bank_account: '',
     bank_account_name: '',
@@ -88,7 +87,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
   const resetPropertyForm = () => {
     reset();
     setData({
-      name: '', code: '', address: '', city: 'Dar es Salaam', country: 'Tanzania', phone: '',
+      name: '', code: '', address: '', city: 'Dar es Salaam', country: 'Tanzania',
       bank_name: '', bank_account: '', bank_account_name: '', swift_code: '', status: 'active',
       basements: 0, has_parking_floor: false, has_ground_floor: false, has_mezzanine: false, upper_floors: 7,
     });
@@ -106,7 +105,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     setEditingProperty(property);
     setData({
       name: property.name || '', code: property.code || '', address: property.address || '',
-      city: property.city || '', country: property.country || 'Tanzania', phone: property.phone || '',
+      city: property.city || '', country: property.country || 'Tanzania',
       bank_name: property.bank_name || '', bank_account: property.bank_account || '',
       bank_account_name: property.bank_account_name || '', swift_code: property.swift_code || '',
       status: property.status || 'active',
@@ -118,6 +117,18 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     });
     setUpperFloorsRaw(String(floorConfig.upper_floors || property.total_floors || 7));
     setShowModal(true);
+  };
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const confirmDeleteProperty = () => {
+    if (!deleteTarget || deleteConfirm.trim() !== deleteTarget.name) return;
+    setDeleting(true);
+    router.delete(`/superuser/properties/${deleteTarget.id}`, {
+      preserveScroll: true,
+      onFinish: () => { setDeleting(false); setDeleteTarget(null); setDeleteConfirm(''); setShowModal(false); setEditingProperty(null); },
+    });
   };
 
   const closePropertyModal = () => {
@@ -224,6 +235,21 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage settings={settings} />}
 
+      <div className={`modal-overlay ${deleteTarget ? 'open' : ''}`} style={{ zIndex: 1200 }} onClick={(e) => e.target === e.currentTarget && !deleting && setDeleteTarget(null)}>
+        <div className="modal" style={{ width: 'min(460px, calc(100vw - 24px))' }}>
+          <div className="modal-header"><div className="modal-title">Delete {deleteTarget?.name}?</div><button type="button" className="modal-close" onClick={() => setDeleteTarget(null)} disabled={deleting}>✕</button></div>
+          <div className="modal-body">
+            <p style={{ fontSize: 13.5, lineHeight: 1.55, marginBottom: 12 }}>This permanently removes the property and its chart of accounts. It only works for a property with no units, tenants, leases, invoices, payments or other records; otherwise it is refused and you should set it to Inactive instead.</p>
+            <label className="form-label">Type the property name to confirm</label>
+            <input className="form-input" value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} placeholder={deleteTarget?.name || ''} autoComplete="off" />
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn-ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</button>
+            <button type="button" className="btn-danger" onClick={confirmDeleteProperty} disabled={deleting || deleteConfirm.trim() !== (deleteTarget?.name || '\u0000')}>{deleting ? 'Deleting…' : 'Delete Property'}</button>
+          </div>
+        </div>
+      </div>
+
       <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closePropertyModal()}>
         <div className="modal" style={{ width: 'min(640px, calc(100vw - 24px))', height: 'min(760px, 88dvh)', maxHeight: 'min(92vh, calc(100dvh - 20px))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-header"><div className="modal-title">{editingProperty ? `Edit ${editingProperty.name}` : 'Add New Property'}</div><button type="button" className="modal-close" onClick={closePropertyModal} disabled={processing}>✕</button></div>
@@ -231,7 +257,6 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
             <div className="modal-body" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
               <div className="form-row"><div className="form-group"><label className="form-label">Property Name *</label><input className="form-input" value={data.name} onChange={(e) => setData('name', e.target.value)} placeholder="e.g. Ruky Heights" required />{errors.name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.name}</div>}</div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Address *</label><input className="form-input" value={data.address} onChange={(e) => setData('address', e.target.value)} placeholder="Full street address" required />{errors.address && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.address}</div>}</div><div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={(e) => setData('city', e.target.value)} placeholder="Dar es Salaam" />{errors.city && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.city}</div>}</div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Phone Number</label><input className="form-input" type="tel" value={data.phone} onChange={(e) => setData('phone', e.target.value)} placeholder="+255 000 000 000" />{errors.phone && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.phone}</div>}</div></div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Upper Floors *</label><input className="form-input" type="text" inputMode="numeric" pattern="[0-9]*" value={upperFloorsRaw} onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, ''); setUpperFloorsRaw(v); const n = parseInt(v, 10); if (!isNaN(n) && n >= 1) setData('upper_floors', n); }} onBlur={() => { const n = parseInt(upperFloorsRaw, 10); const clamped = isNaN(n) || n < 1 ? 1 : Math.min(n, 100); setData('upper_floors', clamped); setUpperFloorsRaw(String(clamped)); }} placeholder="e.g. 7" required />{errors.upper_floors && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{errors.upper_floors}</div>}</div>
                 <div className="form-group"><label className="form-label">Basement Levels</label><input className="form-input" type="number" value={data.basements} onChange={(e) => setData('basements', Math.max(0, parseInt(e.target.value, 10) || 0))} placeholder="0" min="0" max="10" /><div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>Number of underground floors, for example B1 or B1-B2.</div></div>
@@ -281,6 +306,9 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
               </div></div>
             </div>
             <div className="modal-footer" style={{ flexShrink: 0 }}>
+              {editingProperty && (
+                <button type="button" className="btn-danger" style={{ marginRight: 'auto' }} onClick={() => { setDeleteTarget(editingProperty); setDeleteConfirm(''); }} disabled={processing}>Delete Property</button>
+              )}
               <button type="button" className="btn-ghost" onClick={closePropertyModal} disabled={processing}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>
                 {processing ? (

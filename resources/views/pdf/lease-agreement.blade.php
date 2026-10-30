@@ -112,9 +112,9 @@
 <p>{{ $lessorName }} of {{ $lessorAddress }}{{ $lessorRegNo ? ', a limited liability company registered under certificate number ' . $lessorRegNo : '' }}, hereafter referred to as &ldquo;the Lessor&rdquo;</p>
 <p>And</p>
 @if($tenant->tenant_type === 'company')
-<p>{{ $lesseeName }} of {{ $lesseeAddress }}{{ $tenant->registration_number ? ', a limited liability company registered under certificate number ' . $tenant->registration_number : '' }}, hereafter referred to as &ldquo;the Lessee&rdquo;.</p>
+<p>{{ $lesseeName }} of {{ $lesseeAddress }}{{ $tenant->registration_number ? ', a limited liability company registered under certificate of incorporation number ' . $tenant->registration_number : '' }}, hereafter referred to as &ldquo;the Lessee&rdquo;.</p>
 @else
-<p>{{ $lesseeName }} of {{ $lesseeAddress }}{{ $tenant->national_id ? ', holder of National ID number ' . $tenant->national_id : '' }}, hereafter referred to as &ldquo;the Lessee&rdquo;.</p>
+<p>{{ $lesseeName }} of {{ $lesseeAddress }}{{ $tenant->national_id ? ', holder of ' . ($tenant->id_type && $tenant->id_type !== 'other' ? \App\Support\IdFormats::label($tenant->id_type) : 'ID') . ' number ' . $tenant->national_id : '' }}, hereafter referred to as &ldquo;the Lessee&rdquo;.</p>
 @endif
 
 <h2 class="part">Part A: Introduction</h2>

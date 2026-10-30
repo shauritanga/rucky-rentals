@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
+import MoneyInput from '@/Components/MoneyInput';
 
 // Sum of raw item amounts (net, VAT-exclusive)
 const invoiceItemsNet = (inv) => (inv.items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
@@ -1067,7 +1068,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Amount Received ({selectedInvoiceCurrency}) *</label>
-                  <input className="form-input" type="number" value={data.amount} onChange={(e) => setData('amount', e.target.value)} placeholder="Enter amount" required />
+                  <MoneyInput className="form-input" value={data.amount} onChange={(e) => setData('amount', e.target.value)} placeholder="Enter amount" required />
                   {errors.amount && <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)' }}>{errors.amount}</div>}
                 </div>
                 <div className="form-group">

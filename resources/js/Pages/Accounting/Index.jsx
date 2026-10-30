@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import MoneyInput from '@/Components/MoneyInput';
 
 const toNum = (v) => Number(v ?? 0) || 0;
 
@@ -757,8 +758,8 @@ export default function Accounting({ accounts = [], entries = [] }) {
                                                 <option value="">Select account...</option>
                                                 {accountData.map((a) => <option key={a.code} value={a.code}>{a.code} - {a.name}</option>)}
                                             </select>
-                                            <input className="form-input" type="number" placeholder="Debit" style={{ textAlign: 'right' }} value={l.dr || ''} onChange={(e) => updateJELine(i, { dr: Number(e.target.value) || 0 })} />
-                                            <input className="form-input" type="number" placeholder="Credit" style={{ textAlign: 'right' }} value={l.cr || ''} onChange={(e) => updateJELine(i, { cr: Number(e.target.value) || 0 })} />
+                                            <MoneyInput className="form-input" placeholder="Debit" style={{ textAlign: 'right' }} value={l.dr || ''} onChange={(e) => updateJELine(i, { dr: Number(e.target.value) || 0 })} />
+                                            <MoneyInput className="form-input" placeholder="Credit" style={{ textAlign: 'right' }} value={l.cr || ''} onChange={(e) => updateJELine(i, { cr: Number(e.target.value) || 0 })} />
                                             {jeForm.lines.length > 2 ? <button className="modal-close" style={{ width: 22, height: 22, fontSize: 12 }} onClick={() => removeJELine(i)}>x</button> : <div></div>}
                                         </div>
                                     ))}
@@ -797,7 +798,7 @@ export default function Accounting({ accounts = [], entries = [] }) {
                                 <div className="form-group"><label className="form-label">Category</label><input className="form-input" type="text" value={accountForm.cat} onChange={(e) => setAccountForm((f) => ({ ...f, cat: e.target.value }))} placeholder="e.g. Current Assets" /></div>
                             </div>
                             <div className="form-row">
-                                <div className="form-group"><label className="form-label">Opening Balance (TZS)</label><input className="form-input" type="number" value={accountForm.opening} onChange={(e) => setAccountForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" /></div>
+                                <div className="form-group"><label className="form-label">Opening Balance (TZS)</label><MoneyInput className="form-input" value={accountForm.opening} onChange={(e) => setAccountForm((f) => ({ ...f, opening: e.target.value }))} placeholder="0.00" /></div>
                                 <div className="form-group"><label className="form-label">Description</label><input className="form-input" type="text" value={accountForm.desc} onChange={(e) => setAccountForm((f) => ({ ...f, desc: e.target.value }))} placeholder="Optional" /></div>
                             </div>
                         </div>

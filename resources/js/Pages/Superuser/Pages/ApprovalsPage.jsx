@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import MoneyInput from '@/Components/MoneyInput';
 
 function formatDate(ts) {
     return formatDisplayDate(ts);
@@ -226,7 +227,7 @@ function DecisionModal({ open, action, subject, context, needsDepositRate = fals
                     {needsDepositRate && !isReject && (
                         <div className="form-group">
                             <label className="form-label" style={{ marginBottom: 5 }}>Exchange rate to book the security deposit (USD → TZS) *</label>
-                            <input className="form-input" type="number" step="0.0001" min="0.0001" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
+                            <MoneyInput decimals={4} className="form-input" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
                         </div>
                     )}
                     <div className="form-group">

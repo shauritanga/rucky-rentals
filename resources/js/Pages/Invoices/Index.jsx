@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
 import { formatExchangeRate } from '@/hooks/useExchangeRate';
+import MoneyInput from '@/Components/MoneyInput';
 
 const fmt = (n) => Number(n).toLocaleString();
 const VAT_RATE = 0.18;
@@ -749,11 +750,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                       <label className="form-label" style={{ marginBottom: 0 }}>Exchange Rate (USD → TZS) *</label>
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Up to 4 decimals</span>
                     </div>
-                    <input
+                    <MoneyInput decimals={4}
                       className="form-input"
-                      type="number"
-                      step="0.0001"
-                      min="0.0001"
                       value={data.usd_rate}
                       onChange={e=>onRateChange(e.target.value)}
                       placeholder="e.g. 2650.0000"
@@ -773,7 +771,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                   <div key={i} style={{display:'flex',gap:6,alignItems:'flex-start',marginBottom:8}}>
                     <div style={{flex:2}}><input className="form-input" placeholder="Description" value={item.description} onChange={e=>updateItem(i,'description',e.target.value)} style={{marginBottom:4}} /><input className="form-input" placeholder="Sub-description" value={item.sub_description} onChange={e=>updateItem(i,'sub_description',e.target.value)} style={{fontSize:12}} /></div>
                     <div style={{flex:'0 0 60px'}}><input className="form-input" type="number" placeholder="Qty" value={item.quantity} onChange={e=>updateItem(i,'quantity',+e.target.value)} /></div>
-                    <div style={{flex:'0 0 100px'}}><input className="form-input" type="number" placeholder="Amount" value={item.unit_price} onChange={e=>updateItem(i,'unit_price',+e.target.value)} /></div>
+                    <div style={{flex:'0 0 100px'}}><MoneyInput className="form-input" placeholder="Amount" value={item.unit_price} onChange={e=>updateItem(i,'unit_price',+e.target.value)} /></div>
                     {items.length>1 && <button type="button" className="btn-ghost" style={{flex:'0 0 32px',height:38,padding:0,justifyContent:'center',display:'flex',alignItems:'center'}} onClick={()=>setItems(items.filter((_,j)=>j!==i))}>✕</button>}
                   </div>
                 ))}

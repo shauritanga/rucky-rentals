@@ -10,7 +10,9 @@ class Tenant extends Model
         'property_id',
         'name',
         'first_name',
+        'middle_name',
         'last_name',
+        'id_type',
         'email',
         'phone',
         'national_id',
@@ -36,8 +38,8 @@ class Tenant extends Model
     protected static function booted(): void
     {
         static::saving(function (Tenant $tenant) {
-            if ($tenant->tenant_type === 'individual' && ($tenant->isDirty('first_name') || $tenant->isDirty('last_name'))) {
-                $tenant->name = trim(($tenant->first_name ?? '') . ' ' . ($tenant->last_name ?? ''));
+            if ($tenant->tenant_type === 'individual' && ($tenant->isDirty('first_name') || $tenant->isDirty('middle_name') || $tenant->isDirty('last_name'))) {
+                $tenant->name = trim(preg_replace('/\s+/', ' ', ($tenant->first_name ?? '') . ' ' . ($tenant->middle_name ?? '') . ' ' . ($tenant->last_name ?? '')));
             }
 
             if (empty($tenant->invoice_code)) {

@@ -281,7 +281,6 @@ class SuperuserController extends Controller
             'address'          => 'nullable|string|max:255',
             'city'             => 'nullable|string|max:120',
             'country'          => 'nullable|string|max:120',
-            'phone'            => 'nullable|string|max:30',
             'bank_name'        => 'required|string|max:120',
             'bank_account'     => 'required|string|max:60',
             'bank_account_name'=> 'required|string|max:120',
@@ -353,6 +352,66 @@ class SuperuserController extends Controller
         return back()->with('success', 'Property created successfully.');
     }
 
+    /**
+     * Delete a property that has never been used. A property with units, leases, tenants,
+     * invoices, payments, ledger entries, repairs or clearances is refused so financial
+     * records are never lost; set it Inactive instead.
+     */
+    public function destroyProperty(Request $request, Property $property)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+
+        $inUse = [
+            'units'                 => 'units',
+            'leases'                => 'leases',
+            'tenants'               => 'tenants',
+            'invoices'              => 'invoices',
+            'payments'              => 'payments',
+            'journal_entries'       => 'ledger entries',
+            'maintenance_tickets'   => 'repair tickets',
+            'scheduled_maintenance' => 'scheduled maintenance',
+            'unit_clearances'       => 'clearances',
+            'electricity_sales'     => 'electricity sales',
+            'documents'             => 'documents',
+        ];
+        $found = [];
+        foreach ($inUse as $table => $label) {
+            if (!\Illuminate\Support\Facades\Schema::hasTable($table) || !\Illuminate\Support\Facades\Schema::hasColumn($table, 'property_id')) {
+                continue;
+            }
+            if (DB::table($table)->where('property_id', $property->id)->exists()) {
+                $found[] = $label;
+            }
+        }
+
+        if ($found) {
+            return back()->with('error', "{$property->name} can't be deleted because it has " . implode(', ', $found) . '. Set it to Inactive instead.');
+        }
+
+        $staff = User::where('property_id', $property->id)->count();
+        if ($staff > 0) {
+            return back()->with('error', "{$property->name} still has {$staff} team member(s) assigned. Reassign or remove them first.");
+        }
+
+        $name = $property->name;
+        $code = $property->code;
+        DB::transaction(function () use ($property) {
+            // The chart of accounts created with the property is removed with it.
+            DB::table('accounts')->where('property_id', $property->id)->delete();
+            $property->delete();
+        });
+
+        $this->logAudit(
+            request: $request,
+            action: 'Property deleted',
+            resource: sprintf('%s (%s)', $name, $code),
+            propertyName: $name,
+            category: 'settings',
+        );
+
+        return back()->with('success', "{$name} deleted.");
+    }
+
     public function updateProperty(Request $request, Property $property)
     {
         $data = $request->validate([
@@ -360,7 +419,6 @@ class SuperuserController extends Controller
             'address'           => 'nullable|string|max:255',
             'city'              => 'nullable|string|max:120',
             'country'           => 'nullable|string|max:120',
-            'phone'             => 'nullable|string|max:30',
             'bank_name'         => 'nullable|string|max:120',
             'bank_account'      => 'nullable|string|max:60',
             'bank_account_name' => 'nullable|string|max:120',

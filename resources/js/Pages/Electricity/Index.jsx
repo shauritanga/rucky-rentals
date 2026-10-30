@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { router, usePage, useRemember } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
+import MoneyInput from '@/Components/MoneyInput';
 
 const fmtNum = (value) => Number(value ?? 0).toLocaleString();
 const fmtTZS = (value) => `TZS ${fmtNum(Math.round(Number(value ?? 0)))}`;
@@ -495,11 +496,11 @@ export default function Electricity({
                                         <div className="form-row">
                                             <div className="form-group">
                                                 <label className="form-label">Amount Paid</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={saleForm.amount_paid} onChange={(e) => setSaleForm((form) => ({ ...form, amount_paid: e.target.value }))} />
+                                                <MoneyInput className="form-input" value={saleForm.amount_paid} onChange={(e) => setSaleForm((form) => ({ ...form, amount_paid: e.target.value }))} />
                                             </div>
                                             <div className="form-group">
                                                 <label className="form-label">Unit Price</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={saleForm.unit_price} onChange={(e) => setSaleForm((form) => ({ ...form, unit_price: e.target.value }))} />
+                                                <MoneyInput className="form-input" value={saleForm.unit_price} onChange={(e) => setSaleForm((form) => ({ ...form, unit_price: e.target.value }))} />
                                             </div>
                                         </div>
                                         <div className="form-group" style={{ marginBottom: 12 }}>
@@ -536,7 +537,7 @@ export default function Electricity({
                                     <div style={{ padding: '16px 18px' }}>
                                         <div className="form-group" style={{ marginBottom: 12 }}>
                                             <label className="form-label">Default Unit Price (VAT-inclusive)</label>
-                                            <input className="form-input" type="number" min="0" step="0.01" value={submeterPricingForm.unit_price} onChange={(e) => setSubmeterPricingForm((f) => ({ ...f, unit_price: e.target.value }))} />
+                                            <MoneyInput className="form-input" value={submeterPricingForm.unit_price} onChange={(e) => setSubmeterPricingForm((f) => ({ ...f, unit_price: e.target.value }))} />
                                         </div>
                                         <div className="form-group" style={{ marginBottom: 12 }}>
                                             <label className="form-label">VAT Rate (%)</label>
@@ -619,7 +620,7 @@ export default function Electricity({
                                         <div className="form-row">
                                             <div className="form-group">
                                                 <label className="form-label">Generator Rate per kWh</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={generatorForm.generator_rate_per_kwh} onChange={(e) => setGeneratorForm((form) => ({ ...form, generator_rate_per_kwh: e.target.value }))} />
+                                                <MoneyInput className="form-input" value={generatorForm.generator_rate_per_kwh} onChange={(e) => setGeneratorForm((form) => ({ ...form, generator_rate_per_kwh: e.target.value }))} />
                                             </div>
                                             <div className="form-group">
                                                 <label className="form-label">Generator VAT %</label>
@@ -629,7 +630,7 @@ export default function Electricity({
                                         <div className="form-row">
                                             <div className="form-group">
                                                 <label className="form-label">Diesel Price</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={generatorForm.diesel_price} onChange={(e) => setGeneratorForm((form) => ({ ...form, diesel_price: e.target.value }))} />
+                                                <MoneyInput className="form-input" value={generatorForm.diesel_price} onChange={(e) => setGeneratorForm((form) => ({ ...form, diesel_price: e.target.value }))} />
                                             </div>
                                             <div className="form-group">
                                                 <label className="form-label">Litres per Hour</label>
@@ -643,7 +644,7 @@ export default function Electricity({
                                             </div>
                                             <div className="form-group">
                                                 <label className="form-label">Maintenance Levy</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={generatorForm.maint_levy} onChange={(e) => setGeneratorForm((form) => ({ ...form, maint_levy: e.target.value }))} />
+                                                <MoneyInput className="form-input" value={generatorForm.maint_levy} onChange={(e) => setGeneratorForm((form) => ({ ...form, maint_levy: e.target.value }))} />
                                             </div>
                                         </div>
                                         <div className="form-group" style={{ marginBottom: 12 }}>
@@ -674,7 +675,7 @@ export default function Electricity({
                                         <div className="form-row">
                                             <div className="form-group">
                                                 <label className="form-label">Price per Litre</label>
-                                                <input className="form-input" type="number" min="0" step="0.01" value={fuelForm.price_per_litre} onChange={(e) => setFuelForm((form) => ({ ...form, price_per_litre: e.target.value }))} />
+                                                <MoneyInput className="form-input" value={fuelForm.price_per_litre} onChange={(e) => setFuelForm((form) => ({ ...form, price_per_litre: e.target.value }))} />
                                             </div>
                                             <div className="form-group">
                                                 <label className="form-label">Tank Level After %</label>

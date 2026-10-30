@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import MoneyInput from '@/Components/MoneyInput';
 
 const CURRENCY_FALLBACK = 'TZS';
 
@@ -553,7 +554,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                     {String(eligibleLeases.find((l) => String(l.id) === String(wizardLeaseId))?.currency || '').toUpperCase() === 'USD' && (
                       <div className="form-group">
                         <label className="form-label">Exchange rate to convert the deposit (USD → TZS) *</label>
-                        <input className="form-input" type="number" step="0.0001" min="0.0001" value={wizardDepositRate} onChange={(e) => setWizardDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
+                        <MoneyInput decimals={4} className="form-input" value={wizardDepositRate} onChange={(e) => setWizardDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
                       </div>
                     )}
                     <div className="form-group">
@@ -656,7 +657,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                   </div>
                   <div className="form-group"><label className="form-label">Description *</label><input className="form-input" type="text" placeholder="e.g. Cracked kitchen tile" value={itemDraft.description} onChange={(e) => setItemDraft((d) => ({ ...d, description: e.target.value }))} /></div>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">Repair Cost *</label><input className="form-input" type="number" placeholder="0" min="0" value={itemDraft.cost} onChange={(e) => setItemDraft((d) => ({ ...d, cost: e.target.value }))} /></div>
+                    <div className="form-group"><label className="form-label">Repair Cost *</label><MoneyInput className="form-input" placeholder="0" value={itemDraft.cost} onChange={(e) => setItemDraft((d) => ({ ...d, cost: e.target.value }))} /></div>
                     <div className="form-group">
                       <label className="form-label">Responsible Party</label>
                       <select className="form-input form-select" value={itemDraft.responsible_party} onChange={(e) => setItemDraft((d) => ({ ...d, responsible_party: e.target.value }))}>

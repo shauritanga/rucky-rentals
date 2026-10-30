@@ -8,6 +8,8 @@ use App\Models\Property;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
 use Illuminate\Http\Request;
+use App\Support\IdFormats;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class TenantController extends Controller
@@ -38,14 +40,16 @@ class TenantController extends Controller
         $data = $request->validate([
             'tenant_type'         => 'required|in:individual,company',
             'first_name'          => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'middle_name'         => 'nullable|string|max:255',
             'last_name'           => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'id_type'             => 'required_if:tenant_type,individual|nullable|in:national,voter,passport,driving_license,other',
             'national_id'         => 'required_if:tenant_type,individual|nullable|string|max:100',
             'nok_name'            => 'required_if:tenant_type,individual|nullable|string|max:255',
             'nok_phone'           => 'required_if:tenant_type,individual|nullable|string|max:50',
             'nok_relation'        => 'required_if:tenant_type,individual|nullable|string|max:100',
             'company_name'        => 'required_if:tenant_type,company|nullable|string|max:255',
             'registration_number' => 'nullable|string|max:100',
-            'tin'                 => 'required_if:tenant_type,company|nullable|string|max:50',
+            'tin'                 => 'required|string|max:50',
             'vrn'                 => 'nullable|string|max:50',
             'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
             'email'               => 'required|email|unique:tenants',
@@ -57,21 +61,24 @@ class TenantController extends Controller
             'invoice_code'        => ['nullable', 'alpha_num', 'max:12', 'unique:tenants,invoice_code'],
         ]);
 
+        $data = $this->normalizeIdentity($data, null);
+
         if ($data['tenant_type'] === 'company') {
             $data['name'] = $data['company_name'];
             $words = explode(' ', trim($data['company_name']));
             $data['first_name']   = null;
+            $data['middle_name']  = null;
             $data['last_name']    = null;
+            $data['id_type']      = null;
             $data['national_id']  = null;
             $data['nok_name']     = null;
             $data['nok_phone']    = null;
             $data['nok_relation'] = null;
         } else {
-            $data['name'] = trim($data['first_name'] . ' ' . $data['last_name']);
+            $data['name'] = $this->fullName($data);
             $words = explode(' ', trim($data['name']));
             $data['company_name']        = null;
             $data['registration_number'] = null;
-            $data['tin']                 = null;
             $data['vrn']                 = null;
             $data['contact_person']      = null;
         }
@@ -115,14 +122,16 @@ class TenantController extends Controller
         $data = $request->validate([
             'tenant_type'         => 'required|in:individual,company',
             'first_name'          => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'middle_name'         => 'nullable|string|max:255',
             'last_name'           => 'required_if:tenant_type,individual|nullable|string|max:255',
+            'id_type'             => 'required_if:tenant_type,individual|nullable|in:national,voter,passport,driving_license,other',
             'national_id'         => 'required_if:tenant_type,individual|nullable|string|max:100',
             'nok_name'            => 'required_if:tenant_type,individual|nullable|string|max:255',
             'nok_phone'           => 'required_if:tenant_type,individual|nullable|string|max:50',
             'nok_relation'        => 'required_if:tenant_type,individual|nullable|string|max:100',
             'company_name'        => 'required_if:tenant_type,company|nullable|string|max:255',
             'registration_number' => 'nullable|string|max:100',
-            'tin'                 => 'required_if:tenant_type,company|nullable|string|max:50',
+            'tin'                 => 'required|string|max:50',
             'vrn'                 => 'nullable|string|max:50',
             'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
             'email'               => 'required|email|unique:tenants,email,' . $tenant->id,
@@ -134,19 +143,22 @@ class TenantController extends Controller
             'invoice_code'        => ['nullable', 'alpha_num', 'max:12', 'unique:tenants,invoice_code,' . $tenant->id],
         ]);
 
+        $data = $this->normalizeIdentity($data, $tenant);
+
         if ($data['tenant_type'] === 'company') {
             $data['name'] = $data['company_name'];
             $data['first_name']   = null;
+            $data['middle_name']  = null;
             $data['last_name']    = null;
+            $data['id_type']      = null;
             $data['national_id']  = null;
             $data['nok_name']     = null;
             $data['nok_phone']    = null;
             $data['nok_relation'] = null;
         } else {
-            $data['name'] = trim($data['first_name'] . ' ' . $data['last_name']);
+            $data['name'] = $this->fullName($data);
             $data['company_name']        = null;
             $data['registration_number'] = null;
-            $data['tin']                 = null;
             $data['vrn']                 = null;
             $data['contact_person']      = null;
         }
@@ -205,5 +217,49 @@ class TenantController extends Controller
         $propertyId = $this->effectivePropertyId($request);
         if ($propertyId === null) { $query->whereRaw('1 = 0'); return; }
         $query->where('property_id', $propertyId);
+    }
+
+    private function fullName(array $data): string
+    {
+        return trim(preg_replace('/\s+/', ' ', ($data['first_name'] ?? '') . ' ' . ($data['middle_name'] ?? '') . ' ' . ($data['last_name'] ?? '')));
+    }
+
+    /**
+     * Normalise the TIN and ID number and check them against their formats. A value that is
+     * unchanged on an existing tenant is accepted as-is so legacy records can still be edited.
+     */
+    private function normalizeIdentity(array $data, ?Tenant $existing): array
+    {
+        $errors = [];
+
+        $tin = IdFormats::normalizeTin($data['tin'] ?? '');
+        $tinUnchanged = $existing && $existing->tin !== null && IdFormats::normalizeTin($existing->tin) === $tin;
+        if (!$tinUnchanged && ($problem = IdFormats::tinProblem($tin))) {
+            $errors['tin'] = $problem;
+        }
+        $data['tin'] = $tin !== '' ? $tin : ($data['tin'] ?? null);
+
+        if (($data['tenant_type'] ?? null) === 'individual') {
+            $type = $data['id_type'] ?? null;
+            if ($type === 'other') {
+                $data['national_id'] = trim((string) ($data['national_id'] ?? ''));
+                $legacyOk = $existing && $existing->id_type === 'other' && $existing->national_id === $data['national_id'];
+                if (!$legacyOk) {
+                    $errors['id_type'] = 'Choose National, Voter, Passport or Driving Licence.';
+                }
+            } else {
+                $number = IdFormats::normalize($type, $data['national_id'] ?? '');
+                if ($problem = IdFormats::problem($type, $number)) {
+                    $errors['national_id'] = $problem;
+                }
+                $data['national_id'] = $number;
+            }
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return $data;
     }
 }

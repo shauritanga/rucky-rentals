@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import { ID_TYPES, ID_TYPE_OPTIONS, TIN, formatId, formatTin, idLabel } from '@/utils/idFormats';
 
 const fmt = (n) => Number(n).toLocaleString();
 
@@ -32,11 +33,11 @@ export default function TenantsIndex({ tenants }) {
   const [submitMessage, setSubmitMessage] = useState({ type: '', text: '' });
   const [submitError,   setSubmitError]   = useState('');
 
-  const { data, setData, post, put, processing, reset } = useForm({
+  const { data, setData, post, put, processing, reset, errors } = useForm({
     tenant_type: 'individual',
-    first_name: '', last_name: '', email: '', phone: '',
+    first_name: '', middle_name: '', last_name: '', email: '', phone: '',
     address: '', city: '', country: '',
-    national_id: '',
+    id_type: '', national_id: '',
     nok_name: '', nok_phone: '', nok_relation: '',
     company_name: '', registration_number: '', tin: '', vrn: '', contact_person: '',
     notes: '',
@@ -104,9 +105,9 @@ export default function TenantsIndex({ tenants }) {
     setEditingId(tenant.id);
     setData({
       tenant_type: tenant.tenant_type || 'individual',
-      first_name: tenant.first_name || '', last_name: tenant.last_name || '', email: tenant.email || '', phone: tenant.phone || '',
+      first_name: tenant.first_name || '', middle_name: tenant.middle_name || '', last_name: tenant.last_name || '', email: tenant.email || '', phone: tenant.phone || '',
       address: tenant.address || '', city: tenant.city || '', country: tenant.country || '',
-      national_id: tenant.national_id || '',
+      id_type: tenant.id_type || '', national_id: tenant.national_id || '',
       nok_name: tenant.nok_name || '', nok_phone: tenant.nok_phone || '', nok_relation: tenant.nok_relation || '',
       company_name: tenant.company_name || '', registration_number: tenant.registration_number || '',
       tin: tenant.tin || '', vrn: tenant.vrn || '', contact_person: tenant.contact_person || '',
@@ -367,7 +368,7 @@ export default function TenantsIndex({ tenants }) {
                       ) : (
                         <div className="tdr-contact-item">
                           <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-                          <div><div className="tdr-contact-label">National ID</div><div className="tdr-contact-value">{selected.national_id||'—'}</div></div>
+                          <div><div className="tdr-contact-label">{selected.id_type && selected.id_type !== 'other' ? idLabel(selected.id_type) : 'ID Number'}</div><div className="tdr-contact-value">{formatId(selected.id_type, selected.national_id)||'—'}</div></div>
                         </div>
                       )}
                     </div>
@@ -418,8 +419,8 @@ export default function TenantsIndex({ tenants }) {
                       <div className="tdr-section-title">Business Registration</div>
                       <div className="tdr-kv-grid">
                         <div className="tdr-kv"><div className="tdr-kv-label">Company Name</div><div className="tdr-kv-value">{selected.company_name||'—'}</div></div>
-                        <div className="tdr-kv"><div className="tdr-kv-label">Reg. Number</div><div className="tdr-kv-value">{selected.registration_number||'—'}</div></div>
-                        <div className="tdr-kv"><div className="tdr-kv-label">TIN</div><div className="tdr-kv-value">{selected.tin||'—'}</div></div>
+                        <div className="tdr-kv"><div className="tdr-kv-label">Incorporation No.</div><div className="tdr-kv-value">{selected.registration_number||'—'}</div></div>
+                        <div className="tdr-kv"><div className="tdr-kv-label">TIN</div><div className="tdr-kv-value">{formatTin(selected.tin)||'—'}</div></div>
                         <div className="tdr-kv"><div className="tdr-kv-label">VRN</div><div className="tdr-kv-value">{selected.vrn||'—'}</div></div>
                       </div>
                     </div>
@@ -480,8 +481,8 @@ export default function TenantsIndex({ tenants }) {
               <div className="form-group" style={{marginBottom:16}}>
                 <label className="form-label">Tenant Type</label>
                 <div className="nl-toggle-bar">
-                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='individual'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'individual',company_name:'',registration_number:'',tin:'',vrn:'',contact_person:''}))}>Individual</button>
-                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='company'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'company',first_name:'',last_name:'',national_id:'',nok_name:'',nok_phone:'',nok_relation:''}))}>Company</button>
+                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='individual'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'individual',company_name:'',registration_number:'',vrn:'',contact_person:''}))}>Individual</button>
+                  <button type="button" className={`nl-toggle-btn ${data.tenant_type==='company'?'active':''}`} onClick={()=>setData(d=>({...d,tenant_type:'company',first_name:'',middle_name:'',last_name:'',id_type:'',national_id:'',nok_name:'',nok_phone:'',nok_relation:''}))}>Company</button>
                 </div>
               </div>
 
@@ -494,10 +495,10 @@ export default function TenantsIndex({ tenants }) {
                   </div>
                   <div className="form-row">
                     <div className="form-group"><label className="form-label">Contact Person *</label><input className="form-input" value={data.contact_person} onChange={e=>setData('contact_person',e.target.value)} required /></div>
-                    <div className="form-group"><label className="form-label">Registration Number</label><input className="form-input" value={data.registration_number} onChange={e=>setData('registration_number',e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">Incorporation Number</label><input className="form-input" value={data.registration_number} onChange={e=>setData('registration_number',e.target.value)} /></div>
                   </div>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">TIN *</label><input className="form-input" value={data.tin} onChange={e=>setData('tin',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">TIN *</label><input className="form-input" inputMode="numeric" maxLength={11} value={TIN.format(data.tin)} onChange={e=>setData('tin',TIN.normalize(e.target.value))} placeholder={TIN.placeholder} required />{errors.tin && <div className="form-error">{errors.tin}</div>}</div>
                     <div className="form-group"><label className="form-label">VRN</label><input className="form-input" value={data.vrn} onChange={e=>setData('vrn',e.target.value)} /></div>
                   </div>
                 </>
@@ -508,10 +509,37 @@ export default function TenantsIndex({ tenants }) {
                 <>
                   <div className="form-row">
                     <div className="form-group"><label className="form-label">First Name *</label><input className="form-input" value={data.first_name} onChange={e=>setData('first_name',e.target.value)} required /></div>
-                    <div className="form-group"><label className="form-label">Last Name *</label><input className="form-input" value={data.last_name} onChange={e=>setData('last_name',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">Middle Name <span style={{color:'var(--text-muted)',fontWeight:400}}>(optional)</span></label><input className="form-input" value={data.middle_name} onChange={e=>setData('middle_name',e.target.value)} /></div>
                   </div>
                   <div className="form-row">
-                    <div className="form-group"><label className="form-label">National ID / Passport *</label><input className="form-input" value={data.national_id} onChange={e=>setData('national_id',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">Last Name *</label><input className="form-input" value={data.last_name} onChange={e=>setData('last_name',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">TIN *</label><input className="form-input" inputMode="numeric" maxLength={11} value={TIN.format(data.tin)} onChange={e=>setData('tin',TIN.normalize(e.target.value))} placeholder={TIN.placeholder} required />{errors.tin && <div className="form-error">{errors.tin}</div>}</div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label">ID Type *</label>
+                      <select className="form-input form-select" value={data.id_type} onChange={e=>setData(d=>({...d,id_type:e.target.value,national_id:''}))} required>
+                        <option value="" disabled>Select ID type</option>
+                        {ID_TYPE_OPTIONS.map(k => <option key={k} value={k}>{ID_TYPES[k].label}</option>)}
+                        {data.id_type === 'other' && <option value="other">Other (legacy)</option>}
+                      </select>
+                      {errors.id_type && <div className="form-error">{errors.id_type}</div>}
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">{data.id_type ? `${idLabel(data.id_type)} Number *` : 'ID Number *'}</label>
+                      <input
+                        className="form-input"
+                        value={data.id_type ? ID_TYPES[data.id_type].format(data.national_id) : ''}
+                        onChange={e=>setData('national_id', ID_TYPES[data.id_type].normalize(e.target.value))}
+                        disabled={!data.id_type}
+                        maxLength={data.id_type ? ID_TYPES[data.id_type].maxLength + 4 : undefined}
+                        inputMode={data.id_type === 'passport' || data.id_type === 'other' ? 'text' : 'numeric'}
+                        placeholder={data.id_type ? ID_TYPES[data.id_type].placeholder : 'Choose an ID type first'}
+                        required
+                      />
+                      {data.id_type && ID_TYPES[data.id_type].hint && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:3}}>{ID_TYPES[data.id_type].hint}</div>}
+                      {errors.national_id && <div className="form-error">{errors.national_id}</div>}
+                    </div>
                   </div>
                 </>
               )}
@@ -525,8 +553,8 @@ export default function TenantsIndex({ tenants }) {
               {/* Address — shared for both types */}
               <div className="form-row">
                 <div className="form-group" style={{gridColumn:'1 / -1'}}>
-                  <label className="form-label">Address</label>
-                  <input className="form-input" value={data.address} onChange={e=>setData('address',e.target.value)} placeholder="Street / building name" />
+                  <label className="form-label">Postal Address</label>
+                  <input className="form-input" value={data.address} onChange={e=>setData('address',e.target.value)} placeholder="e.g. P.O. Box 1234" />
                 </div>
               </div>
               <div className="form-row">

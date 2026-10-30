@@ -4,6 +4,7 @@ import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { floorSortOrder } from '@/utils/floorConfig';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import CreatableTypeSelect, { ensureOtherAtEnd } from '@/Components/CreatableTypeSelect';
+import MoneyInput from '@/Components/MoneyInput';
 
 const STATUS_CLASS = { occupied:'occupied', vacant:'vacant', overdue:'overdue', maintenance:'maintenance' };
 const STATUS_LABEL = { occupied:'Occupied', vacant:'Vacant', overdue:'Overdue', maintenance:'Maintenance' };
@@ -523,13 +524,13 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                 </div>
                 <div className="form-group">
                   <label className="form-label">Rent Rate per m² ({editData.currency})</label>
-                  <input className="form-input" type="number" step="0.0001" min="0" value={editData.rate_per_sqm} onChange={e => setEditData('rate_per_sqm', e.target.value)} required />
+                  <MoneyInput decimals={4} className="form-input" value={editData.rate_per_sqm} onChange={e => setEditData('rate_per_sqm', e.target.value)} required />
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Service Charge Rate per m² ({editData.currency})</label>
-                  <input className="form-input" type="number" step="0.0001" min="0" value={editData.service_charge_per_sqm} onChange={e => setEditData('service_charge_per_sqm', e.target.value)} />
+                  <MoneyInput decimals={4} className="form-input" value={editData.service_charge_per_sqm} onChange={e => setEditData('service_charge_per_sqm', e.target.value)} />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Electricity Type</label>
@@ -691,14 +692,14 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                 </div>
                 <div className="form-group">
                   <label className="form-label">Rent Rate per m² ({data.currency})</label>
-                  <input className={`form-input${errors.rate_per_sqm ? ' input-error' : ''}`} type="number" step="0.0001" min="0" value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required />
+                  <MoneyInput decimals={4} className={`form-input${errors.rate_per_sqm ? ' input-error' : ''}`} value={data.rate_per_sqm} onChange={e=>setData('rate_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '25000' : '20'} required />
                   {errors.rate_per_sqm && <div className="form-error">{errors.rate_per_sqm}</div>}
                 </div>
               </div>
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Service Charge Rate per m² ({data.currency})</label>
-                  <input className={`form-input${errors.service_charge_per_sqm ? ' input-error' : ''}`} type="number" step="0.0001" min="0" value={data.service_charge_per_sqm} onChange={e=>setData('service_charge_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '2000' : '2'} />
+                  <MoneyInput decimals={4} className={`form-input${errors.service_charge_per_sqm ? ' input-error' : ''}`} value={data.service_charge_per_sqm} onChange={e=>setData('service_charge_per_sqm',e.target.value)} placeholder={data.currency==='TZS' ? '2000' : '2'} />
                   {errors.service_charge_per_sqm && <div className="form-error">{errors.service_charge_per_sqm}</div>}
                 </div>
                 <div className="form-group">

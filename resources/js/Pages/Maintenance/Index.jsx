@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import MoneyInput from '@/Components/MoneyInput';
 
 const CAT_ICONS = {
   Plumbing: '🔧',
@@ -865,7 +866,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
               <div className="form-group"><label className="form-label">Title *</label><input className="form-input" type="text" value={data.title} onChange={(e) => setData('title', e.target.value)} placeholder="e.g. Broken water pipe in bathroom" required /></div>
               <div className="form-group"><label className="form-label">Description & Observations</label><textarea className="form-input" value={data.description} onChange={(e) => setData('description', e.target.value)} rows={3} style={{ resize: 'vertical' }} placeholder="Describe the issue, when it started, any safety concerns…" /></div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Estimated Labour (TZS)</label><input className="form-input" type="number" value={data.labour} onChange={(e) => setData('labour', e.target.value)} placeholder="0" /></div>
+                <div className="form-group"><label className="form-label">Estimated Labour (TZS)</label><MoneyInput className="form-input" value={data.labour} onChange={(e) => setData('labour', e.target.value)} placeholder="0" /></div>
                 <div className="form-group"><label className="form-label">Scheduled Date (if planned)</label><input className="form-input" type="date" value={data.scheduled_date} onChange={(e) => setData('scheduled_date', e.target.value)} /></div>
               </div>
 
@@ -891,7 +892,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
                     </div>
                     <div>
                       <label className="form-label">Price / Unit</label>
-                      <input className="form-input" type="number" placeholder="0" style={{ fontSize: '12.5px' }} value={row.unit_price} onChange={(e) => updateMaterialRow(row.id, 'unit_price', Number(e.target.value || 0))} />
+                      <MoneyInput className="form-input" placeholder="0" style={{ fontSize: '12.5px' }} value={row.unit_price} onChange={(e) => updateMaterialRow(row.id, 'unit_price', Number(e.target.value || 0))} />
                     </div>
                     <button type="button" aria-label="Remove material" title="Remove material" onClick={() => removeMaterialRow(row.id)} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 18, lineHeight: 1, height: 38 }}>×</button>
                   </div>

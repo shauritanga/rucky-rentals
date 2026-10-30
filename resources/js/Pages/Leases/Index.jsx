@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
+import MoneyInput from '@/Components/MoneyInput';
 
 const fmt = (n) => Number(n).toLocaleString();
 const CURRENCY_FALLBACK = 'USD';
@@ -689,7 +690,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                         {user?.role === 'superuser' && leaseIsUsd(selected) && Number(selected.deposit) > 0 && (
                           <div className="form-group" style={{ margin: '10px 0' }}>
                             <label className="form-label">Exchange rate to book the security deposit (USD → TZS) *</label>
-                            <input className="form-input" type="number" step="0.0001" min="0.0001" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
+                            <MoneyInput decimals={4} className="form-input" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
                           </div>
                         )}
                         {user?.role === 'superuser' && (
@@ -1103,8 +1104,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 </div>
               )}
               <div className="form-row">
-                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{selectedUnitCurrency === 'USD' ? 'Monthly Rent (unit rate basis) *' : 'Monthly Rent (TZS) *'} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><input className="form-input" type="number" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
-                <div className="form-group"><label className="form-label">{selectedUnitCurrency === 'USD' ? 'Security Deposit (unit rate basis)' : 'Security Deposit (TZS)'}</label><input className="form-input" type="number" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
+                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{selectedUnitCurrency === 'USD' ? 'Monthly Rent (unit rate basis) *' : 'Monthly Rent (TZS) *'} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><MoneyInput className="form-input" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
+                <div className="form-group"><label className="form-label">{selectedUnitCurrency === 'USD' ? 'Security Deposit (unit rate basis)' : 'Security Deposit (TZS)'}</label><MoneyInput className="form-input" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
                 {selectedUnitCurrency === 'USD' && (
                   <div style={{ fontSize: 11.5, color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
                     This unit is priced in USD. The lease is shown in TZS once a proforma is created with the day's exchange rate. The refundable security deposit is billed on a separate non-tax proforma when the lease is approved.
