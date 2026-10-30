@@ -194,6 +194,15 @@ class InvoiceController extends Controller
         if (!empty($data['lease_id'])) {
             $lease = Lease::findOrFail($data['lease_id']);
             $propertyId = $lease->property_id;
+
+            // A lease invoice is due on the first day of the installment it bills.
+            $nextInstallment = LeaseInstallment::where('lease_id', $lease->id)
+                ->whereNull('invoice_id')
+                ->orderBy('sequence')
+                ->first();
+            if ($nextInstallment) {
+                $data['due_date'] = Carbon::parse($nextInstallment->period_start ?? $nextInstallment->due_date)->toDateString();
+            }
         }
 
         if ($effectivePropertyId !== null) {

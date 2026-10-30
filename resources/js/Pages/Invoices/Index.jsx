@@ -484,6 +484,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       tenant_email: tenantEmail,
       unit_ref: unitRef,
       period: billingPeriod.text || d.period,
+      due_date: billingPeriod.start || d.due_date,
     }));
 
     // All lease invoices are proforma by default (server enforces this too)
@@ -504,6 +505,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       tenant_email: getLeaseTenantEmail(selectedLease),
       unit_ref: getLeaseUnitRef(selectedLease),
       period: billingPeriod.text || d.period,
+      due_date: d.due_date || billingPeriod.start || '',
     }));
     applyLeaseItems(selectedLease, Number(data.usd_rate) || 0);
   }, [data.lease_id, leases]);
@@ -739,7 +741,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                 <div className="form-group"><label className="form-label">Unit</label><input className="form-input" value={data.unit_ref} onChange={e=>setData('unit_ref',e.target.value)} placeholder="e.g. A-101" /></div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Due Date *</label><input className="form-input" type="date" value={data.due_date} onChange={e=>setData('due_date',e.target.value)} /></div>
+                <div className="form-group"><label className="form-label">Due Date *</label><input className="form-input" type="date" value={data.due_date} onChange={e=>setData('due_date',e.target.value)} readOnly={!!data.lease_id && !editingInvoice} />{!!data.lease_id && !editingInvoice && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:3}}>Set automatically to the first day of the installment.</div>}</div>
                 <div className="form-group"><label className="form-label">Period Covered</label><input className="form-input" value={data.period} onChange={e=>setData('period',e.target.value)} placeholder="e.g. Apr - Jun 2026" /></div>
               </div>
 
