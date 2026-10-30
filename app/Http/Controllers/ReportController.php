@@ -280,7 +280,7 @@ class ReportController extends Controller
             ];
         })->all();
 
-        // --- AR Aging ---
+        // --- Unpaid invoices by age (internal key: ar_aging) ---
         $today          = Carbon::today();
         $unpaidInvoices = Invoice::query()
             ->with('items')
@@ -291,10 +291,10 @@ class ReportController extends Controller
             ->get();
 
         $arAging = [
-            ['label' => 'Current (0–30 days)', 'count' => 0, 'amount' => 0.0, 'color' => 'green'],
-            ['label' => '31–60 days',           'count' => 0, 'amount' => 0.0, 'color' => 'amber'],
-            ['label' => '61–90 days',           'count' => 0, 'amount' => 0.0, 'color' => 'orange'],
-            ['label' => '90+ days',             'count' => 0, 'amount' => 0.0, 'color' => 'red'],
+            ['label' => 'Not yet due or up to 30 days late', 'count' => 0, 'amount' => 0.0, 'color' => 'green'],
+            ['label' => '31–60 days late',           'count' => 0, 'amount' => 0.0, 'color' => 'amber'],
+            ['label' => '61–90 days late',           'count' => 0, 'amount' => 0.0, 'color' => 'orange'],
+            ['label' => 'Over 90 days late',             'count' => 0, 'amount' => 0.0, 'color' => 'red'],
         ];
 
         foreach ($unpaidInvoices as $inv) {
@@ -450,7 +450,7 @@ class ReportController extends Controller
                 $out = fopen('php://output', 'w');
 
                 if ($type === 'ar_aging') {
-                    fputcsv($out, ['AR Aging Report', 'As of: ' . Carbon::today()->toDateString()]);
+                    fputcsv($out, ['Unpaid Invoices by Age', 'As of: ' . Carbon::today()->toDateString()]);
                     fputcsv($out, ['Age Bucket', 'Invoice Count', 'Amount (TZS)']);
 
                     $today          = Carbon::today();
@@ -463,10 +463,10 @@ class ReportController extends Controller
                         ->get();
 
                     $buckets = [
-                        ['label' => 'Current (0-30 days)', 'count' => 0, 'amount' => 0.0],
-                        ['label' => '31-60 days',           'count' => 0, 'amount' => 0.0],
-                        ['label' => '61-90 days',           'count' => 0, 'amount' => 0.0],
-                        ['label' => '90+ days',             'count' => 0, 'amount' => 0.0],
+                        ['label' => 'Not yet due or up to 30 days late', 'count' => 0, 'amount' => 0.0],
+                        ['label' => '31-60 days late',           'count' => 0, 'amount' => 0.0],
+                        ['label' => '61-90 days late',           'count' => 0, 'amount' => 0.0],
+                        ['label' => 'Over 90 days late',             'count' => 0, 'amount' => 0.0],
                     ];
 
                     foreach ($unpaidInvoices as $inv) {

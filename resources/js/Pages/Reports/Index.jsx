@@ -28,7 +28,7 @@ const deltaMeta = (current, previous, inverse = false) => {
 
 const TABS = [
   { key: 'overview',  label: 'Overview' },
-  { key: 'ar_aging',  label: 'AR Aging' },
+  { key: 'ar_aging',  label: 'Unpaid Invoices' },
   { key: 'leases',    label: 'Lease Expiry' },
   { key: 'tenants',   label: 'Tenant Summary' },
 ];
@@ -388,13 +388,13 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
         </>
       )}
 
-      {/* ── AR Aging Tab ── */}
+      {/* ── Unpaid Invoices Tab (key: ar_aging) ── */}
       {activeTab === 'ar_aging' && (
         <div className="card">
           <div className="card-header">
             <div>
-              <div className="card-title">Accounts Receivable Aging</div>
-              <div className="card-sub">All unpaid &amp; overdue invoices, grouped by age</div>
+              <div className="card-title">Unpaid Invoices by Age</div>
+              <div className="card-sub">Invoices not yet fully paid, grouped by how long they are past their due date</div>
             </div>
           </div>
           <div style={{ padding: '0 0 8px' }}>

@@ -72,7 +72,7 @@ export default function FloorSchedule({ report, properties = [], floors = [], fi
         active="floor"
         tabs={[
           { key: 'overview', label: 'Overview', href: route('reports') },
-          { key: 'ar_aging', label: 'AR Aging', href: route('reports') },
+          { key: 'ar_aging', label: 'Unpaid Invoices', href: route('reports') },
           { key: 'leases', label: 'Lease Expiry', href: route('reports') },
           { key: 'tenants', label: 'Tenant Summary', href: route('reports') },
           { key: 'floor', label: 'Floor Schedule', href: route('reports.floor-schedule') },
