@@ -20,7 +20,7 @@ class NormalizeInputCaseTest extends TestCase
             'nested' => ['new_tenant_email' => 'N@X.COM'],
         ]);
 
-        (new NormalizeInputCase())->handle($request, fn ($r) => response('ok'));
+        (new NormalizeInputCase())->handle($request, fn ($r) => 'ok');
 
         $this->assertSame('jane.doe@example.com', $request->input('email'));
         $this->assertSame('t@x.com', $request->input('tenant_email'));
