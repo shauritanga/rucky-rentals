@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AfterResponse;
 use App\Models\Document;
 use App\Models\MaintenanceRecord;
 use App\Models\Property;
@@ -193,7 +194,7 @@ class MaintenanceController extends Controller
         if ($workflowStatus === 'submitted') {
             $superusers = User::where('role', 'superuser')->get();
             if ($superusers->isNotEmpty()) {
-                Notification::send($superusers, new MaintenanceApprovalNotification($ticket, 'submitted'));
+                AfterResponse::send($superusers, new MaintenanceApprovalNotification($ticket, 'submitted'));
             }
         }
 
@@ -252,7 +253,7 @@ class MaintenanceController extends Controller
             if ($next === 'approved') {
                 $reporter = User::where('name', $maintenanceTicket->reported_by)->first();
                 if ($reporter) {
-                    $reporter->notify(new MaintenanceApprovalNotification($maintenanceTicket, 'approved'));
+                    AfterResponse::notify($reporter, new MaintenanceApprovalNotification($maintenanceTicket, 'approved'));
                 }
             }
         } else {

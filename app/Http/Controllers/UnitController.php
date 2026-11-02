@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AfterResponse;
 use App\Models\Unit;
 use App\Models\Tenant;
 use App\Models\Lease;
@@ -155,7 +156,7 @@ class UnitController extends Controller
 
         if ($isPendingApproval) {
             $superusers = User::query()->where('role', 'superuser')->get();
-            Notification::send($superusers, new UnitApprovalRequestNotification(
+            AfterResponse::send($superusers, new UnitApprovalRequestNotification(
                 unit: $unit->fresh('property'),
                 submittedBy: $actor?->name ?? 'System',
                 propertyName: $propertyName,
@@ -339,7 +340,7 @@ class UnitController extends Controller
         ]);
 
         $superusers = User::query()->where('role', 'superuser')->get();
-        Notification::send($superusers, new UnitApprovalRequestNotification(
+        AfterResponse::send($superusers, new UnitApprovalRequestNotification(
             unit: $unit->fresh('property'),
             submittedBy: $actor?->name ?? 'System',
             propertyName: $propertyName,

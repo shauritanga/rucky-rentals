@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AfterResponse;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
@@ -324,7 +325,7 @@ class LeaseController extends Controller
         // Notify all superusers when a lease is submitted for approval
         if ($lease->status === 'pending_accountant') {
             $superusers = User::where('role', 'superuser')->get();
-            Notification::send(
+            AfterResponse::send(
                 $superusers,
                 new LeaseApprovalRequestNotification(
                     $lease->fresh(['tenant', 'unit.property']),
@@ -391,7 +392,7 @@ class LeaseController extends Controller
             }
 
             $superusers = User::where('role', 'superuser')->get();
-            Notification::send(
+            AfterResponse::send(
                 $superusers,
                 new LeaseApprovalRequestNotification(
                     $lease->fresh(['tenant', 'unit.property']),

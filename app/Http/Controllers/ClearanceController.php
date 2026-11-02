@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AfterResponse;
 use App\Models\Document;
 use App\Models\Lease;
 use App\Models\Property;
@@ -261,7 +262,7 @@ class ClearanceController extends Controller
         $propertyName = Property::where('id', $clearance->property_id)->value('name');
 
         try {
-            Notification::send(
+            AfterResponse::send(
                 User::query()->where('role', 'superuser')->get(),
                 new ClearanceReviewNotification($clearance, $user?->name ?? 'System', $propertyName)
             );

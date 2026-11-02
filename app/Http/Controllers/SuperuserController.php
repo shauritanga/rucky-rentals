@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AfterResponse;
 use App\Mail\ManagerWelcomeMail;
 use App\Models\AuditLog;
 use App\Models\FuelLog;
@@ -793,7 +794,7 @@ class SuperuserController extends Controller
 
         // Notify every manager of the property
         foreach ($this->managersOf($lease->unit?->property) as $manager) {
-            $manager->notify(new LeaseDecisionNotification($lease->fresh(), 'approved', $message, $actor));
+            AfterResponse::notify($manager, new LeaseDecisionNotification($lease->fresh(), 'approved', $message, $actor));
         }
 
         $propertyName = $lease->unit?->property?->name;
@@ -830,7 +831,7 @@ class SuperuserController extends Controller
 
         // Notify every manager of the property
         foreach ($this->managersOf($lease->unit?->property) as $manager) {
-            $manager->notify(new LeaseDecisionNotification($lease->fresh(), 'rejected', $data['message'], $actor));
+            AfterResponse::notify($manager, new LeaseDecisionNotification($lease->fresh(), 'rejected', $data['message'], $actor));
         }
 
         $propertyName = $lease->unit?->property?->name;
@@ -861,13 +862,13 @@ class SuperuserController extends Controller
 
         // Notify every manager of the property
         foreach ($this->managersOf($ticket->unit?->property ?? $ticket->property) as $manager) {
-            $manager->notify(new MaintenanceDecisionNotification($freshTicket, 'approved', $message, $actor));
+            AfterResponse::notify($manager, new MaintenanceDecisionNotification($freshTicket, 'approved', $message, $actor));
         }
 
         // Notify the reporter (in-app + email)
         $reporter = User::where('name', $freshTicket->reported_by)->first();
         if ($reporter && $reporter->id !== $manager?->id) {
-            $reporter->notify(new MaintenanceApprovalNotification($freshTicket, 'approved'));
+            AfterResponse::notify($reporter, new MaintenanceApprovalNotification($freshTicket, 'approved'));
         }
 
         $propertyName = $ticket->unit?->property?->name ?? Property::where('id', $ticket->property_id)->value('name');
@@ -897,7 +898,7 @@ class SuperuserController extends Controller
 
         // Notify every manager of the property
         foreach ($this->managersOf($ticket->unit?->property ?? $ticket->property) as $manager) {
-            $manager->notify(new MaintenanceDecisionNotification($ticket->fresh(), 'rejected', $data['message'], $actor));
+            AfterResponse::notify($manager, new MaintenanceDecisionNotification($ticket->fresh(), 'rejected', $data['message'], $actor));
         }
 
         $propertyName = $ticket->unit?->property?->name ?? Property::where('id', $ticket->property_id)->value('name');
@@ -1013,7 +1014,7 @@ class SuperuserController extends Controller
 
         $creator = $unit->requestedBy;
         if ($creator) {
-            $creator->notify(new UnitDecisionNotification($unit->fresh('property'), 'approved', $message, $actor));
+            AfterResponse::notify($creator, new UnitDecisionNotification($unit->fresh('property'), 'approved', $message, $actor));
         }
 
         $propertyName = $unit->property?->name ?? Property::where('id', $unit->property_id)->value('name');
@@ -1048,7 +1049,7 @@ class SuperuserController extends Controller
 
         $creator = $unit->requestedBy;
         if ($creator) {
-            $creator->notify(new UnitDecisionNotification($unit->fresh('property'), 'rejected', $data['message'], $actor));
+            AfterResponse::notify($creator, new UnitDecisionNotification($unit->fresh('property'), 'rejected', $data['message'], $actor));
         }
 
         $propertyName = $unit->property?->name ?? Property::where('id', $unit->property_id)->value('name');

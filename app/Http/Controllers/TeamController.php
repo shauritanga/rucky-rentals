@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\AfterResponse;
 use App\Mail\TeamInviteMail;
 use App\Notifications\TeamApprovalRequestNotification;
 use App\Models\Property;
@@ -147,7 +148,7 @@ class TeamController extends Controller
         if ($isPendingApproval) {
             $superusers = User::query()->where('role', 'superuser')->get();
             foreach ($superusers as $superuser) {
-                $superuser->notify(new TeamApprovalRequestNotification(
+                AfterResponse::notify($superuser, new TeamApprovalRequestNotification(
                     member: $member,
                     submittedBy: $actor?->name ?? 'System',
                     propertyName: $propertyName,
@@ -320,7 +321,7 @@ class TeamController extends Controller
 
         $superusers = User::query()->where('role', 'superuser')->get();
         foreach ($superusers as $superuser) {
-            $superuser->notify(new TeamApprovalRequestNotification(
+            AfterResponse::notify($superuser, new TeamApprovalRequestNotification(
                 member: $user->fresh(),
                 submittedBy: $actor?->name ?? 'System',
                 propertyName: $propertyName,
