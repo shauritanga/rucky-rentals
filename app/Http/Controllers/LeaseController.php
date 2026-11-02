@@ -455,6 +455,13 @@ class LeaseController extends Controller
 
                 $lease->update($editData);
 
+                // Co-tenants share one set of terms and equal costs: a change to one applies to all.
+                if ($lease->co_tenant_group) {
+                    $shared = collect($editData)->except(['tenant_id', 'unit_id'])->all();
+                    Lease::where('co_tenant_group', $lease->co_tenant_group)->where('id', '!=', $lease->id)->get()
+                        ->each(fn (Lease $member) => $member->update($shared));
+                }
+
                 if ((int) $oldUnitId !== (int) $newUnitId) {
                     $oldUnit = Unit::find($oldUnitId);
                     if ($oldUnit && !$oldUnit->hasOtherActiveLeases(excludeLeaseId: $lease->id)) {

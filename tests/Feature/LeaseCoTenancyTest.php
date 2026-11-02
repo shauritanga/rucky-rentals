@@ -160,6 +160,88 @@ class LeaseCoTenancyTest extends TestCase
             ->assertSessionHasErrors('allows_co_tenants');
     }
 
+    public function test_a_managers_group_is_submitted_together_and_one_approval_activates_everyone(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+        $property = $this->createProperty();
+        $superuser = $this->createSuperuser();
+        $manager = User::factory()->create(['role' => 'manager', 'status' => 'active', 'property_id' => $property->id, 'must_change_password' => false]);
+        $unit = $this->createCoTenantUnit($property->id);
+        $unit->update(['rent' => 1000, 'service_charge' => 300]);
+        $tenantA = $this->createTenant($property->id, 'a@example.com');
+        $tenantB = $this->createTenant($property->id, 'b@example.com');
+
+        $this->actingAs($manager)
+            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id, 100) + ['tenant_ids' => [$tenantA->id, $tenantB->id]])
+            ->assertSessionHasNoErrors();
+
+        $leases = Lease::where('unit_id', $unit->id)->get();
+        $this->assertCount(2, $leases);
+        $this->assertEqualsCanonicalizing(['pending_accountant', 'pending_accountant'], $leases->pluck('status')->all());
+        // One approval request for the group, not one per tenant.
+        \Illuminate\Support\Facades\Notification::assertSentTimes(\App\Notifications\LeaseApprovalRequestNotification::class, User::where('role', 'superuser')->count());
+
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->patch("/leases/{$leases->first()->id}", ['action' => 'approve_superuser'])
+            ->assertSessionHasNoErrors();
+
+        $leases = Lease::where('unit_id', $unit->id)->get();
+        $this->assertEqualsCanonicalizing(['active', 'active'], $leases->pluck('status')->all());
+        foreach ($leases as $lease) {
+            $this->assertEquals(500.0, (float) $lease->monthly_rent);
+            $this->assertEquals(150.0, (float) $lease->monthly_service_charge);
+            $this->assertGreaterThan(0, $lease->installments()->count());
+            // Every installment is the equal share: (500 + 150) a month.
+            $first = $lease->installments()->orderBy('sequence')->first();
+            $this->assertEquals(650.0 * 3, (float) $first->amount);
+            $this->assertSame(1, \App\Models\Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->count());
+        }
+    }
+
+    public function test_rejecting_one_lease_of_a_group_rejects_them_all(): void
+    {
+        $property = $this->createProperty();
+        $superuser = $this->createSuperuser();
+        $manager = User::factory()->create(['role' => 'manager', 'status' => 'active', 'property_id' => $property->id, 'must_change_password' => false]);
+        $unit = $this->createCoTenantUnit($property->id);
+        $tenantA = $this->createTenant($property->id, 'a@example.com');
+        $tenantB = $this->createTenant($property->id, 'b@example.com');
+
+        $this->actingAs($manager)->post('/leases', $this->leasePayload($tenantA->id, $unit->id) + ['tenant_ids' => [$tenantA->id, $tenantB->id]]);
+        $lease = Lease::where('unit_id', $unit->id)->firstOrFail();
+
+        $this->actingAsPropertySuperuser($superuser, $property->id)->patch("/leases/{$lease->id}", ['action' => 'reject', 'reason' => 'Check the terms']);
+        $this->assertEqualsCanonicalizing(['rejected', 'rejected'], Lease::where('unit_id', $unit->id)->pluck('status')->all());
+
+        $this->actingAs($manager)->patch("/leases/{$lease->id}", ['action' => 'resubmit']);
+        $this->assertEqualsCanonicalizing(['pending_accountant', 'pending_accountant'], Lease::where('unit_id', $unit->id)->pluck('status')->all());
+    }
+
+    public function test_changing_the_terms_of_one_co_tenant_changes_them_for_the_whole_group(): void
+    {
+        $property = $this->createProperty();
+        $superuser = $this->createSuperuser();
+        $unit = $this->createCoTenantUnit($property->id);
+        $tenantA = $this->createTenant($property->id, 'a@example.com');
+        $tenantB = $this->createTenant($property->id, 'b@example.com');
+
+        $this->actingAsPropertySuperuser($superuser, $property->id)
+            ->post('/leases', $this->leasePayload($tenantA->id, $unit->id) + ['tenant_ids' => [$tenantA->id, $tenantB->id]]);
+        $leaseA = Lease::where('tenant_id', $tenantA->id)->firstOrFail();
+
+        $payload = $this->leasePayload($tenantA->id, $unit->id) + ['action' => 'edit'];
+        $payload['end_date'] = '2028-04-01';
+        $payload['duration_months'] = 24;
+        $payload['payment_cycle'] = 6;
+
+        $this->actingAsPropertySuperuser($superuser, $property->id)->patch("/leases/{$leaseA->id}", $payload)->assertSessionHasNoErrors();
+
+        foreach (Lease::where('unit_id', $unit->id)->get() as $lease) {
+            $this->assertSame('2028-04-01', substr((string) $lease->end_date, 0, 10));
+            $this->assertSame(6, (int) $lease->payment_cycle);
+        }
+    }
+
     private function createCoTenantUnit(int $propertyId, string $unitNumber = 'A.01', int $count = 2): Unit
     {
         $unit = $this->createUnit($propertyId, $unitNumber);
