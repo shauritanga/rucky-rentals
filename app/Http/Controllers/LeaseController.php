@@ -173,7 +173,7 @@ class LeaseController extends Controller
             $tenant = Tenant::create([
                 'property_id' => $propertyId,
                 'name' => $validated['new_tenant_name'],
-                'email' => $validated['new_tenant_email'],
+                'email' => $validated['new_tenant_email'] ?? null,
                 'phone' => $validated['new_tenant_phone'],
                 'national_id' => $validated['new_tenant_national_id'] ?? null,
                 'initials' => $initials ?: 'NA',

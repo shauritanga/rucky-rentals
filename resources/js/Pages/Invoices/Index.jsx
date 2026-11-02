@@ -688,7 +688,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               {canSendProforma(selected)
                 ? <button className="btn-secondary" onClick={()=>router.post(`/invoices/${selected.id}/send`,{},{preserveScroll:true,onSuccess:()=>setSelected(null)})}>Email Proforma</button>
                 : selected.type === 'proforma'
-                  ? <button className="btn-secondary" disabled title={selected.sent_to_tenant_at ? 'Already sent to tenant' : selected.approval_status !== 'approved' ? 'Awaiting superuser approval' : 'No tenant email on file'} style={{opacity:.5,cursor:'not-allowed'}}>Email</button>
+                  ? <button className="btn-secondary" disabled title={selected.sent_to_tenant_at ? 'Already sent to tenant' : selected.approval_status !== 'approved' ? 'Awaiting superuser approval' : 'Tenant email to be updated — add it on the Tenants page'} style={{opacity:.5,cursor:'not-allowed'}}>Email</button>
                   : <button className="btn-secondary" disabled title="Tax invoice" style={{opacity:.5,cursor:'not-allowed'}}>Email</button>
               }
             </div>

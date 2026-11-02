@@ -52,7 +52,7 @@ class TenantController extends Controller
             'tin'                 => 'required|string|max:50',
             'vrn'                 => 'nullable|string|max:50',
             'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
-            'email'               => 'required|email|unique:tenants',
+            'email'               => 'nullable|email|unique:tenants',
             'phone'               => ['required', 'regex:/^\+\d{8,15}$/'],
             'address'             => 'nullable|string|max:255',
             'city'                => 'nullable|string|max:120',
@@ -103,7 +103,7 @@ class TenantController extends Controller
         $this->logAudit(
             request: $request,
             action: 'Tenant created',
-            resource: sprintf('%s (%s)', $tenant->name, $tenant->email),
+            resource: sprintf('%s (%s)', $tenant->name, $tenant->email ?: 'no email'),
             propertyName: $propertyName,
             category: 'tenant',
             propertyId: $tenant->property_id ? (int) $tenant->property_id : null,
@@ -134,7 +134,7 @@ class TenantController extends Controller
             'tin'                 => 'required|string|max:50',
             'vrn'                 => 'nullable|string|max:50',
             'contact_person'      => 'required_if:tenant_type,company|nullable|string|max:255',
-            'email'               => 'required|email|unique:tenants,email,' . $tenant->id,
+            'email'               => 'nullable|email|unique:tenants,email,' . $tenant->id,
             'phone'               => ['required', 'regex:/^\+\d{8,15}$/'],
             'address'             => 'nullable|string|max:255',
             'city'                => 'nullable|string|max:120',
@@ -163,7 +163,15 @@ class TenantController extends Controller
             $data['contact_person']      = null;
         }
 
+        $hadEmail = filled($tenant->email);
         $tenant->update($data);
+
+        // The email was missing and has just been added: invoices raised meanwhile get it too, so they can be emailed.
+        if (!$hadEmail && filled($tenant->email)) {
+            \App\Models\Invoice::where(fn($q) => $q->whereNull('tenant_email')->orWhere('tenant_email', ''))
+                ->whereIn('lease_id', $tenant->leases()->pluck('id'))
+                ->update(['tenant_email' => $tenant->email]);
+        }
 
         $propertyName = null;
         if (!empty($tenant->property_id)) {
@@ -173,7 +181,7 @@ class TenantController extends Controller
         $this->logAudit(
             request: $request,
             action: 'Tenant updated',
-            resource: sprintf('%s (%s)', $tenant->name, $tenant->email),
+            resource: sprintf('%s (%s)', $tenant->name, $tenant->email ?: 'no email'),
             propertyName: $propertyName,
             category: 'tenant',
             propertyId: $tenant->property_id ? (int) $tenant->property_id : null,
@@ -195,7 +203,7 @@ class TenantController extends Controller
             $propertyName = Property::where('id', $tenant->property_id)->value('name');
         }
 
-        $resource = sprintf('%s (%s)', $tenant->name, $tenant->email);
+        $resource = sprintf('%s (%s)', $tenant->name, $tenant->email ?: 'no email');
 
         $tenant->delete();
 

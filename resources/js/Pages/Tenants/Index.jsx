@@ -56,12 +56,14 @@ export default function TenantsIndex({ tenants }) {
     all:        tenants.length,
     company:    tenants.filter(t => t.tenant_type === 'company').length,
     individual: tenants.filter(t => t.tenant_type !== 'company').length,
+    noemail:    tenants.filter(t => !t.email).length,
   };
 
   const filtered = tenants.filter(t => {
     const matchFilter = filter === 'all'
       || (filter === 'company' && t.tenant_type === 'company')
-      || (filter === 'individual' && t.tenant_type !== 'company');
+      || (filter === 'individual' && t.tenant_type !== 'company')
+      || (filter === 'noemail' && !t.email);
     const q = search.toLowerCase();
     return matchFilter && (!q
       || displayName(t).toLowerCase().includes(q)
@@ -174,10 +176,17 @@ export default function TenantsIndex({ tenants }) {
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactTzs(monthlyRevenue)}</div><div className="tn-stat-label">Monthly Rent Roll</div></div>
       </div>
 
+      {counts.noemail > 0 && (
+        <div role="status" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 14px',margin:'0 0 12px',borderRadius:10,background:'var(--amber-dim, rgba(245,158,11,.12))',border:'1px solid var(--amber, #f59e0b)',color:'var(--text-primary)',fontSize:13}}>
+          <span style={{flex:1,minWidth:200}}><strong>{counts.noemail}</strong> {counts.noemail === 1 ? 'tenant needs' : 'tenants need'} an email — invoices cannot be emailed to {counts.noemail === 1 ? 'them' : 'them'} until it is added.</span>
+          {filter !== 'noemail' && <button type="button" className="btn-secondary" onClick={()=>setFilter('noemail')}>Show them</button>}
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="toolbar">
         <div className="filters">
-          {[['all','All'],['company','Company'],['individual','Individual']].map(([f,l]) => (
+          {[['all','All'],['company','Company'],['individual','Individual'],...(counts.noemail > 0 ? [['noemail','Missing email']] : [])].map(([f,l]) => (
             <button key={f} className={`filter-pill ${filter===f?'active':''}`} onClick={()=>setFilter(f)}>
               {l} <span className="pill-count">{counts[f]}</span>
             </button>
@@ -234,7 +243,7 @@ export default function TenantsIndex({ tenants }) {
                     <span className={`badge ${isCompany?'company':'individual'}`}>{isCompany?'Company':'Individual'}</span>
                   </div>
                   <div className="tc-contact">
-                    <div className="tc-contact-row"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>{t.email}</div>
+                    <div className="tc-contact-row"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>{t.email || <span style={{display:'inline-block',padding:'1px 8px',borderRadius:999,fontSize:11,fontWeight:600,color:'var(--amber, #f59e0b)',background:'var(--amber-dim, rgba(245,158,11,.14))'}}>Email to be updated</span>}</div>
                     <div className="tc-contact-row"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.84 1.16 2 2 0 012.82.84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 8.1a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg>{formatPhone(t.phone)}</div>
                   </div>
                   <div className="tc-foot">
@@ -271,7 +280,7 @@ export default function TenantsIndex({ tenants }) {
                           <div>
                             <div style={{fontWeight:600}}>{displayName(t)}</div>
                             <div style={{fontSize:'11.5px',color:'var(--text-muted)'}}>
-                              {isCompany && t.contact_person ? `c/o ${t.contact_person}` : t.email}
+                              {isCompany && t.contact_person ? `c/o ${t.contact_person}` : (t.email || <span style={{display:'inline-block',padding:'1px 8px',borderRadius:999,fontSize:11,fontWeight:600,color:'var(--amber, #f59e0b)',background:'var(--amber-dim, rgba(245,158,11,.14))'}}>Email to be updated</span>)}
                             </div>
                           </div>
                         </div>
@@ -337,7 +346,7 @@ export default function TenantsIndex({ tenants }) {
                     <div className="tdr-contact-list">
                       <div className="tdr-contact-item">
                         <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
-                        <div><div className="tdr-contact-label">Email</div><div className="tdr-contact-value">{selected.email}</div></div>
+                        <div><div className="tdr-contact-label">Email</div><div className="tdr-contact-value">{selected.email || (<><span style={{display:'inline-block',padding:'1px 8px',borderRadius:999,fontSize:11,fontWeight:600,color:'var(--amber, #f59e0b)',background:'var(--amber-dim, rgba(245,158,11,.14))'}}>Email to be updated</span> <button type="button" className="btn-ghost" style={{marginLeft:6,padding:'0 6px'}} onClick={()=>openEditModal(selected)}>Add email</button></>)}</div></div>
                       </div>
                       <div className="tdr-contact-item">
                         <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.84 1.16 2 2 0 012.82.84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 8.1a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg></div>
@@ -541,7 +550,7 @@ export default function TenantsIndex({ tenants }) {
 
               {/* Shared contact */}
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={data.email} onChange={e=>setData('email',e.target.value)} required /></div>
+                <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" value={data.email} onChange={e=>setData('email',e.target.value)} placeholder="Leave empty if not known yet" />{!data.email && <div style={{fontSize:11.5,color:'var(--text-muted)',marginTop:4}}>No email yet? It is saved as “Email to be updated” until you add it.</div>}{errors.email && <div className="form-error">{errors.email}</div>}</div>
                 <div className="form-group"><label className="form-label">Phone *</label><PhoneInput value={data.phone} onChange={v=>setData('phone',v)} required /></div>
               </div>
 
