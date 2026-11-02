@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
@@ -16,6 +17,7 @@ function getLeaseStatus(tenant) {
 }
 
 export default function TenantsIndex({ tenants }) {
+  const guard = useDiscardGuard();
   const { formatCompactTzs, formatMoney } = useExchangeRate();
   // Everything outside a unit is TZS. A USD-unit lease counts at the rate typed on its proformas
   // (display_rate) and contributes nothing until one exists.
@@ -451,7 +453,8 @@ export default function TenantsIndex({ tenants }) {
       </div>
 
       {/* Add Tenant Modal */}
-      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&(setShowModal(false),setSubmitError(''),setEditingId(null))}>
+      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&guard.ask(()=>{setShowModal(false);setSubmitError('');setEditingId(null);})}>
+{guard.dialog}
         <div className="modal">
           <div className="modal-header">
             <div className="modal-title">{editingId ? 'Edit Tenant' : 'Add Tenant'}</div>

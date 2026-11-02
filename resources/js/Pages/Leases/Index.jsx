@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
@@ -207,6 +208,7 @@ function buildPaymentSchedule(lease, isPending) {
 }
 
 export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
+  const guard = useDiscardGuard();
   const { props } = usePage();
   const user = props?.auth?.user;
   const [filter, setFilter] = useState('all');
@@ -1007,7 +1009,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       </div>
 
       {/* New Lease Modal */}
-      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
+      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&guard.ask(()=>{setShowModal(false);setEditingLeaseId(null);})}>
+{guard.dialog}
         <div className="modal" style={{width:'min(640px, calc(100vw - 24px))',maxHeight:'calc(100dvh - 24px)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">{editingLeaseId ? `Edit Lease — Unit ${selected?.unit?.unit_number || ''}` : 'New Lease Agreement'}</div><button className="modal-close" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>✕</button></div>
           <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>

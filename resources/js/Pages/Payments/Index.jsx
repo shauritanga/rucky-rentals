@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
@@ -65,6 +66,7 @@ const DEPOSIT_STATUS_META = {
 };
 
 export default function PaymentsIndex({ payments, invoices = [], tenants, units, deposits = [], depositRefunds = [] }) {
+  const guard = useDiscardGuard();
   const depositList = (deposits && deposits.length > 0) ? deposits : (depositRefunds || []);
 
   // Everything outside a unit is TZS only.
@@ -1001,7 +1003,8 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
         </>
       )}
 
-      <div className={`modal-overlay ${showModal ? 'open' : ''}`} style={{ alignItems: 'center', padding: '12px', overflowY: 'auto' }} onClick={(e) => e.target === e.currentTarget && !processing && setShowModal(false)}>
+      <div className={`modal-overlay ${showModal ? 'open' : ''}`} style={{ alignItems: 'center', padding: '12px', overflowY: 'auto' }} onClick={(e) => e.target === e.currentTarget && !processing && guard.ask(() => setShowModal(false))}>
+{guard.dialog}
         <div className="modal" style={{ width: 560, maxHeight: 'calc(100vh - 24px)', display: 'flex', flexDirection: 'column' }}>
           <div className="modal-header" style={{ flexShrink: 0 }}><div className="modal-title">Record Payment</div><button className="modal-close" onClick={() => setShowModal(false)}>X</button></div>
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>

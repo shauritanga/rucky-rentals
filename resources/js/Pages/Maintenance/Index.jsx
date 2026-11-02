@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
@@ -110,6 +111,7 @@ function safeNotes(value) {
 }
 
 export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], approvalCount = 0, properties = [], selectedPropertyId = null, maintenanceStaff = [] }) {
+  const guard = useDiscardGuard();
   const { props } = usePage();
   const user = props?.auth?.user;
   const isGlobalMaintenanceStaff = user?.role === 'maintenance_staff' && !user?.property_id;
@@ -822,7 +824,8 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
         </div>
       </div>
 
-      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && guard.ask(() => setShowModal(false))}>
+{guard.dialog}
         <div className="modal" style={{ width: 'min(660px, calc(100vw - 24px))', height: 'min(820px, 92dvh)', maxHeight: 'min(92vh, calc(100dvh - 20px))', display: 'flex', flexDirection: 'column' }}>
           <div className="modal-header" style={{ flexShrink: 0 }}><div className="modal-title">New Maintenance Request</div><button className="modal-close" onClick={() => setShowModal(false)}>✕</button></div>
           <form onSubmit={submitRequest} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }}>
@@ -937,7 +940,7 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
         </div>
       </div>
 
-      <div className={`modal-overlay ${showScheduleModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowScheduleModal(false)}>
+      <div className={`modal-overlay ${showScheduleModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && guard.ask(() => setShowScheduleModal(false))}>
         <div className="modal" style={{ width: 540 }}>
           <div className="modal-header"><div className="modal-title">Schedule Maintenance Task</div><button className="modal-close" onClick={() => setShowScheduleModal(false)}>✕</button></div>
           <div className="modal-body">

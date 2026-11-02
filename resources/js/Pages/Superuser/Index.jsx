@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import { generateFloors } from '@/utils/floorConfig';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import SuperuserLayout from '@/Layouts/SuperuserLayout';
@@ -22,6 +23,7 @@ const VIEW_META = {
 };
 
 export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [], archivedManagers = [] }) {
+  const guard = useDiscardGuard();
   const [activeView, setActiveView] = useState(() => {
     const v = new URLSearchParams(window.location.search).get('view') || 'overview';
     return Object.keys(VIEW_META).includes(v) ? v : 'overview';
@@ -243,7 +245,8 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         </div>
       </div>
 
-      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closePropertyModal()}>
+      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && guard.ask(() => closePropertyModal())}>
+{guard.dialog}
         <div className="modal" style={{ width: 'min(640px, calc(100vw - 24px))', height: 'min(760px, 88dvh)', maxHeight: 'min(92vh, calc(100dvh - 20px))', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div className="modal-header"><div className="modal-title">{editingProperty ? `Edit ${editingProperty.name}` : 'Add New Property'}</div><button type="button" className="modal-close" onClick={closePropertyModal} disabled={processing}>✕</button></div>
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -318,7 +321,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
         </div>
       </div>
 
-      <div className={`modal-overlay ${showManagerModal ? 'open' : ''}`} onClick={(e) => { if (e.target === e.currentTarget) { setShowManagerModal(false); setManagerErrors({}); } }}>
+      <div className={`modal-overlay ${showManagerModal ? 'open' : ''}`} onClick={(e) => { if (e.target === e.currentTarget) guard.ask(() => { setShowManagerModal(false); setManagerErrors({}); }); }}>
         <div className="modal" style={{ width: 540 }}>
           <div className="modal-header"><div className="modal-title">Add User</div><button className="modal-close" onClick={() => { setShowManagerModal(false); setManagerErrors({}); }}>✕</button></div>
           <form onSubmit={submitManager}>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
@@ -23,6 +24,7 @@ const resolveDocType = (doc) => {
 };
 
 export default function DocumentsIndex({ documents, units, tenants = [] }) {
+  const guard = useDiscardGuard();
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [view, setView] = useState('grid');
@@ -249,7 +251,8 @@ export default function DocumentsIndex({ documents, units, tenants = [] }) {
       </div>
 
       {/* Upload Modal */}
-      <div className={`modal-overlay ${showUpload?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowUpload(false)}>
+      <div className={`modal-overlay ${showUpload?'open':''}`} onClick={e=>e.target===e.currentTarget&&guard.ask(()=>setShowUpload(false))}>
+{guard.dialog}
         <div className="modal" style={{width:500}}>
           <div className="modal-header"><div className="modal-title">Upload Document</div><button className="modal-close" onClick={()=>setShowUpload(false)}>✕</button></div>
           <form onSubmit={submit} encType="multipart/form-data">

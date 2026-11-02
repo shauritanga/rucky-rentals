@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import { notify } from '@/Components/Toaster';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
@@ -196,6 +197,7 @@ function InvoiceDoc({ inv, currency = 'TZS', lease = null }) {
 }
 
 export default function InvoicesIndex({ invoices, leases, tenants, flash = {} }) {
+  const guard = useDiscardGuard();
   const { props } = usePage();
   const flashData = props.flash ?? {};
   const [baseItems, setBaseItems] = useState(null); // USD-basis lines for a USD lease; converted with the typed rate
@@ -695,7 +697,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
       </div>
 
       {/* New Invoice Modal */}
-      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
+      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&guard.ask(()=>setShowModal(false))}>
+{guard.dialog}
         <div className="modal" style={{width:520,maxHeight:'92vh',display:'flex',flexDirection:'column'}}>
           <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">{editingInvoice ? `Edit ${editingInvoice.invoice_number}` : 'New Proforma Invoice'}</div><button className="modal-close" onClick={()=>{setShowModal(false);setEditingInvoice(null);}}>✕</button></div>
           <form onSubmit={(e)=>submit(e, 'send')} style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>

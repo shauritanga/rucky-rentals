@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { formatDisplayDate } from '@/utils/dateFormat';
@@ -94,6 +95,7 @@ function accessTag(permissions = {}, resource) {
 }
 
 export default function TeamIndex({ teamMembers = [], archivedMembers = [], roleDefaults = {} }) {
+  const guard = useDiscardGuard();
   const { props } = usePage();
   const user = props?.auth?.user;
   const normalizedRoleDefaults = useMemo(() => {
@@ -553,7 +555,8 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
       </div>
       )}
 
-      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setShowModal(false)}>
+      <div className={`modal-overlay ${showModal ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && guard.ask(() => setShowModal(false))}>
+{guard.dialog}
         <div className="modal" style={{width:'min(640px, calc(100vw - 24px))',height:'min(720px, 82dvh)',maxHeight:'min(92vh, calc(100dvh - 20px))',display:'flex',flexDirection:'column'}}>
           <div className="modal-header" style={{flexShrink:0}}>
             <div className="modal-title">Add Staff Member</div>

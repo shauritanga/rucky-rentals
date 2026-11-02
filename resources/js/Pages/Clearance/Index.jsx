@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
@@ -74,6 +75,7 @@ const WIZARD_STEPS = [
 const EMPTY_ITEM_DRAFT = { category: DAMAGE_CATEGORIES[0], room: '', description: '', cost: '', responsible_party: 'tenant' };
 
 export default function ClearanceIndex({ clearances = [], eligibleLeases = [], canManage = false, canFinalize = false }) {
+  const guard = useDiscardGuard();
   const { props } = usePage();
   const user = props?.auth?.user;
 
@@ -490,7 +492,8 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
       </div>
 
       {/* ── Creation / inspection wizard ────────────────────────────── */}
-      <div className={`modal-overlay ${showWizard ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeWizard()}>
+      <div className={`modal-overlay ${showWizard ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && guard.ask(() => closeWizard())}>
+{guard.dialog}
         <div className="modal" style={{ width: 'min(720px, calc(100vw - 24px))', height: 'min(860px, 92dvh)', maxHeight: 'min(92vh, calc(100dvh - 20px))', display: 'flex', flexDirection: 'column' }}>
           <div className="modal-header" style={{ flexShrink: 0 }}>
             <div className="modal-title">{wizardClearance ? wizardClearance.clearance_number : 'Start Clearance'}</div>

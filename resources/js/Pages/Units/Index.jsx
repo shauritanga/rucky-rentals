@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { floorSortOrder, unitPrefixForFloor, nextFreeUnitNumber } from '@/utils/floorConfig';
@@ -137,6 +138,7 @@ function UnitCard({ unit, onClick }) {
 }
 
 export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], canCreateUnit = true, settings = {} }) {
+  const guard = useDiscardGuard();
   const { props, url } = usePage();
   const user = props?.auth?.user;
   const [filter, setFilter] = useState('all');
@@ -506,7 +508,8 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
       </div>
 
       {/* Edit Unit Modal */}
-      <div className={`modal-overlay ${showEditModal ? 'open' : ''}`} onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
+      <div className={`modal-overlay ${showEditModal ? 'open' : ''}`} onClick={e => e.target === e.currentTarget && guard.ask(() => setShowEditModal(false))}>
+{guard.dialog}
         <div className="modal">
           <div className="modal-header">
             <div className="modal-title">Edit Unit — {selected?.unit_number}</div>
@@ -651,7 +654,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
       </div>
 
       {/* Add Unit Modal */}
-      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&setShowModal(false)}>
+      <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&guard.ask(()=>setShowModal(false))}>
         <div className="modal">
           <div className="modal-header">
             <div className="modal-title">Add New Unit</div>
