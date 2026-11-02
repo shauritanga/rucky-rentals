@@ -658,14 +658,22 @@ class InvoiceController extends Controller
 
         $rebalancer = app(\App\Services\LeaseShareRebalancer::class);
 
-        $leases->each(function ($lease) use ($rates, $rebalancer) {
+        // One query for every unit's running leases instead of one per lease.
+        $runningByUnit = Lease::whereIn('unit_id', $leases->pluck('unit_id')->unique())
+            ->whereIn('status', ['active', 'expiring', 'overdue'])
+            ->get()
+            ->groupBy('unit_id');
+
+        $leases->each(function ($lease) use ($rates, $rebalancer, $runningByUnit) {
             $lease->setAttribute('reference_rate', $rates[$lease->id] ?? null);
 
             // Rent/service charge for the next unbilled period (a co-tenant's share can change over the lease).
-            $next = \App\Models\LeaseInstallment::where('lease_id', $lease->id)
-                ->whereNull('invoice_id')->orderBy('sequence')->first();
+            // The installments are already loaded with the lease, so no query is needed to find the next one.
+            $next = $lease->relationLoaded('installments')
+                ? $lease->installments->whereNull('invoice_id')->sortBy('sequence')->first()
+                : \App\Models\LeaseInstallment::where('lease_id', $lease->id)->whereNull('invoice_id')->orderBy('sequence')->first();
             $share = $next
-                ? $rebalancer->monthlyShareFor($lease, Carbon::parse($next->period_start), Carbon::parse($next->period_end)->addDay())
+                ? $rebalancer->monthlyShareFor($lease, Carbon::parse($next->period_start), Carbon::parse($next->period_end)->addDay(), $runningByUnit->get($lease->unit_id))
                 : null;
             $lease->setAttribute('billing_rent', $share['rent'] ?? null);
             $lease->setAttribute('billing_service_charge', $share['service_charge'] ?? null);

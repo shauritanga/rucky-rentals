@@ -84,16 +84,17 @@ class LeaseShareRebalancer
     }
 
     /** Per-month rent and service charge for a lease over a period, or null for a custom-rent lease. */
-    public function monthlyShareFor(Lease $lease, Carbon $start, Carbon $close): ?array
+    public function monthlyShareFor(Lease $lease, Carbon $start, Carbon $close, ?Collection $running = null): ?array
     {
         $unit = $lease->unit;
         if (!$unit) {
             return null;
         }
 
-        $leases = $this->runningLeases($unit);
+        // Callers that price many leases pass the unit's running leases in, to avoid one query per lease.
+        $leases = $running ? $running->values() : $this->runningLeases($unit);
         if (!$leases->contains('id', $lease->id)) {
-            $leases->push($lease);
+            $leases = $leases->push($lease);
         }
         if (!$this->isEvenShare($lease, $unit, $leases->count())) {
             return null;

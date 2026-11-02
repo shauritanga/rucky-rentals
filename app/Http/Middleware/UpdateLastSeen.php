@@ -15,10 +15,13 @@ class UpdateLastSeen
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user() && !EnforceSessionTimeout::isPassiveRequest($request)) {
-            $request->user()->timestamps = false;
-            $request->user()->update(['last_seen_at' => now()]);
-            $request->user()->timestamps = true;
+        // "Last seen" only needs minute accuracy, so skip the database write when it was updated moments ago.
+        $user = $request->user();
+        if ($user && !EnforceSessionTimeout::isPassiveRequest($request)
+            && (!$user->last_seen_at || \Illuminate\Support\Carbon::parse($user->last_seen_at)->lt(now()->subMinute()))) {
+            $user->timestamps = false;
+            $user->update(['last_seen_at' => now()]);
+            $user->timestamps = true;
         }
 
         return $next($request);
