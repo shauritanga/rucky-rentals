@@ -630,7 +630,7 @@
                     @csrf
                     <div class="form-group">
                         <label class="form-label" for="email">Email Address</label>
-                        <input class="form-input" type="email" id="email" name="email" placeholder="you@rukyrentals.co.tz" autocomplete="email" value="{{ old('email') }}" required>
+                        <input class="form-input" type="email" id="email" name="email" placeholder="example@example.com" autocomplete="email" value="{{ old('email') }}" required>
                     </div>
 
                     <div class="form-group">
@@ -667,6 +667,13 @@
     <div class="toast" id="toast"></div>
 
     <script>
+        // Emails are always lower case.
+        document.getElementById('email')?.addEventListener('input', function () {
+            const start = this.selectionStart, end = this.selectionEnd;
+            this.value = this.value.toLowerCase();
+            try { this.setSelectionRange(start, end); } catch (e) {}
+        });
+
         function setLoading(on) {
             const btn = document.getElementById('loginBtn');
             const spinner = document.getElementById('loginSpinner');

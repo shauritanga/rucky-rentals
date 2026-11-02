@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
 
         $middleware->web(append: [
+            \App\Http\Middleware\NormalizeInputCase::class,
             \App\Http\Middleware\EnforceSessionTimeout::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \App\Http\Middleware\UpdateLastSeen::class,

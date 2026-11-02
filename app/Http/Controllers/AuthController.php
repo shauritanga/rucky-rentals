@@ -44,7 +44,7 @@ class AuthController extends Controller
 
         $this->clearPendingLoginState($request);
 
-        $user = User::query()->where('email', $credentials['email'])->first();
+        $user = User::query()->whereRaw('LOWER(email) = ?', [mb_strtolower($credentials['email'])])->first();
 
         if (!$user || !Hash::check($credentials['password'], $user->password)) {
             AuditLog::create([

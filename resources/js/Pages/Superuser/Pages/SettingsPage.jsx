@@ -213,7 +213,7 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
               </div>
               <div className="form-group">
                 <label className="form-label">VRN No.</label>
-                <input className="form-input" value={identity.vat_number} onChange={e => setIdentity(p => ({ ...p, vat_number: e.target.value }))} />
+                <input className="form-input" data-case="upper" value={identity.vat_number} onChange={e => setIdentity(p => ({ ...p, vat_number: e.target.value }))} />
               </div>
             </div>
             <div className="form-row">

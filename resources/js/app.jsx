@@ -2,7 +2,10 @@ import './bootstrap';
 import '../css/app.css';
 import { createRoot } from 'react-dom/client';
 import { createInertiaApp } from '@inertiajs/react';
+import { installInputCase } from './utils/inputCase';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+
+installInputCase();
 
 createInertiaApp({
     title: (title) => `${title} — Mwamba Properties`,
