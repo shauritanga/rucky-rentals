@@ -112,7 +112,7 @@ export default function TenantsIndex({ tenants }) {
       id_type: tenant.id_type || '', national_id: tenant.national_id || '',
       nok_name: tenant.nok_name || '', nok_phone: tenant.nok_phone || '', nok_relation: tenant.nok_relation || '',
       company_name: tenant.company_name || '', registration_number: tenant.registration_number || '',
-      tin: tenant.tin || '', vrn: tenant.vrn || '', contact_person: tenant.contact_person || '',
+      tin: tenant.tin || '', vrn: VRN.normalize(tenant.vrn), contact_person: tenant.contact_person || '',
       notes: tenant.notes || '',
       invoice_code: tenant.invoice_code || '',
     });
