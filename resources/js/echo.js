@@ -1,20 +1,25 @@
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+// Real-time push is optional (Reverb). When it is not configured nothing here is downloaded:
+// the Echo and Pusher libraries are only loaded if a Reverb key is set at build time.
+let echoPromise = null;
 
-let echo = null;
+export function getEcho() {
+    if (!import.meta.env.VITE_REVERB_APP_KEY) {
+        return Promise.resolve(null);
+    }
 
-if (import.meta.env.VITE_REVERB_APP_KEY) {
-    window.Pusher = Pusher;
+    echoPromise ??= Promise.all([import('laravel-echo'), import('pusher-js')]).then(([{ default: Echo }, { default: Pusher }]) => {
+        window.Pusher = Pusher;
 
-    echo = new Echo({
-        broadcaster: 'reverb',
-        key: import.meta.env.VITE_REVERB_APP_KEY,
-        wsHost: import.meta.env.VITE_REVERB_HOST,
-        wsPort: import.meta.env.VITE_REVERB_PORT ?? 8080,
-        wssPort: import.meta.env.VITE_REVERB_PORT ?? 8080,
-        forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
-        enabledTransports: ['ws', 'wss'],
+        return new Echo({
+            broadcaster: 'reverb',
+            key: import.meta.env.VITE_REVERB_APP_KEY,
+            wsHost: import.meta.env.VITE_REVERB_HOST,
+            wsPort: import.meta.env.VITE_REVERB_PORT ?? 8080,
+            wssPort: import.meta.env.VITE_REVERB_PORT ?? 8080,
+            forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
+            enabledTransports: ['ws', 'wss'],
+        });
     });
-}
 
-export default echo;
+    return echoPromise;
+}

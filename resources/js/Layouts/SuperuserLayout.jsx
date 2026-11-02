@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import useIdleLogout from '@/hooks/useIdleLogout';
-import echo from '@/echo';
+import { getEcho } from '@/echo';
 import DueInvoicesPopup from '@/Components/DueInvoicesPopup';
 import Toaster from '@/Components/Toaster';
 
@@ -61,17 +61,19 @@ function NotificationBell({ onNavigate }) {
         // 30-second polling fallback (works even without Reverb running)
         const interval = setInterval(() => fetchNotifications({ passive: true }), 30_000);
 
-        // Listen for pushed notifications on the user's private channel
-        if (echo) {
-            const channel = echo.private(`App.Models.User.${userId}`);
-            channel.notification(() => {
-                fetchNotifications({ passive: true });
-            });
-        }
+        // Real-time push, only when Reverb is configured (the library is not loaded otherwise)
+        let echoInstance = null;
+        let cancelled = false;
+        getEcho().then((echo) => {
+            if (!echo || cancelled) return;
+            echoInstance = echo;
+            echo.private(`App.Models.User.${userId}`).notification(() => { fetchNotifications({ passive: true }); });
+        });
 
         return () => {
+            cancelled = true;
             clearInterval(interval);
-            if (echo) echo.leave(`App.Models.User.${userId}`);
+            if (echoInstance) echoInstance.leave(`App.Models.User.${userId}`);
         };
     }, [props.auth?.user?.id]);
 

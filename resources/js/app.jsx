@@ -1,5 +1,12 @@
 import './bootstrap';
 import '../css/app.css';
+// Fonts are served from this site (latin subset), not fetched from Google on every visit.
+import '@fontsource/dm-sans/latin-300.css';
+import '@fontsource/dm-sans/latin-400.css';
+import '@fontsource/dm-sans/latin-500.css';
+import '@fontsource/dm-sans/latin-600.css';
+import '@fontsource/instrument-serif/latin-400.css';
+import '@fontsource/instrument-serif/latin-400-italic.css';
 import { createRoot } from 'react-dom/client';
 import { createInertiaApp } from '@inertiajs/react';
 import { installInputCase } from './utils/inputCase';

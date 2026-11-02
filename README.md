@@ -167,7 +167,14 @@ If `git pull` complains about untracked files in `public/build` (first pull afte
    ```
    The schedule already runs the queue worker every minute and the daily 02:00 database backup (`mysqldump`, emailed to the superusers).
 9. **SSL**: cPanel → SSL/TLS Status → run AutoSSL for the domain.
-10. **Releases**: `git pull --ff-only`; `composer install --no-dev -o` if `composer.lock` changed; `php artisan migrate --force`; re-run the three cache commands.
+10. **Releases**: `git pull --ff-only`; `composer install --no-dev -o` if `composer.lock` changed; `php artisan migrate --force`; then `php artisan optimize:clear && php artisan optimize`.
+
+**Keeping it fast (production)**
+- After every release run `php artisan optimize:clear && php artisan optimize` (this rebuilds the config, route, event and view caches; a stale route cache is why a new page can answer 404 after a pull).
+- In the server `.env` use `SESSION_DRIVER=file` and `CACHE_STORE=file` (the defaults use the database, which adds database round trips to every request), then `php artisan config:clear`. Keep `APP_DEBUG=false` and `APP_ENV=production`.
+- Install PHP packages with `composer install --no-dev --optimize-autoloader`.
+- Ask the host to keep PHP OPcache on (it is on by default on most cPanel/DirectAdmin PHP builds; check with `php -i | grep opcache.enable`).
+- `public/.htaccess` compresses text responses and lets browsers keep the hashed files in `/build` for a year. Fonts are served from `/build`, not from Google.
 
 **DirectAdmin notes**
 - The domain's web folder is `~/domains/<domain>/public_html`. Replace it with a link to the app: `mv public_html public_html_old && ln -s ~/rucky-rentals/public public_html` (`private_html` already links to it).
