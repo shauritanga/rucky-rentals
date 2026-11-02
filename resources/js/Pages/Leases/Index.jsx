@@ -398,9 +398,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const unitChosen = !!selectedUnit;
   const isUsdUnit = unitChosen && selectedUnitCurrency === 'USD';
   const dayRate = Number(data.exchange_rate) || 0;
-  // USD amounts with their TZS equivalent at today's rate (display only).
+  // USD units show only the TZS equivalent at today's rate (display only); without a rate, the unit currency.
   const m = (value) => (isUsdUnit && dayRate > 0
-    ? <>{formatMoneyPrecise(value, selectedUnitCurrency)} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>≈ {formatMoneyPrecise(value * dayRate, 'TZS')}</span></>
+    ? formatMoneyPrecise(value * dayRate, 'TZS')
     : formatMoneyPrecise(value, selectedUnitCurrency));
 
   const openLeaseModal = () => {
