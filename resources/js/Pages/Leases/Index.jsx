@@ -1144,14 +1144,20 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 </div>
               )}
               <div className="form-row">
-                <div className="form-group"><label className="form-label" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>{selectedUnitCurrency === 'USD' ? 'Monthly Rent (unit rate basis) *' : 'Monthly Rent (TZS) *'} {data.unit_id && <span style={{fontSize:11,color:'var(--accent)',fontWeight:400}}>auto-filled from unit</span>}</label><MoneyInput className="form-input" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Set unit first...'} required /></div>
-                <div className="form-group"><label className="form-label">{selectedUnitCurrency === 'USD' ? 'Security Deposit (unit rate basis)' : 'Security Deposit (TZS)'}</label><MoneyInput className="form-input" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Auto-calculated" /></div>
-                {selectedUnitCurrency === 'USD' && (
-                  <div style={{ fontSize: 11.5, color: 'var(--text-muted)', gridColumn: '1 / -1' }}>
-                    This unit is priced in USD. The lease is shown in TZS once a proforma is created with the day's exchange rate. The refundable security deposit is billed on a separate non-tax proforma when the lease is approved.
-                  </div>
-                )}
+                <div className="form-group">
+                  <label className="form-label">Monthly Rent ({selectedUnitCurrency === 'USD' ? 'USD' : 'TZS'}) *</label>
+                  <MoneyInput className="form-input" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Select a unit first'} required />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Security Deposit ({selectedUnitCurrency === 'USD' ? 'USD' : 'TZS'})</label>
+                  <MoneyInput className="form-input" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Calculated from the unit" />
+                </div>
               </div>
+              {selectedUnitCurrency === 'USD' && (
+                <div style={{ marginTop: -4, marginBottom: 14, fontSize: 12, color: 'var(--text-muted)' }}>
+                  Priced in USD. Each proforma is billed in TZS at that day&rsquo;s exchange rate.
+                </div>
+              )}
 
 
               <div className="form-row">
