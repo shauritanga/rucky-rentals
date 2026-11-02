@@ -16,7 +16,7 @@ class DepositInvoiceService
      * Issue the refundable security-deposit proforma for a lease: TZS, no VAT, no WHT,
      * never converted to a tax invoice. Returns the existing one if already issued.
      */
-    public function issueFor(Lease $lease, ?int $userId = null): ?Invoice
+    public function issueFor(Lease $lease, ?int $userId = null, ?float $typedRate = null): ?Invoice
     {
         $deposit = (float) ($lease->deposit ?? 0);
         if ($deposit <= 0) {
@@ -31,10 +31,11 @@ class DepositInvoiceService
         $lease->loadMissing(['tenant', 'unit']);
 
         $isUsd = strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD';
-        $rate  = $isUsd ? (float) $lease->exchange_rate : null;
+        // A USD deposit is priced with the rate typed on this proforma (older leases may still carry a stored one).
+        $rate  = $isUsd ? (float) ($typedRate ?: $lease->exchange_rate) : null;
         if ($isUsd && $rate <= 0) {
             throw ValidationException::withMessages([
-                'deposit_rate' => 'Enter the current USD → TZS rate to issue this lease\'s security deposit proforma.',
+                'deposit_rate' => 'Enter the USD → TZS exchange rate for this deposit proforma.',
             ]);
         }
         $amount = $isUsd ? round($deposit * $rate, 2) : round($deposit, 2);

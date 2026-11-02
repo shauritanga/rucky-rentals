@@ -351,19 +351,19 @@ class LeaseController extends Controller
                 'date' => now()->toDateString(),
                 'text' => 'Approved by superuser.',
             ];
-            $this->activateGroup($lease, $log, $request->input('deposit_rate'));
+            $this->activateGroup($lease, $log);
         } elseif ($action === 'approve_accountant' && $lease->status === 'pending_accountant') {
             // Only superuser can approve
             abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 1, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
-            $this->activateGroup($lease, $log, $request->input('deposit_rate'));
+            $this->activateGroup($lease, $log);
         } elseif ($action === 'approve_pm' && $lease->status === 'pending_pm') {
             // Only superuser can approve
             abort_if($user->role !== 'superuser', 403, 'Only superuser can approve leases.');
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 2, 'action' => 'approved', 'by' => $user->name . ' (Superuser)', 'date' => now()->toDateString(), 'text' => 'Approved by superuser.'];
-            $this->activateGroup($lease, $log, $request->input('deposit_rate'));
+            $this->activateGroup($lease, $log);
         } elseif ($action === 'reject') {
             $log = json_decode($lease->approval_log, true) ?? [];
             $log[] = ['step' => 0, 'action' => 'rejected', 'by' => $user->name, 'date' => now()->toDateString(), 'reason' => $request->input('reason', ''), 'text' => 'Lease rejected.'];
@@ -631,25 +631,7 @@ class LeaseController extends Controller
         return back()->with('success', 'Lease terminated.' . $this->rebalanceNote);
     }
 
-    /**
-     * A USD-unit lease needs the deposit's TZS rate typed at approval (stored on the lease).
-     */
-    public function requireDepositRate(Lease $lease, $typedRate): void
-    {
-        if (strtoupper((string) ($lease->currency ?? 'TZS')) !== 'USD' || (float) ($lease->deposit ?? 0) <= 0) {
-            return;
-        }
-
-        if (empty($typedRate) || (float) $typedRate <= 0) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'deposit_rate' => 'Enter the current USD → TZS rate to book this lease\'s security deposit.',
-            ]);
-        }
-
-        $lease->update(['exchange_rate' => round((float) $typedRate, 4)]);
-    }
-
-    /** Manually issue the deposit proforma (leases approved before deposits were billed). */
+    /** Issue the deposit proforma. A USD lease needs the exchange rate typed here; the rate lives on the proforma, not the lease. */
     public function issueDeposit(Request $request, Lease $lease)
     {
         if ($this->shouldScopeToProperty($request)) {
@@ -659,8 +641,12 @@ class LeaseController extends Controller
         abort_if(!in_array($lease->status, ['active', 'expiring', 'overdue']), 422, 'Only a running lease can have a deposit proforma issued.');
         abort_if((float) $lease->deposit <= 0, 422, 'This lease has no deposit.');
 
-        $this->requireDepositRate($lease, $request->input('deposit_rate'));
-        $invoice = app(\App\Services\DepositInvoiceService::class)->issueFor($lease->fresh(), $request->user()?->id);
+        $data = $request->validate(['deposit_rate' => 'nullable|numeric|min:0.0001|max:999999.9999']);
+        $invoice = app(\App\Services\DepositInvoiceService::class)->issueFor(
+            $lease->fresh(),
+            $request->user()?->id,
+            isset($data['deposit_rate']) ? (float) $data['deposit_rate'] : null
+        );
 
         return back()->with('success', 'Deposit proforma ' . $invoice->invoice_number . ' issued.');
     }
@@ -668,6 +654,12 @@ class LeaseController extends Controller
     /** Request the refundable deposit with a non-tax proforma; cash is booked when it is paid. */
     public function issueDepositInvoice(Lease $lease): void
     {
+        // A USD deposit can only be priced once someone types the exchange rate on its proforma
+        // (the "Issue Deposit Proforma" button), so it is not issued automatically.
+        if (strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD') {
+            return;
+        }
+
         app(\App\Services\DepositInvoiceService::class)->issueFor($lease, auth()->id());
     }
 
@@ -700,13 +692,9 @@ class LeaseController extends Controller
     }
 
     /** Approve a lease together with its co-tenants, then settle the unit's shares once. */
-    private function activateGroup(Lease $lease, array $log, mixed $depositRate): void
+    private function activateGroup(Lease $lease, array $log): void
     {
         $members = $this->pendingGroup($lease);
-        foreach ($members as $member) {
-            $this->requireDepositRate($member, $depositRate);
-        }
-
         DB::transaction(function () use ($members, $log) {
             foreach ($members as $member) {
                 $memberLog = json_decode($member->approval_log, true) ?? [];

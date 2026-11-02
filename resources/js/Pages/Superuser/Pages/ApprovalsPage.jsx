@@ -200,15 +200,13 @@ function Detail({ label, value, sub }) {
     );
 }
 
-function DecisionModal({ open, action, subject, context, needsDepositRate = false, onClose, onConfirm, submitting }) {
+function DecisionModal({ open, action, subject, context, onClose, onConfirm, submitting }) {
     const [message, setMessage] = useState('');
-    const [depositRate, setDepositRate] = useState('');
     const isReject = action === 'reject';
-    const rateOk = !needsDepositRate || isReject || Number(depositRate) > 0;
-    const isValid = (isReject ? message.trim().length >= 5 : true) && rateOk;
+    const isValid = isReject ? message.trim().length >= 5 : true;
 
-    const handleClose = () => { setMessage(''); setDepositRate(''); onClose(); };
-    const handleConfirm = () => { onConfirm(message.trim(), depositRate); setMessage(''); setDepositRate(''); };
+    const handleClose = () => { setMessage(''); onClose(); };
+    const handleConfirm = () => { onConfirm(message.trim()); setMessage(''); };
 
     return (
         <div className={`modal-overlay ${open ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && handleClose()}>
@@ -224,12 +222,6 @@ function DecisionModal({ open, action, subject, context, needsDepositRate = fals
                             : <><strong style={{ color: 'var(--green)' }}>Approving</strong> {context}. The requester will be notified where notifications are configured.</>
                         }
                     </p>
-                    {needsDepositRate && !isReject && (
-                        <div className="form-group">
-                            <label className="form-label" style={{ marginBottom: 5 }}>Exchange rate to book the security deposit (USD → TZS) *</label>
-                            <MoneyInput decimals={4} className="form-input" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
-                        </div>
-                    )}
                     <div className="form-group">
                         <label className="form-label" style={{ marginBottom: 5 }}>
                             {isReject ? 'Reason for rejection *' : 'Approval note (optional)'}
@@ -612,7 +604,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
     const openModal = (action, type, item) => setModal({ action, type, item });
     const closeModal = () => { if (!submitting) setModal(null); };
 
-    const handleConfirm = (message, depositRate) => {
+    const handleConfirm = (message) => {
         if (!modal || submitting) return;
         setSubmitting(true);
         const { action, type, item } = modal;
@@ -626,7 +618,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
                         ? `/superuser/units/${item.id}/${action}`
                         : `/superuser/invoices/${item.id}/${action}`;
 
-        router.post(url, type === 'lease' && depositRate ? { message, deposit_rate: depositRate } : { message }, {
+        router.post(url, { message }, {
             preserveScroll: true,
             onSuccess: () => { setModal(null); setDrawer(null); setSubmitting(false); },
             onError: () => { setSubmitting(false); },
@@ -871,7 +863,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
     return (
         <>
             <DetailDrawer drawer={drawer} onClose={closeDrawer} onApprove={(type, item) => openModal('approve', type, item)} onReject={(type, item) => openModal('reject', type, item)} submitting={submitting} />
-            <DecisionModal open={!!modal} action={modal?.action} subject={modalSubject} context={modalContext} needsDepositRate={modal?.type === 'lease' && String(modal.item?.currency || '').toUpperCase() === 'USD' && Number(modal.item?.deposit) > 0} onClose={closeModal} onConfirm={handleConfirm} submitting={submitting} />
+            <DecisionModal open={!!modal} action={modal?.action} subject={modalSubject} context={modalContext} onClose={closeModal} onConfirm={handleConfirm} submitting={submitting} />
 
             <div className="page-header">
                 <div>

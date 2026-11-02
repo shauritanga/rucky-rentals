@@ -753,7 +753,6 @@ class SuperuserController extends Controller
             'date'    => now()->format('d M Y'),
             'text'    => $message,
         ];
-        app(LeaseController::class)->requireDepositRate($lease, $request->input('deposit_rate'));
         $lease->update(['status' => 'active', 'approval_log' => json_encode($log)]);
 
         app(LeaseController::class)->ensureInstallmentsGenerated($lease->fresh());

@@ -501,7 +501,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   }, [rentStartDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [depositRate, setDepositRate] = useState('');
-  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action, deposit_rate: depositRate || null }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
+  const approve = (lease, action) => router.patch(`/leases/${lease.id}`, { action }, { onSuccess: () => setSelected(s => s ? {...s, status: action==='approve_superuser'?'active':action==='reject'?'rejected':s.status} : null) });
 
   const openFitoutEdit = () => {
     setFitoutEditEnabled(!!selected?.fitout_enabled);
@@ -719,11 +719,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                       <>
                         <div className="apv-banner-title">Awaiting Superuser Approval</div>
                         <div className="apv-banner-sub">This lease is pending approval. Only the superuser can approve or reject leases.</div>
-                        {user?.role === 'superuser' && leaseIsUsd(selected) && Number(selected.deposit) > 0 && (
-                          <div className="form-group" style={{ margin: '10px 0' }}>
-                            <label className="form-label">Exchange rate to book the security deposit (USD → TZS) *</label>
-                            <MoneyInput decimals={4} className="form-input" value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="e.g. 2650.0000" />
-                          </div>
+                        {leaseIsUsd(selected) && Number(selected.deposit) > 0 && (
+                          <div className="apv-banner-sub" style={{ marginTop: 6 }}>USD lease: the deposit proforma is issued after approval, with the exchange rate entered on it.</div>
                         )}
                         {user?.role === 'superuser' && (
                           <div className="apv-banner-actions">
@@ -911,7 +908,23 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <button className="btn-secondary" onClick={renewFromDrawer}>Renew</button>
                   <button className="btn-secondary" onClick={()=>window.open(`/leases/${selected.id}/pdf`, '_blank')}>Download Agreement</button>
                   {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) > 0 && !selected.deposit_invoice && (user?.role === 'superuser' || user?.role === 'manager') && (
-                    <button className="btn-secondary" onClick={() => router.post(`/leases/${selected.id}/deposit-invoice`, { deposit_rate: depositRate || null }, { preserveScroll: true })}>Issue Deposit Proforma</button>
+                    <>
+                      {leaseIsUsd(selected) && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <MoneyInput decimals={4} className="form-input" style={{ width: 150 }} value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="USD → TZS rate" />
+                        </div>
+                      )}
+                      <button
+                        className="btn-secondary"
+                        disabled={leaseIsUsd(selected) && !(Number(depositRate) > 0)}
+                        title={leaseIsUsd(selected) && !(Number(depositRate) > 0) ? 'Enter the USD → TZS rate for this proforma' : undefined}
+                        onClick={() => router.post(`/leases/${selected.id}/deposit-invoice`, { deposit_rate: leaseIsUsd(selected) ? depositRate : null }, {
+                          preserveScroll: true,
+                          onSuccess: () => setDepositRate(''),
+                          onError: (errs) => notify('error', Object.values(errs || {}).flat().find(Boolean) || 'The deposit proforma could not be issued.'),
+                        })}
+                      >Issue Deposit Proforma</button>
+                    </>
                   )}
                   {selected.deposit_invoice && (
                     <span style={{fontSize:12,color:'var(--text-muted)',alignSelf:'center'}}>Deposit proforma {selected.deposit_invoice.invoice_number} · {String(selected.deposit_invoice.status).replace('_',' ')}</span>
