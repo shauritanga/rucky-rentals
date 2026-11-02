@@ -33,7 +33,6 @@ class MaintenanceStaffGlobalAccessTest extends TestCase
             'phone' => '255700000100',
             'role' => 'maintenance_staff',
             'property_id' => $property->id,
-            'twoFA' => 'yes',
         ]);
 
         $response->assertRedirect();

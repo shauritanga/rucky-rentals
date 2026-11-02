@@ -84,7 +84,6 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
 
   // ── Security ─────────────────────────────────────────────────────────────
   const [security, setSecurity] = useState({
-    require_2fa:         settings.require_2fa         === '1',
     allow_sso:           settings.allow_sso           === '1',
     session_timeout:     settings.session_timeout     ?? '15',
     audit_logging:       settings.audit_logging       === '1',
@@ -148,7 +147,6 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
   const saveLease     = () => save(lease);
   const saveSecurity  = () => save({
     ...security,
-    require_2fa:         security.require_2fa         ? '1' : '0',
     allow_sso:           security.allow_sso           ? '1' : '0',
     audit_logging:       security.audit_logging       ? '1' : '0',
     failed_login_alerts: security.failed_login_alerts ? '1' : '0',
@@ -384,10 +382,6 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
         <div className="grid-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <div className="card" style={{ padding: 20 }}>
             <div className="card-title" style={{ marginBottom: 12 }}>Authentication</div>
-            <div className="perm-row">
-              <div><div className="perm-label">Two-Factor Authentication (2FA)</div><div className="perm-sub">Require 2FA for all users</div></div>
-              <Toggle value={security.require_2fa} onChange={v => setSecurity(p => ({ ...p, require_2fa: v }))} />
-            </div>
             <div className="perm-row">
               <div><div className="perm-label">Single Sign-On (SSO)</div><div className="perm-sub">Allow Google/Microsoft SSO login</div></div>
               <Toggle value={security.allow_sso} onChange={v => setSecurity(p => ({ ...p, allow_sso: v }))} />

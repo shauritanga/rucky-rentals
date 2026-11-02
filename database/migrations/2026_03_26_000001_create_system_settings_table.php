@@ -38,7 +38,6 @@ return new class extends Migration
             'notif_overdue_rent'   => '1',
             'notif_system_errors'  => '1',
             // Security toggles
-            'require_2fa'          => '1',
             'allow_sso'            => '0',
             'session_timeout'      => '30',
             'audit_logging'        => '1',

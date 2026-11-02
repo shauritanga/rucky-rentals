@@ -30,9 +30,6 @@ use App\Http\Controllers\PropertySettingsController;
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
-    Route::get('/login/verify-otp', [AuthController::class, 'showVerifyOtp'])->name('login.otp.show');
-    Route::post('/login/verify-otp', [AuthController::class, 'verifyOtp'])->name('login.otp.verify');
-    Route::post('/login/resend-otp', [AuthController::class, 'resendOtp'])->name('login.otp.resend');
 });
 
 Route::middleware('auth')->group(function () {

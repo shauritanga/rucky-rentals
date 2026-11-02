@@ -234,20 +234,6 @@ export default function Profile() {
                 </div>
               </div>
 
-              <div className="card" style={{ marginBottom: 14 }}>
-                <div className="profile-card-header-row"><div style={{ fontSize: 14, fontWeight: 600 }}>Two-Factor Authentication</div></div>
-                <div style={{ padding: 20 }}>
-                  <div className="profile-twofa-box">
-                    <div>
-                      <div style={{ fontSize: 13.5, fontWeight: 500 }}>Global Email OTP</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                        Turn the real 2FA requirement on or off from the Superuser security settings page. Login then requires a 6-digit email code after the password step.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <div className="card">
                 <div className="profile-card-header-row">
                   <div style={{ fontSize: 14, fontWeight: 600 }}>Active Sessions</div>

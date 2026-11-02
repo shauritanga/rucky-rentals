@@ -489,7 +489,6 @@ class SuperuserController extends Controller
             'phone' => ['nullable', 'regex:/^\+\d{8,15}$/'],
             'role' => 'required|in:manager,accountant,maintenance_staff,viewer',
             'property_id' => 'nullable|exists:properties,id',
-            'twoFA' => 'nullable|in:yes,no',
         ]);
 
         $initialPassword = 'password';
@@ -570,7 +569,7 @@ class SuperuserController extends Controller
             'late_fee_days', 'late_fee_percent', 'expiry_warning_days', 'auto_renew',
             'notif_new_property', 'notif_manager_changes', 'notif_failed_logins',
             'notif_lease_approved', 'notif_overdue_rent', 'notif_system_errors',
-            'require_2fa', 'allow_sso', 'session_timeout', 'audit_logging', 'failed_login_alerts',
+            'allow_sso', 'session_timeout', 'audit_logging', 'failed_login_alerts',
         ];
 
         foreach ($allowed as $key) {

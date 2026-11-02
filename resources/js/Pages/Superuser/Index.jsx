@@ -46,7 +46,6 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     phone: '',
     role: '',
     property_id: '',
-    twoFA: 'yes',
   });
 
   const { data, setData, post, patch, processing, reset, errors } = useForm({
@@ -177,7 +176,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       onSuccess: () => {
         setShowManagerModal(false);
         setManagerErrors({});
-        setManagerForm({ name: '', email: '', phone: '', role: '', property_id: '', twoFA: 'yes' });
+        setManagerForm({ name: '', email: '', phone: '', role: '', property_id: ''});
       },
       onError: (errors) => {
         setManagerErrors(errors);
@@ -347,12 +346,6 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
                   ))}
                 </select>
                 {managerForm.role === 'maintenance_staff' && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Maintenance Staff have access to all properties.</div>}
-              </div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Require 2FA</label>
-                <select className="form-input form-select" value={managerForm.twoFA} onChange={(e) => setManagerForm((f) => ({ ...f, twoFA: e.target.value }))}>
-                  <option value="yes">Yes (recommended)</option>
-                  <option value="no">No</option>
-                </select>
               </div></div>
             </div>
             <div className="modal-footer">

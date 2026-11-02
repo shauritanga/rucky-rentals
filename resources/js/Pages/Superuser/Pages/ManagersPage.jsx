@@ -123,7 +123,6 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                 <th>Role</th>
                                 <th>Assigned Property</th>
                                 <th>Last Active</th>
-                                <th>2FA</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -149,7 +148,6 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                                                     : 'Unassigned'}
                                     </td>
                                     <td>{manager.lastActive || 'Never'}</td>
-                                    <td><span className={`badge ${manager.twoFA ? 'active' : 'inactive'}`}>{manager.twoFA ? 'Enabled' : 'Disabled'}</span></td>
                                     <td><span className={`badge ${manager.online ? 'active' : 'inactive'}`}>{manager.online ? 'Online' : 'Offline'}</span></td>
                                     <td>
                                         {manager.role !== 'superuser' ? (
