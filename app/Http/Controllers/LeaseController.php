@@ -669,9 +669,9 @@ class LeaseController extends Controller
     /** Request the refundable deposit with a non-tax proforma; cash is booked when it is paid. */
     public function issueDepositInvoice(Lease $lease): void
     {
-        // A USD deposit can only be priced once someone types the exchange rate on its proforma
-        // (the "Issue Deposit Proforma" button), so it is not issued automatically.
-        if (strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD') {
+        // A USD deposit uses the rate on the lease. A lease without one (older leases) waits for
+        // someone to type the rate with the "Issue Deposit Proforma" button.
+        if (strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD' && (float) $lease->exchange_rate <= 0) {
             return;
         }
 

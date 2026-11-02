@@ -15,33 +15,39 @@ class DepositRateOnProformaTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_a_usd_lease_is_approved_without_any_rate_and_the_rate_is_typed_on_the_deposit_proforma(): void
+    public function test_a_usd_deposit_proforma_is_issued_on_approval_with_the_rate_on_the_lease(): void
     {
         [$superuser, $property, $manager, $lease] = $this->pendingLease('USD');
 
-        // Approval asks for no rate and does not issue a deposit proforma that could not be priced.
         $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id])
             ->patch("/leases/{$lease->id}", ['action' => 'approve_superuser'])
             ->assertSessionHasNoErrors();
 
         $this->assertSame('active', $lease->fresh()->status);
+        $invoice = Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->firstOrFail();
+        $this->assertEquals(2600.0, (float) $invoice->usd_rate);
+        $this->assertEquals(1000 * 2600.0, (float) $invoice->total_in_base);
+    }
+
+    public function test_a_usd_lease_without_a_rate_waits_for_a_typed_rate(): void
+    {
+        [$superuser, $property, $manager, $lease] = $this->pendingLease('USD');
+        $lease->update(['exchange_rate' => null]);
+
+        $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id])
+            ->patch("/leases/{$lease->id}", ['action' => 'approve_superuser'])
+            ->assertSessionHasNoErrors();
         $this->assertSame(0, Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->count());
 
-        // The proforma cannot be issued without a rate…
         $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id])
             ->post("/leases/{$lease->id}/deposit-invoice", [])
             ->assertSessionHasErrors('deposit_rate');
 
-        // …and with one, the rate sits on the proforma, not on the lease.
         $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id])
             ->post("/leases/{$lease->id}/deposit-invoice", ['deposit_rate' => 2650])
             ->assertSessionHasNoErrors();
-
         $invoice = Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->firstOrFail();
         $this->assertEquals(2650.0, (float) $invoice->usd_rate);
-        $this->assertEquals(1000 * 2650.0, (float) $invoice->total_in_base);
-        // The lease keeps its own day's rate for display; the proforma's rate is separate.
-        $this->assertEquals(2600.0, (float) $lease->fresh()->exchange_rate);
     }
 
     public function test_a_usd_lease_cannot_be_created_without_todays_rate_and_a_tzs_lease_stores_none(): void

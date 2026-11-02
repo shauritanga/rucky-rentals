@@ -923,13 +923,13 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                     <>
                       {leaseIsUsd(selected) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <MoneyInput decimals={4} className="form-input" style={{ width: 150 }} value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder="USD → TZS rate" />
+                          <MoneyInput decimals={4} className="form-input" style={{ width: 150 }} value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder={Number(selected.exchange_rate) > 0 ? `Lease rate ${selected.exchange_rate}` : 'USD → TZS rate'} />
                         </div>
                       )}
                       <button
                         className="btn-secondary"
-                        disabled={leaseIsUsd(selected) && !(Number(depositRate) > 0)}
-                        title={leaseIsUsd(selected) && !(Number(depositRate) > 0) ? 'Enter the USD → TZS rate for this proforma' : undefined}
+                        disabled={leaseIsUsd(selected) && !(Number(depositRate) > 0) && !(Number(selected.exchange_rate) > 0)}
+                        title={leaseIsUsd(selected) && !(Number(depositRate) > 0) && !(Number(selected.exchange_rate) > 0) ? 'Enter the USD → TZS rate for this proforma' : undefined}
                         onClick={() => router.post(`/leases/${selected.id}/deposit-invoice`, { deposit_rate: leaseIsUsd(selected) ? depositRate : null }, {
                           preserveScroll: true,
                           onSuccess: () => setDepositRate(''),
