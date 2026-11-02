@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 /**
  * Stops a stray click outside a form dialog from throwing the user's work away.
@@ -21,7 +22,9 @@ export function useDiscardGuard() {
     close?.();
   };
 
-  const dialog = (
+  // Rendered into <body> so it still shows when the modal it was written inside is closed (pages with
+  // several modals share one guard).
+  const dialogNode = (
     <div className={`modal-overlay ${pending ? 'open' : ''}`} style={{ zIndex: 1700 }} onClick={(e) => e.target === e.currentTarget && keepEditing()}>
       <div className="modal" style={{ width: 'min(400px, calc(100vw - 24px))' }} role="alertdialog" aria-modal="true" aria-label="Close without saving?">
         <div className="modal-header">
@@ -39,6 +42,8 @@ export function useDiscardGuard() {
       </div>
     </div>
   );
+
+  const dialog = typeof document !== 'undefined' ? createPortal(dialogNode, document.body) : null;
 
   return { ask, dialog };
 }
