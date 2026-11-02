@@ -2,6 +2,37 @@ import { useState } from 'react';
 import RowMenu from '@/Components/RowMenu';
 import { router } from '@inertiajs/react';
 
+const managersOf = (property) => (property.managers && property.managers.length ? property.managers : (property.manager ? [property.manager] : []));
+
+function ManagerPicker({ property, managers, onAssign, onRemove, compact = false }) {
+  const current = managersOf(property);
+  const currentIds = new Set(current.map((m) => Number(m.id)));
+  const available = managers.filter((m) => !currentIds.has(Number(m.id)));
+
+  return (
+    <div className="mgr-picker" onClick={(e) => e.stopPropagation()}>
+      <div className="mgr-chips">
+        {current.length === 0 && <span className="mgr-none">No manager yet</span>}
+        {current.map((m) => (
+          <span className="mgr-chip" key={m.id}>
+            {m.name}
+            <button type="button" aria-label={`Remove ${m.name}`} title={`Remove ${m.name}`} onClick={() => onRemove(property.id, m.id)}>✕</button>
+          </span>
+        ))}
+      </div>
+      <select
+        className="form-input form-select"
+        style={compact ? { width: 180, padding: '6px 28px 6px 10px', fontSize: '12.5px' } : undefined}
+        value=""
+        onChange={(e) => e.target.value && onAssign(property.id, e.target.value)}
+      >
+        <option value="">{current.length ? 'Add another manager...' : 'Assign manager...'}</option>
+        {available.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+    </div>
+  );
+}
+
 const statusClass = (status) => {
   if (status === 'active') return 'active';
   if (status === 'trial') return 'trial';
@@ -18,6 +49,7 @@ export default function PropertiesPage({
   onOpenPropertyModal,
   onEditProperty,
   onDeleteProperty,
+  onUnassignManager,
   onAssignManager,
 }) {
   const [viewMode, setViewMode] = useState('grid');
@@ -113,23 +145,10 @@ export default function PropertiesPage({
                   <div className="prop-kv"><div className="prop-kv-label">Revenue</div><div className="prop-kv-value">TZS {Math.round(Number(property.monthly_rent || 0) / 1000)}k</div></div>
                 </div>
                 <div className="prop-footer">
-                  <div className="prop-manager">
-                    <div className="pm-avatar">{(property.manager?.name || 'U').split(' ').map((v) => v[0]).join('').slice(0, 2).toUpperCase()}</div>
-                    {property.manager?.name || 'Unassigned'}
-                  </div>
                   <span className={`badge ${statusClass(property.status)}`}>{property.status}</span>
                 </div>
-                <div style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
-                  <select
-                    className="form-input form-select"
-                    value={property.manager_user_id || ''}
-                    onChange={(e) => onAssignManager(property.id, e.target.value)}
-                  >
-                    <option value="">Assign manager...</option>
-                    {managers.map((manager) => (
-                      <option key={manager.id} value={manager.id}>{manager.name}</option>
-                    ))}
-                  </select>
+                <div style={{ marginTop: 10 }}>
+                  <ManagerPicker property={property} managers={managers} onAssign={onAssignManager} onRemove={onUnassignManager} />
                 </div>
               </div>
             );
@@ -173,20 +192,10 @@ export default function PropertiesPage({
                     <td>{property.unit_count || 0}</td>
                     <td>{occupancy}%</td>
                     <td>TZS {Math.round(Number(property.monthly_rent || 0) / 1000)}k</td>
-                    <td>{property.manager?.name || 'Unassigned'}</td>
+                    <td>{managersOf(property).map((m) => m.name).join(', ') || 'Unassigned'}</td>
                     <td><span className={`badge ${statusClass(property.status)}`}>{property.status}</span></td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      <select
-                        className="form-input form-select"
-                        style={{ width: 180, padding: '6px 28px 6px 10px', fontSize: '12.5px' }}
-                        value={property.manager_user_id || ''}
-                        onChange={(e) => onAssignManager(property.id, e.target.value)}
-                      >
-                        <option value="">Assign manager...</option>
-                        {managers.map((manager) => (
-                          <option key={manager.id} value={manager.id}>{manager.name}</option>
-                        ))}
-                      </select>
+                      <ManagerPicker property={property} managers={managers} onAssign={onAssignManager} onRemove={onUnassignManager} compact />
                     </td>
                     <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                       <RowMenu

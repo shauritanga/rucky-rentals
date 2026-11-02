@@ -21,7 +21,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
     }, []);
 
     const resolvedManagers = managers.map((manager) => {
-        const assigned = properties.filter((p) => Number(p.manager_user_id) === Number(manager.id));
+        const assigned = properties.filter((p) => Number(p.id) === Number(manager.property_id) || (p.managers || []).some((m) => Number(m.id) === Number(manager.id)));
         return { ...manager, assignedProperties: assigned };
     });
 

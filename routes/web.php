@@ -106,6 +106,7 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/managers', [SuperuserController::class, 'storeManager'])->name('superuser.managers.store');
         Route::delete('superuser/managers/{user}', [SuperuserController::class, 'deleteManager'])->name('superuser.managers.delete');
         Route::post('superuser/managers/{id}/restore', [SuperuserController::class, 'restoreManager'])->name('superuser.managers.restore');
+        Route::patch('superuser/properties/{property}/unassign-manager', [SuperuserController::class, 'unassignManager'])->name('superuser.properties.unassign-manager');
         Route::patch('superuser/properties/{property}/assign-manager', [SuperuserController::class, 'assignManager'])->name('superuser.properties.assign-manager');
         Route::patch('superuser/settings', [SuperuserController::class, 'updateSettings'])->name('superuser.settings.update');
         Route::patch('superuser/settings/generator-billing', [SuperuserController::class, 'updateGeneratorBilling'])->name('superuser.settings.generator');

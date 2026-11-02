@@ -35,7 +35,7 @@ class SuperuserController extends Controller
     use \App\Support\ComputesPaymentRevenue;
     public function index()
     {
-        $properties = Property::with('manager:id,name,email')
+        $properties = Property::with(['manager:id,name,email', 'managers:id,name,email,property_id'])
             ->withCount([
                 'units as unit_count_live' => fn($q) => $q->where('approval_status', 'approved'),
                 'units as occupied_units_live' => fn($q) => $q->where('approval_status', 'approved')->whereIn('units.status', ['occupied', 'overdue']),
@@ -451,6 +451,7 @@ class SuperuserController extends Controller
         return back()->with('success', 'Property updated successfully. Unit names were not changed.');
     }
 
+    /** Add a manager to a property. A property can have several; existing managers stay. */
     public function assignManager(Request $request, Property $property)
     {
         $data = $request->validate([
@@ -459,15 +460,11 @@ class SuperuserController extends Controller
 
         $newManager = User::findOrFail($data['manager_user_id']);
 
-        if ($property->manager_user_id && $property->manager_user_id !== $newManager->id) {
-            User::where('id', $property->manager_user_id)->update(['property_id' => null]);
-        }
-
-        $property->update(['manager_user_id' => $newManager->id]);
         $newManager->update([
             'role' => 'manager',
             'property_id' => $property->id,
         ]);
+        $this->refreshPrimaryManager($property);
 
         $this->logAudit(
             request: $request,
@@ -508,11 +505,7 @@ class SuperuserController extends Controller
             $property = Property::findOrFail($data['property_id']);
             $assignedPropertyName = $property->name;
 
-            if ($property->manager_user_id && $property->manager_user_id !== $user->id) {
-                User::where('id', $property->manager_user_id)->update(['property_id' => null]);
-            }
-
-            $property->update(['manager_user_id' => $user->id]);
+            $this->refreshPrimaryManager($property);
         } elseif ($data['role'] !== 'maintenance_staff' && !empty($data['property_id'])) {
             $assignedPropertyName = Property::where('id', $data['property_id'])->value('name');
         } elseif ($data['role'] === 'maintenance_staff') {
@@ -587,6 +580,46 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Settings saved.');
+    }
+
+    /** Take one manager off a property (the property and its other managers are unaffected). */
+    public function unassignManager(Request $request, Property $property)
+    {
+        $data = $request->validate(['manager_user_id' => 'required|exists:users,id']);
+
+        $manager = User::where('id', $data['manager_user_id'])->where('property_id', $property->id)->firstOrFail();
+        $manager->update(['property_id' => null]);
+        $this->refreshPrimaryManager($property);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Manager removed from property',
+            resource: $manager->name,
+            propertyName: $property->name,
+            category: 'user',
+            propertyId: (int) $property->id,
+        );
+
+        return back()->with('success', $manager->name . ' no longer manages ' . $property->name . '.');
+    }
+
+    /** The "primary manager" pointer on the property follows its managers: first one, or none. */
+    private function refreshPrimaryManager(Property $property): void
+    {
+        $managerIds = User::where('property_id', $property->id)->where('role', 'manager')->orderBy('id')->pluck('id');
+        $current = $property->manager_user_id;
+        $property->update(['manager_user_id' => $managerIds->contains($current) ? $current : $managerIds->first()]);
+    }
+
+    /** Everyone who manages the property a record belongs to, so a decision reaches all of them. */
+    private function managersOf(?Property $property)
+    {
+        if (!$property) {
+            return collect();
+        }
+        $managers = $property->managers()->get();
+
+        return $managers->isNotEmpty() ? $managers : collect([$property->manager])->filter();
     }
 
     /** Submeter electricity price and VAT for one property (read-only on the Electricity page). */
@@ -758,9 +791,8 @@ class SuperuserController extends Controller
         app(LeaseController::class)->issueDepositInvoice($lease->fresh());
         app(LeaseController::class)->rebalanceUnit($lease->fresh());
 
-        // Notify the property manager
-        $manager = $lease->unit?->property?->manager;
-        if ($manager) {
+        // Notify every manager of the property
+        foreach ($this->managersOf($lease->unit?->property) as $manager) {
             $manager->notify(new LeaseDecisionNotification($lease->fresh(), 'approved', $message, $actor));
         }
 
@@ -796,9 +828,8 @@ class SuperuserController extends Controller
         ];
         $lease->update(['status' => 'rejected', 'approval_log' => json_encode($log)]);
 
-        // Notify the property manager
-        $manager = $lease->unit?->property?->manager;
-        if ($manager) {
+        // Notify every manager of the property
+        foreach ($this->managersOf($lease->unit?->property) as $manager) {
             $manager->notify(new LeaseDecisionNotification($lease->fresh(), 'rejected', $data['message'], $actor));
         }
 
@@ -828,9 +859,8 @@ class SuperuserController extends Controller
 
         $freshTicket = $ticket->fresh();
 
-        // Notify the property manager
-        $manager = $ticket->unit?->property?->manager ?? $ticket->property?->manager;
-        if ($manager) {
+        // Notify every manager of the property
+        foreach ($this->managersOf($ticket->unit?->property ?? $ticket->property) as $manager) {
             $manager->notify(new MaintenanceDecisionNotification($freshTicket, 'approved', $message, $actor));
         }
 
@@ -865,9 +895,8 @@ class SuperuserController extends Controller
 
         $ticket->update(['workflow_status' => 'rejected', 'status' => 'open']);
 
-        // Notify the property manager
-        $manager = $ticket->unit?->property?->manager ?? $ticket->property?->manager;
-        if ($manager) {
+        // Notify every manager of the property
+        foreach ($this->managersOf($ticket->unit?->property ?? $ticket->property) as $manager) {
             $manager->notify(new MaintenanceDecisionNotification($ticket->fresh(), 'rejected', $data['message'], $actor));
         }
 
@@ -1163,7 +1192,6 @@ class SuperuserController extends Controller
 
         if ($propertyId) {
             $propertyName = Property::where('id', $propertyId)->value('name');
-            Property::where('manager_user_id', $user->id)->update(['manager_user_id' => null]);
         }
 
         $resource = sprintf('%s (%s)', $user->name, $user->role);
@@ -1268,7 +1296,7 @@ class SuperuserController extends Controller
                 return [
                     'id'          => $pid,
                     'name'        => $prop->name,
-                    'manager'     => $prop->manager?->name,
+                    'manager'     => $prop->managers()->orderBy('id')->pluck('name')->join(', ') ?: $prop->manager?->name,
                     'gross'       => $g,
                     'maintenance' => $maint,
                     'fuel'        => $fl,

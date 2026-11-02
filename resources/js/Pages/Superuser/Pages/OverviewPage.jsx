@@ -160,7 +160,7 @@ export default function OverviewPage({ properties = [], managers = [], lastBacku
                     title="Open property panel"
                   >
                     <td><div style={{ fontWeight: 600 }}>{property.name}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{property.city || '-'}</div></td>
-                    <td>{property.manager?.name || 'Unassigned'}</td>
+                    <td>{((property.managers && property.managers.length) ? property.managers : (property.manager ? [property.manager] : [])).map((m) => m.name).join(', ') || 'Unassigned'}</td>
                     <td>{occupancy}%</td>
                     <td style={{ fontWeight: 600 }}>{formatCompactTzs(property.monthly_revenue_tzs)}</td>
                     <td><span className={`badge ${statusClass(property.status)}`}>{property.status}</span></td>

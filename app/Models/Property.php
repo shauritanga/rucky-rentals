@@ -57,6 +57,12 @@ class Property extends Model
         return $this->belongsTo(User::class, 'manager_user_id');
     }
 
+    /** Every manager on this property (a property can have several). */
+    public function managers()
+    {
+        return $this->hasMany(User::class)->where('role', 'manager');
+    }
+
     public function users()
     {
         return $this->hasMany(User::class);

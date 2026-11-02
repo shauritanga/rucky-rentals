@@ -150,6 +150,10 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
     router.patch(`/superuser/properties/${propertyId}/assign-manager`, { manager_user_id: managerId }, { preserveScroll: true });
   };
 
+  const unassignManager = (propertyId, managerId) => {
+    router.patch(`/superuser/properties/${propertyId}/unassign-manager`, { manager_user_id: managerId }, { preserveScroll: true });
+  };
+
   const meta = VIEW_META[activeView] || VIEW_META.overview;
 
   const onAction = () => {
@@ -221,6 +225,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           onEditProperty={openEditPropertyModal}
           onDeleteProperty={(property) => { setDeleteTarget(property); setDeleteConfirm(''); }}
           onAssignManager={assignManager}
+          onUnassignManager={unassignManager}
         />
       )}
 
