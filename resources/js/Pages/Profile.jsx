@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import PhoneInput from '@/Components/PhoneInput';
 import { Head, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 
@@ -194,7 +195,7 @@ export default function Profile() {
                   <div><label className="form-label">First Name</label><input className="form-input" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} /></div>
                   <div><label className="form-label">Last Name</label><input className="form-input" type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} /></div>
                   <div><label className="form-label">Email Address</label><input className="form-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-                  <div><label className="form-label">Phone Number</label><input className="form-input" type="text" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
+                  <div><label className="form-label">Phone Number</label><PhoneInput value={phone} onChange={setPhone} /></div>
                   <div><label className="form-label">Role</label><input className="form-input" type="text" value={roleLabel} readOnly style={{ opacity: .55, cursor: 'default' }} /></div>
                   <div><label className="form-label">Assigned Property</label><input className="form-input" type="text" value={user?.property_name || '—'} readOnly style={{ opacity: .55, cursor: 'default' }} /></div>
                   <div style={{ gridColumn: '1 / -1' }}><label className="form-label">Bio / Notes</label><textarea className="form-input" rows="3" style={{ resize: 'vertical' }} value={bio} onChange={(e) => setBio(e.target.value)} /></div>

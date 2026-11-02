@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { formatPhone } from '@/utils/phone';
+import PhoneInput from '@/Components/PhoneInput';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
@@ -338,7 +340,7 @@ export default function TenantsIndex({ tenants }) {
                       </div>
                       <div className="tdr-contact-item">
                         <div className="tdr-contact-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.84 1.16 2 2 0 012.82.84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 8.1a16 16 0 006.29 6.29l1.61-1.61a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 15.09v1.83z"/></svg></div>
-                        <div><div className="tdr-contact-label">Phone</div><div className="tdr-contact-value">{selected.phone}</div></div>
+                        <div><div className="tdr-contact-label">Phone</div><div className="tdr-contact-value">{formatPhone(selected.phone)}</div></div>
                       </div>
                       {(selected.address || selected.city || selected.country) && (
                         <div className="tdr-contact-item">
@@ -424,7 +426,7 @@ export default function TenantsIndex({ tenants }) {
                           <div>
                             <div className="tdr-contact-label">{selected.nok_relation||'Next of Kin'}</div>
                             <div className="tdr-contact-value">{selected.nok_name||'—'}</div>
-                            <div className="tdr-contact-label" style={{marginTop:2}}>{selected.nok_phone||'—'}</div>
+                            <div className="tdr-contact-label" style={{marginTop:2}}>{formatPhone(selected.nok_phone)||'—'}</div>
                           </div>
                         </div>
                       </div>
@@ -539,7 +541,7 @@ export default function TenantsIndex({ tenants }) {
               {/* Shared contact */}
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={data.email} onChange={e=>setData('email',e.target.value)} required /></div>
-                <div className="form-group"><label className="form-label">Phone *</label><input className="form-input" value={data.phone} onChange={e=>setData('phone',e.target.value)} required /></div>
+                <div className="form-group"><label className="form-label">Phone *</label><PhoneInput value={data.phone} onChange={v=>setData('phone',v)} required /></div>
               </div>
 
               {/* Address — shared for both types */}
@@ -559,7 +561,7 @@ export default function TenantsIndex({ tenants }) {
                 <>
                   <div className="form-row">
                     <div className="form-group"><label className="form-label">Next of Kin *</label><input className="form-input" value={data.nok_name} onChange={e=>setData('nok_name',e.target.value)} required /></div>
-                    <div className="form-group"><label className="form-label">Next of Kin Phone *</label><input className="form-input" value={data.nok_phone} onChange={e=>setData('nok_phone',e.target.value)} required /></div>
+                    <div className="form-group"><label className="form-label">Next of Kin Phone *</label><PhoneInput value={data.nok_phone} onChange={v=>setData('nok_phone',v)} required /></div>
                   </div>
                   <div className="form-row">
                     <div className="form-group" style={{gridColumn:'1 / -1'}}><label className="form-label">Next of Kin Relation *</label><input className="form-input" value={data.nok_relation} onChange={e=>setData('nok_relation',e.target.value)} placeholder="e.g. Spouse, parent, sibling" required /></div>

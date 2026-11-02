@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { formatPhone } from '@/utils/phone';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
@@ -825,7 +826,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                           <div>
                             <div style={{ fontWeight: 600, fontSize: 13 }}>{dep.tenant?.name || '—'}</div>
                             <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                              {dep.tenant?.phone || dep.tenant?.email || '—'}
+                              {formatPhone(dep.tenant?.phone) || dep.tenant?.email || '—'}
                             </div>
                           </div>
                         </div>
@@ -1290,7 +1291,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 13.5 }}>{selectedDeposit.tenant?.name}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {selectedDeposit.tenant?.phone || 'No phone'} · {selectedDeposit.tenant?.email || 'No email'}
+                        {formatPhone(selectedDeposit.tenant?.phone) || 'No phone'} · {selectedDeposit.tenant?.email || 'No email'}
                       </div>
                     </div>
                   </div>

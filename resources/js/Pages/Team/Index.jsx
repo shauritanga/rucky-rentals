@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import PhoneInput from '@/Components/PhoneInput';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
@@ -570,7 +571,7 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
                 <div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={data.email} onChange={(e) => setData('email', e.target.value)} placeholder="e.g. david@rukyrentals.co.tz" required /></div>
               </div>
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={data.phone} onChange={(e) => setData('phone', e.target.value)} placeholder="+255 7xx xxx xxx" /></div>
+                <div className="form-group"><label className="form-label">Phone</label><PhoneInput value={data.phone} onChange={(v) => setData('phone', v)} /></div>
                 <div className="form-group"><label className="form-label">Role *</label>
                   <select className="form-input form-select" value={data.role} onChange={(e) => onRoleChange(e.target.value)} required>
                     <option value="">Select role…</option>

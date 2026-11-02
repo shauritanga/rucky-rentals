@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PhoneInput from '@/Components/PhoneInput';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router } from '@inertiajs/react';
 
@@ -98,12 +99,7 @@ export default function SettingsIndex({ property }) {
                     <div className="form-row">
                         <div className="form-group">
                             <label className="form-label">Phone Number</label>
-                            <input
-                                className="form-input"
-                                value={info.phone}
-                                onChange={e => setInfo(p => ({ ...p, phone: e.target.value }))}
-                                placeholder="+255 000 000 000"
-                            />
+                            <PhoneInput value={info.phone} onChange={v => setInfo(p => ({ ...p, phone: v }))} />
                             {errors.phone && <div className="form-error">{errors.phone}</div>}
                         </div>
                     </div>

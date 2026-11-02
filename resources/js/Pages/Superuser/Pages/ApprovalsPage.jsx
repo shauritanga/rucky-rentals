@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatPhone } from '@/utils/phone';
 import { router } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import MoneyInput from '@/Components/MoneyInput';
@@ -419,7 +420,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                     <div>
                                         <div style={{ fontSize: 14, fontWeight: 600 }}>{item.tenant?.name || '—'}</div>
                                         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.tenant?.email || '—'}</div>
-                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{item.tenant?.phone || '—'}</div>
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatPhone(item.tenant?.phone) || '—'}</div>
                                     </div>
                                 </div>
                             </div>
@@ -471,7 +472,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                 <Detail label="Status" value={<StatusBadge status={item.status} />} />
                                 <Detail label="Name" value={item.name ?? '—'} />
                                 <Detail label="Email" value={item.email ?? '—'} />
-                                <Detail label="Phone" value={item.phone ?? '—'} />
+                                <Detail label="Phone" value={formatPhone(item.phone) || '—'} />
                                 <Detail label="Role" value={String(item.role || '').replace('_', ' ')} />
                                 <Detail label="Property" value={item.property?.name ?? '—'} />
                                 <Detail label="Requested By" value={item.requested_by?.name ?? '—'} sub={item.requested_by?.email} />

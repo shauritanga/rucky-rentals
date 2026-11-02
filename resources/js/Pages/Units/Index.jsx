@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { formatPhone } from '@/utils/phone';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
@@ -449,7 +450,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                     <div>
                       <div className="dt-name">{tenantFirstName(lease.tenant)}</div>
                       <div className="dt-email">{lease.tenant.email}</div>
-                      <div className="dt-phone">{lease.tenant.phone}</div>
+                      <div className="dt-phone">{formatPhone(lease.tenant.phone)}</div>
                     </div>
                   </div>
                 </div>

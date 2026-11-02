@@ -31,7 +31,7 @@ class ProfileController extends Controller
         $request->validate([
             'name'  => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users')->ignore($request->user()->id)],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['nullable', 'regex:/^\+\d{8,15}$/'],
             'bio'   => ['nullable', 'string', 'max:1000'],
         ]);
 

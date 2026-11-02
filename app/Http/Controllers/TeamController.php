@@ -111,7 +111,7 @@ class TeamController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:120',
             'email' => 'required|email|max:120|unique:users,email',
-            'phone' => 'nullable|string|max:30',
+            'phone' => ['nullable', 'regex:/^\+\d{8,15}$/'],
             'role' => 'required|in:accountant,lease_manager,maintenance_staff,viewer',
             'permissions' => 'nullable|array',
         ]);

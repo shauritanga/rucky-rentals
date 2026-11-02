@@ -115,9 +115,9 @@ class TenantIdentityTest extends TestCase
 
         $this->actingAs($user)->withSession(['superuser_viewing_property_id' => $this->property->id])->put("/tenants/{$t->id}", [
             'tenant_type' => 'individual', 'first_name' => 'Old', 'last_name' => 'Timer', 'id_type' => 'other', 'national_id' => 'KE-3456/78',
-            'tin' => '999', 'nok_name' => 'n', 'nok_phone' => '1', 'nok_relation' => 'r', 'email' => 'old@example.com', 'phone' => '2',
+            'tin' => '999', 'nok_name' => 'n', 'nok_phone' => '0700000001', 'nok_relation' => 'r', 'email' => 'old@example.com', 'phone' => '0722000000',
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame('2', $t->fresh()->phone);
+        $this->assertSame('+255722000000', $t->fresh()->phone);
     }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import PhoneInput from '@/Components/PhoneInput';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import { generateFloors } from '@/utils/floorConfig';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
@@ -327,7 +328,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           <form onSubmit={submitManager}>
             <div className="modal-body">
               <div className="form-row"><div className="form-group"><label className="form-label">Full Name *</label><input className="form-input" value={managerForm.name} onChange={(e) => setManagerForm((f) => ({ ...f, name: e.target.value }))} required />{managerErrors.name && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.name}</div>}</div></div>
-              <div className="form-row"><div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={managerForm.email} onChange={(e) => setManagerForm((f) => ({ ...f, email: e.target.value }))} required />{managerErrors.email && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.email}</div>}</div><div className="form-group"><label className="form-label">Phone</label><input className="form-input" value={managerForm.phone} onChange={(e) => setManagerForm((f) => ({ ...f, phone: e.target.value }))} /></div></div>
+              <div className="form-row"><div className="form-group"><label className="form-label">Email *</label><input className="form-input" type="email" value={managerForm.email} onChange={(e) => setManagerForm((f) => ({ ...f, email: e.target.value }))} required />{managerErrors.email && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{managerErrors.email}</div>}</div><div className="form-group"><label className="form-label">Phone</label><PhoneInput value={managerForm.phone} onChange={(v) => setManagerForm((f) => ({ ...f, phone: v }))} /></div></div>
               <div className="form-row"><div className="form-group"><label className="form-label">Role *</label>
                 <select className="form-input form-select" value={managerForm.role} onChange={(e) => setManagerForm((f) => ({ ...f, role: e.target.value, property_id: e.target.value === 'maintenance_staff' ? '' : f.property_id }))} required>
                   <option value="">Select role...</option>

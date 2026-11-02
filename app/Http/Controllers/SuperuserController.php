@@ -486,7 +486,7 @@ class SuperuserController extends Controller
         $data = $request->validate([
             'name' => 'required|string|max:120',
             'email' => 'required|email|max:120|unique:users,email',
-            'phone' => 'nullable|string|max:30',
+            'phone' => ['nullable', 'regex:/^\+\d{8,15}$/'],
             'role' => 'required|in:manager,accountant,maintenance_staff,viewer',
             'property_id' => 'nullable|exists:properties,id',
             'twoFA' => 'nullable|in:yes,no',

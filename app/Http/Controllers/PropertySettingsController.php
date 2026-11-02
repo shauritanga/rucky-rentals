@@ -34,7 +34,7 @@ class PropertySettingsController extends Controller
             'address'           => 'nullable|string|max:255',
             'city'              => 'nullable|string|max:120',
             'country'           => 'nullable|string|max:120',
-            'phone'             => 'nullable|string|max:30',
+            'phone'             => ['nullable', 'regex:/^\+\d{8,15}$/'],
             'bank_name'         => 'nullable|string|max:120',
             'bank_account'      => 'nullable|string|max:60',
             'bank_account_name' => 'nullable|string|max:120',

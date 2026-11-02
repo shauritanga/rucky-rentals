@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { formatPhone } from '@/utils/phone';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
@@ -874,7 +875,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div>
                     <div style={{fontSize:14,fontWeight:600}}>{selected.tenant?.name || '—'}</div>
                     <div style={{fontSize:12,color:'var(--text-muted)'}}>{selected.tenant?.email || '—'}</div>
-                    <div style={{fontSize:12,color:'var(--text-muted)'}}>{selected.tenant?.phone || '—'}</div>
+                    <div style={{fontSize:12,color:'var(--text-muted)'}}>{formatPhone(selected.tenant?.phone) || '—'}</div>
                   </div>
                 </div>
               </div>
@@ -1041,7 +1042,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                           <div className="nl-opt-avatar" style={{background:t.color,color:t.text_color}}>{t.initials}</div>
                           <div style={{flex:1,minWidth:0,textAlign:'left'}}>
                             <div className="nl-opt-name">{t.name}</div>
-                            <div className="nl-opt-meta">{t.email} · {t.phone || '—'}</div>
+                            <div className="nl-opt-meta">{t.email} · {formatPhone(t.phone) || '—'}</div>
                           </div>
                           <span className="nl-opt-unit">{unitLabel}</span>
                         </button>
@@ -1055,7 +1056,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                     <div className="nl-selected-avatar" style={{background:ct.color,color:ct.text_color}}>{ct.initials}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div className="nl-selected-name">{neededTenants > 1 ? `${i + 1}. ` : ''}{ct.name}</div>
-                      <div className="nl-selected-meta">{ct.email} · {ct.phone || '—'}</div>
+                      <div className="nl-selected-meta">{ct.email} · {formatPhone(ct.phone) || '—'}</div>
                     </div>
                     <button type="button" className="nl-selected-clear" onClick={()=>removeTenant(ct.id)} title="Remove">✕</button>
                   </div>
