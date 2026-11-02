@@ -51,7 +51,7 @@ export default function CountrySelect({ value, onChange, placeholder = 'Search o
         {shown.map((c) => (
           <button type="button" key={c.code} className="nl-tenant-option" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(c)}>
             <span style={{ fontSize: 16, lineHeight: 1 }}>{flagOf(c.code)}</span>
-            <span style={{ flex: 1, textAlign: 'left' }}>{c.name}</span>
+            <span style={{ flex: 1, textAlign: 'left', color: 'var(--text-primary)', fontSize: 13.5 }}>{c.name}</span>
           </button>
         ))}
       </div>
