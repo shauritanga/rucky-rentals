@@ -220,6 +220,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const [showTerminateConfirm, setShowTerminateConfirm] = useState(false);
   const [tenantSearch, setTenantSearch] = useState('');
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const [unitSearch, setUnitSearch] = useState('');
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false);
   const [possessionDate, setPossessionDate] = useState('2026-04-01');
   const [rentStartDate, setRentStartDate] = useState('2026-04-01');
   const [fitoutEnabled, setFitoutEnabled] = useState(false);
@@ -378,17 +380,15 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     return map;
   }, [leases, editingLeaseId]);
 
-  const unitsByFloor = useMemo(() => {
-    const grouped = {};
-    units
+  // One flat list ordered by floor then unit number; the dropdown is searchable instead of grouped.
+  const unitOptions = useMemo(
+    () => units
       .filter(u => u.status !== 'maintenance')
-      .forEach((u) => {
-        const floor = Number(u.floor) || 0;
-        if (!grouped[floor]) grouped[floor] = [];
-        grouped[floor].push(u);
-      });
-    return Object.entries(grouped).sort((a, b) => Number(a[0]) - Number(b[0]));
-  }, [units]);
+      .slice()
+      .sort((x, y) => (Number(x.floor) || 0) - (Number(y.floor) || 0)
+        || String(x.unit_number).localeCompare(String(y.unit_number), undefined, { numeric: true })),
+    [units]
+  );
 
   const selectedUnit = useMemo(
     () => units.find((u) => String(u.id) === String(data.unit_id)),
@@ -1074,24 +1074,49 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Unit *</label>
-                  <select className="form-input form-select" value={data.unit_id} onChange={e=>onUnitChange(e.target.value)} required>
-                    <option value="">Select unit…</option>
-                    {unitsByFloor.map(([floor, floorUnits]) => (
-                      <optgroup key={floor} label={`Floor ${floor}`}>
-                        {floorUnits.map(u => {
-                          const coTenants = activeLeasesByUnit[String(u.id)] || [];
-                          const coTenantLabel = coTenants.length > 0
-                            ? ` — occupied (${coTenants.map(l => l.tenant?.name).filter(Boolean).join(', ')})`
-                            : (u.allows_co_tenants ? ` — ${u.co_tenant_count} co-tenants` : '');
-                          return (
-                            <option key={u.id} value={u.id} disabled={!editingLeaseId && coTenants.length > 0}>
-                              {u.unit_number} — {u.type} ({formatMoney(u.rent, u.currency)}/mo){coTenantLabel}
-                            </option>
-                          );
-                        })}
-                      </optgroup>
-                    ))}
-                  </select>
+                  {(() => {
+                    const labelOf = (u) => `${u.unit_number} — ${u.type} (${formatMoney(u.rent, u.currency)}/mo)`;
+                    const q = unitSearch.trim().toLowerCase();
+                    const shown = unitOptions.filter(u => !q || `${u.unit_number} ${u.type}`.toLowerCase().includes(q));
+                    return (
+                      <div style={{position:'relative'}}>
+                        <input
+                          type="text"
+                          className="form-input"
+                          autoComplete="off"
+                          placeholder="Search or select unit…"
+                          required
+                          value={showUnitDropdown ? unitSearch : (selectedUnit ? labelOf(selectedUnit) : '')}
+                          onFocus={()=>{setUnitSearch('');setShowUnitDropdown(true);}}
+                          onClick={()=>setShowUnitDropdown(true)}
+                          onBlur={()=>setTimeout(()=>setShowUnitDropdown(false),120)}
+                          onChange={(e)=>{setUnitSearch(e.target.value);setShowUnitDropdown(true);}}
+                        />
+                        <div className={`nl-tenant-dropdown ${showUnitDropdown?'open':''}`}>
+                          {shown.length === 0 && <div className="nl-no-results">No units found</div>}
+                          {shown.map(u => {
+                            const coTenants = activeLeasesByUnit[String(u.id)] || [];
+                            const occupied = !editingLeaseId && coTenants.length > 0;
+                            const coTenantLabel = coTenants.length > 0
+                              ? `occupied (${coTenants.map(l => l.tenant?.name).filter(Boolean).join(', ')})`
+                              : (u.allows_co_tenants ? `${u.co_tenant_count} co-tenants` : '');
+                            return (
+                              <button type="button" key={u.id} className="nl-tenant-option" disabled={occupied}
+                                style={occupied ? {opacity:.5,cursor:'not-allowed'} : undefined}
+                                onMouseDown={(e)=>e.preventDefault()}
+                                onClick={()=>{onUnitChange(String(u.id));setShowUnitDropdown(false);setUnitSearch('');}}>
+                                <div style={{flex:1,minWidth:0,textAlign:'left'}}>
+                                  <div className="nl-opt-name">{u.unit_number} — {u.type}</div>
+                                  {coTenantLabel && <div className="nl-opt-meta">{coTenantLabel}</div>}
+                                </div>
+                                <span className="nl-opt-unit">{formatMoney(u.rent, u.currency)}/mo</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div className="form-group"><label className="form-label">Payment Cycle *</label>
                   <select className="form-input form-select" value={data.payment_cycle} onChange={e=>setData('payment_cycle',e.target.value)}>
