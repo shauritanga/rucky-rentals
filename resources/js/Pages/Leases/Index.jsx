@@ -1210,7 +1210,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{m(summary.wht)}</strong></div>
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Rent WHT portion</span><strong>{m(summary.rentWht)}</strong></div>
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Service charge WHT portion</span><strong>{m(summary.serviceChargeWht)}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{m(summary.instalment)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Total initial {summary.cycle} months installment</span><strong>{m(summary.instalment)}</strong></div>
                   <div className="nl-summary-row"><span>Security deposit</span><strong>{m(summary.deposit)}</strong></div>
                   <div className="nl-summary-row"><span>Lease period</span><strong>{summary.period}</strong></div>
                   {fitoutEnabled && summary.fitoutDays > 0 && (
