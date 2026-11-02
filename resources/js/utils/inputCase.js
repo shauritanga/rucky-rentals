@@ -2,7 +2,7 @@
  * Keeps typed text in the right case on every form without touching each input:
  *   - any <input type="email"> is lower case
  *   - any input marked data-case="upper" (e.g. VRN) is upper case
- * Runs in the capture phase, so React's onChange already sees the corrected value.
+ * Runs in the capture phase, so React's onChange sees the corrected value.
  */
 export function installInputCase() {
   if (window.__inputCaseInstalled) return;
@@ -19,7 +19,10 @@ export function installInputCase() {
 
     const start = el.selectionStart;
     const end = el.selectionEnd;
-    el.value = next;
+    // Use the browser's own setter: assigning el.value directly also updates React's change tracker, so
+    // React would see "no change" and never call onChange (the state would miss the corrected text).
+    const setNative = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (setNative) setNative.call(el, next); else el.value = next;
     try { el.setSelectionRange(start, end); } catch { /* type without selection support */ }
   }, true);
 }
