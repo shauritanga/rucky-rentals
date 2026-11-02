@@ -550,7 +550,7 @@ export default function TenantsIndex({ tenants }) {
 
               {/* Shared contact */}
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" value={data.email} onChange={e=>setData('email',e.target.value)} placeholder="Leave empty if not known yet" />{!data.email && <div style={{fontSize:11.5,color:'var(--text-muted)',marginTop:4}}>No email yet? It is saved as “Email to be updated” until you add it.</div>}{errors.email && <div className="form-error">{errors.email}</div>}</div>
+                <div className="form-group"><label className="form-label">Email</label><input className="form-input" type="email" value={data.email} onChange={e=>setData('email',e.target.value)} placeholder="Leave empty if not known yet" />{errors.email && <div className="form-error">{errors.email}</div>}</div>
                 <div className="form-group"><label className="form-label">Phone *</label><PhoneInput value={data.phone} onChange={v=>setData('phone',v)} required /></div>
               </div>
 
