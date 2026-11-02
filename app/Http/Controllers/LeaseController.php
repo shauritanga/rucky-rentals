@@ -141,6 +141,7 @@ class LeaseController extends Controller
             'payment_cycle'   => 'required|integer|in:3,4,6,12',
             'monthly_rent'    => 'required|numeric',
             'deposit'         => 'nullable|numeric',
+            'exchange_rate'   => 'nullable|numeric|min:0.0001|max:999999.9999',
             'terms'           => 'nullable|string',
         ]);
 
@@ -150,6 +151,13 @@ class LeaseController extends Controller
 
         if ($effectivePropertyId !== null) {
             abort_if((int) $propertyId !== $effectivePropertyId, 403);
+        }
+
+        // A USD unit needs today's rate so the lease can show its amounts in TZS. It is for display only:
+        // every proforma carries its own rate, typed when the proforma is created.
+        $isUsdUnit = strtoupper((string) ($unit->currency ?: 'TZS')) === 'USD';
+        if ($isUsdUnit && (float) ($validated['exchange_rate'] ?? 0) <= 0) {
+            throw ValidationException::withMessages(['exchange_rate' => 'Enter today\'s USD → TZS exchange rate for this lease.']);
         }
 
         $tenantId = $validated['tenant_id'] ?? null;
@@ -277,6 +285,7 @@ class LeaseController extends Controller
             'status' => $status,
             'approval_log' => $approvalLog,
             'co_tenant_group' => $groupId,
+            'exchange_rate' => $isUsdUnit ? round((float) $validated['exchange_rate'], 4) : null,
         ];
 
         $created = collect();
@@ -434,8 +443,13 @@ class LeaseController extends Controller
                 'wht_rate'        => 'nullable|numeric|min:0|max:100',
                 'service_charge_rate' => 'nullable|numeric|min:0|max:100',
                 'vat_rate'        => 'nullable|numeric|min:0|max:100',
+                'exchange_rate'   => 'nullable|numeric|min:0.0001|max:999999.9999',
                 'terms'           => 'nullable|string',
             ]);
+
+            if (empty($editData['exchange_rate']) || strtoupper((string) $lease->currency) !== 'USD') {
+                unset($editData['exchange_rate']); // only a USD lease carries a rate; keep the stored one when none is sent
+            }
 
             $editData = $this->normalizeLeaseTiming($editData);
 

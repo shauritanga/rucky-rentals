@@ -40,7 +40,29 @@ class DepositRateOnProformaTest extends TestCase
         $invoice = Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->firstOrFail();
         $this->assertEquals(2650.0, (float) $invoice->usd_rate);
         $this->assertEquals(1000 * 2650.0, (float) $invoice->total_in_base);
-        $this->assertNull($lease->fresh()->exchange_rate);
+        // The lease keeps its own day's rate for display; the proforma's rate is separate.
+        $this->assertEquals(2600.0, (float) $lease->fresh()->exchange_rate);
+    }
+
+    public function test_a_usd_lease_cannot_be_created_without_todays_rate_and_a_tzs_lease_stores_none(): void
+    {
+        $property = Property::create(['name' => 'Rate Tower 2', 'code' => 'RT2', 'status' => 'active', 'unit_count' => 0, 'occupied_units' => 0, 'country' => 'Tanzania']);
+        $manager = User::factory()->create(['role' => 'manager', 'status' => 'active', 'property_id' => $property->id, 'must_change_password' => false]);
+        $make = fn (string $number, string $currency) => Unit::create([
+            'property_id' => $property->id, 'unit_number' => $number, 'floor' => '1', 'type' => 'Office Suite', 'size_sqft' => 100, 'size_sqm' => 9.29,
+            'rate_per_sqm' => 107.64, 'service_charge_per_sqm' => 0, 'currency' => $currency, 'rent' => 1000, 'status' => 'vacant', 'deposit' => 1000,
+            'service_charge' => 0, 'electricity_type' => 'direct', 'approval_status' => 'approved',
+        ]);
+        $usd = $make('F1.01', 'USD');
+        $tzs = $make('F1.02', 'TZS');
+        $tenant = Tenant::create(['property_id' => $property->id, 'name' => 'T', 'email' => 't@example.com', 'phone' => '0700000000', 'initials' => 'T', 'tenant_type' => 'individual']);
+        $payload = fn ($unit) => ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2026-04-01', 'end_date' => '2027-04-01', 'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 1000];
+
+        $this->actingAs($manager)->post('/leases', $payload($usd))->assertSessionHasErrors('exchange_rate');
+        $this->assertSame(0, Lease::count());
+
+        $this->actingAs($manager)->post('/leases', $payload($tzs) + ['exchange_rate' => 2600])->assertSessionHasNoErrors();
+        $this->assertNull(Lease::where('unit_id', $tzs->id)->value('exchange_rate'));
     }
 
     public function test_a_tzs_lease_still_gets_its_deposit_proforma_on_approval(): void
@@ -71,7 +93,7 @@ class DepositRateOnProformaTest extends TestCase
         $this->actingAs($manager)->post('/leases', [
             'tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2026-04-01', 'end_date' => '2027-04-01',
             'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 1000,
-        ])->assertSessionHasNoErrors();
+        ] + ($currency === 'USD' ? ['exchange_rate' => 2600] : []))->assertSessionHasNoErrors();
 
         return [$superuser, $property, $manager, Lease::where('unit_id', $unit->id)->firstOrFail()];
     }

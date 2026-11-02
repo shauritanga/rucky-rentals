@@ -31,8 +31,9 @@ class DepositInvoiceService
         $lease->loadMissing(['tenant', 'unit']);
 
         $isUsd = strtoupper((string) ($lease->currency ?? 'TZS')) === 'USD';
-        // A USD deposit is priced with the rate typed on this proforma (older leases may still carry a stored one).
-        $rate  = $isUsd ? (float) ($typedRate ?: $lease->exchange_rate) : null;
+        // A USD deposit is priced with the rate typed on this proforma. The lease's own rate is only for
+        // display: a proforma can be issued long after the lease was created.
+        $rate  = $isUsd ? (float) $typedRate : null;
         if ($isUsd && $rate <= 0) {
             throw ValidationException::withMessages([
                 'deposit_rate' => 'Enter the USD → TZS exchange rate for this deposit proforma.',

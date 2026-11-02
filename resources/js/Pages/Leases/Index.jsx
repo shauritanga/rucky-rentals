@@ -233,7 +233,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
   const [saving, setSaving] = useState(false);
   const { data, setData, post, processing, reset } = useForm({
-    tenant_id:'', tenant_ids:[], unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
+    tenant_id:'', tenant_ids:[], exchange_rate:'', unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     possession_date:'2026-04-01', rent_start_date:'2026-04-01', fitout_enabled:false, fitout_to_date:'', fitout_days:0,
     wht_rate:10, service_charge_rate:5, vat_rate:LEASE_VAT_RATE,
@@ -392,6 +392,13 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     [units, data.unit_id]
   );
   const selectedUnitCurrency = resolveCurrency(selectedUnit?.currency);
+  const unitChosen = !!selectedUnit;
+  const isUsdUnit = unitChosen && selectedUnitCurrency === 'USD';
+  const dayRate = Number(data.exchange_rate) || 0;
+  // USD amounts with their TZS equivalent at today's rate (display only).
+  const m = (value) => (isUsdUnit && dayRate > 0
+    ? <>{formatMoneyPrecise(value, selectedUnitCurrency)} <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>≈ {formatMoneyPrecise(value * dayRate, 'TZS')}</span></>
+    : formatMoneyPrecise(value, selectedUnitCurrency));
 
   const openLeaseModal = () => {
     reset();
@@ -441,6 +448,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       payment_cycle: lease.payment_cycle || 3,
       monthly_rent: lease.monthly_rent ?? '',
       deposit: lease.deposit ?? '',
+      exchange_rate: lease.exchange_rate ?? lease.display_rate ?? '',
       wht_rate: lease.wht_rate ?? 10,
       service_charge_rate: lease.service_charge_rate ?? 5,
       vat_rate: lease.vat_rate ?? LEASE_VAT_RATE,
@@ -565,6 +573,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         fitout_days: summary.fitoutDays || 0,
         monthly_rent: data.monthly_rent,
         deposit: data.deposit,
+        exchange_rate: data.exchange_rate || null,
         wht_rate: Number(rentWhtRate === '' ? 0 : rentWhtRate),
         service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
         vat_rate: LEASE_VAT_RATE,
@@ -1158,20 +1167,27 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
               )}
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Monthly Rent ({selectedUnitCurrency === 'USD' ? 'USD' : 'TZS'}) *</label>
-                  <MoneyInput className="form-input" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={data.unit_id ? '' : 'Select a unit first'} required />
+                  <label className="form-label">Monthly Rent{unitChosen ? ` (${selectedUnitCurrency})` : ''} *</label>
+                  <MoneyInput className="form-input" value={data.monthly_rent} onChange={e=>setData('monthly_rent',e.target.value)} placeholder={unitChosen ? '' : 'Select a unit first'} required />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">Security Deposit ({selectedUnitCurrency === 'USD' ? 'USD' : 'TZS'})</label>
-                  <MoneyInput className="form-input" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder="Calculated from the unit" />
+                  <label className="form-label">Security Deposit{unitChosen ? ` (${selectedUnitCurrency})` : ''}</label>
+                  <MoneyInput className="form-input" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder={unitChosen ? 'Calculated from the unit' : ''} />
                 </div>
               </div>
-              {selectedUnitCurrency === 'USD' && (
-                <div style={{ marginTop: -4, marginBottom: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-                  Priced in USD. Each proforma is billed in TZS at that day&rsquo;s exchange rate.
+              {isUsdUnit && (
+                <div className="form-row" style={{ marginBottom: 6 }}>
+                  <div className="form-group">
+                    <label className="form-label">Exchange rate today (USD → TZS) *</label>
+                    <MoneyInput decimals={4} className="form-input" value={data.exchange_rate} onChange={e=>setData('exchange_rate',e.target.value)} placeholder="e.g. 2650" required />
+                  </div>
                 </div>
               )}
-
+              {isUsdUnit && (
+                <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)' }}>
+                  Used only to show this lease in TZS. Each proforma takes its own rate when it is created.
+                </div>
+              )}
 
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Rent WHT (%)</label><input className="form-input" type="number" inputMode="decimal" min="0" max="100" value={rentWhtRate} onChange={e=>setRentWhtRate(e.target.value)} /></div>
@@ -1180,18 +1196,18 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
               {summary.rent > 0 && (
                 <div className="nl-summary-card" style={{marginBottom:14}}>
-                  <div className="nl-summary-row"><span>Monthly Rent</span><strong>{formatMoneyPrecise(summary.rent, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Service Charge (unit flat rate)</span><strong>{formatMoneyPrecise(summary.serviceCharge, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{formatMoneyPrecise(summary.subtotal, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>VAT (18%)</span><strong>{formatMoneyPrecise(summary.vat, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{formatMoneyPrecise(summary.gross, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(rentWhtRate)}% rent + {Math.round(serviceChargeWhtRate)}% service charge, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${formatMoneyPrecise(summary.wht, selectedUnitCurrency)})`}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{formatMoneyPrecise(summary.net, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{formatMoneyPrecise(summary.wht, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Rent WHT portion</span><strong>{formatMoneyPrecise(summary.rentWht, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Service charge WHT portion</span><strong>{formatMoneyPrecise(summary.serviceChargeWht, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{formatMoneyPrecise(summary.instalment, selectedUnitCurrency)}</strong></div>
-                  <div className="nl-summary-row"><span>Security deposit</span><strong>{formatMoneyPrecise(summary.deposit, selectedUnitCurrency)}</strong></div>
+                  <div className="nl-summary-row"><span>Monthly Rent</span><strong>{m(summary.rent)}</strong></div>
+                  <div className="nl-summary-row"><span>Service Charge (unit flat rate)</span><strong>{m(summary.serviceCharge)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{m(summary.subtotal)}</strong></div>
+                  <div className="nl-summary-row"><span>VAT (18%)</span><strong>{m(summary.vat)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{m(summary.gross)}</strong></div>
+                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(rentWhtRate)}% rent + {Math.round(serviceChargeWhtRate)}% service charge, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${m(summary.wht)})`}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{m(summary.net)}</strong></div>
+                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{m(summary.wht)}</strong></div>
+                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Rent WHT portion</span><strong>{m(summary.rentWht)}</strong></div>
+                  <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Service charge WHT portion</span><strong>{m(summary.serviceChargeWht)}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Instalment (× {summary.cycle} months)</span><strong>{m(summary.instalment)}</strong></div>
+                  <div className="nl-summary-row"><span>Security deposit</span><strong>{m(summary.deposit)}</strong></div>
                   <div className="nl-summary-row"><span>Lease period</span><strong>{summary.period}</strong></div>
                   {fitoutEnabled && summary.fitoutDays > 0 && (
                     <div className="nl-summary-row">
@@ -1208,7 +1224,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={saving || processing || !tenantsComplete}>
+              <button type="submit" className="btn-primary" disabled={saving || processing || !tenantsComplete || (isUsdUnit && !(dayRate > 0))}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 {saving ? (editingLeaseId ? 'Saving…' : 'Creating…') : (editingLeaseId ? 'Save Changes' : 'Create Lease')}
               </button>
