@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import MoneyInput from '@/Components/MoneyInput';
+import { notify } from '@/Components/Toaster';
 
 const fmt = (n) => Number(n).toLocaleString();
 const CURRENCY_FALLBACK = 'USD';
@@ -230,6 +231,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const depositRentMonths = Number(settings.deposit_rent_months ?? 1);
   const depositScMonths   = Number(settings.deposit_service_charge_months ?? 1);
 
+  const [saving, setSaving] = useState(false);
   const { data, setData, post, processing, reset } = useForm({
     tenant_id:'', tenant_ids:[], unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
@@ -530,6 +532,16 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   };
   const submit = (e) => {
     e.preventDefault();
+    if (saving) return;
+    const visitOptions = {
+      preserveScroll: true,
+      onStart: () => setSaving(true),
+      onFinish: () => setSaving(false),
+      onError: (errs) => {
+        const first = Object.values(errs || {}).flat().find(Boolean);
+        notify('error', first || 'The lease could not be saved. Please check the form and try again.');
+      },
+    };
     const closeModal = () => {
       reset();
       setShowModal(false);
@@ -557,7 +569,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
         vat_rate: LEASE_VAT_RATE,
         terms: data.terms,
-      }, { onSuccess: closeModal });
+      }, { ...visitOptions, onSuccess: closeModal });
       return;
     }
     router.post('/leases', {
@@ -572,7 +584,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       wht_rate: Number(rentWhtRate === '' ? 0 : rentWhtRate),
       service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
       vat_rate: LEASE_VAT_RATE,
-    }, { onSuccess: closeModal });
+    }, { ...visitOptions, onSuccess: closeModal });
   };
 
   useEffect(() => { setEditingFitout(false); }, [selected?.id]);
@@ -1177,9 +1189,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing || !tenantsComplete}>
+              <button type="submit" className="btn-primary" disabled={saving || processing || !tenantsComplete}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                {editingLeaseId ? 'Save Changes' : 'Create Lease'}
+                {saving ? (editingLeaseId ? 'Saving…' : 'Creating…') : (editingLeaseId ? 'Save Changes' : 'Create Lease')}
               </button>
             </div>
           </form>
