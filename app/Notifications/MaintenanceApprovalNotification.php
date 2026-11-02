@@ -6,16 +6,31 @@ use App\Models\MaintenanceRecord;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\SerializesModels;
 
-class MaintenanceApprovalNotification extends Notification implements ShouldBroadcast
+class MaintenanceApprovalNotification extends Notification implements ShouldBroadcast, ShouldQueue
 {
-    use Queueable;
+    use Queueable, SerializesModels;
+
+    /** Sent by the queue worker, so a slow or failing mail server never delays (or breaks) the action. */
+    public int $tries = 3;
+
+    /** If the record was deleted before the worker ran, there is nothing left to tell anyone about. */
+    public bool $deleteWhenMissingModels = true;
+
+    public function backoff(): array
+    {
+        return [60, 300];
+    }
 
     public function __construct(
         public MaintenanceRecord $ticket,
         public string $stage  // 'submitted' | 'pending_manager' | 'approved'
-    ) {}
+    ) {
+        $this->afterCommit(); // only after the database change is saved
+    }
 
     public function via(object $notifiable): array
     {

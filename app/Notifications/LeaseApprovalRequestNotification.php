@@ -6,16 +6,31 @@ use App\Models\Lease;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\SerializesModels;
 
-class LeaseApprovalRequestNotification extends Notification implements ShouldBroadcast
+class LeaseApprovalRequestNotification extends Notification implements ShouldBroadcast, ShouldQueue
 {
-    use Queueable;
+    use Queueable, SerializesModels;
+
+    /** Sent by the queue worker, so a slow or failing mail server never delays (or breaks) the action. */
+    public int $tries = 3;
+
+    /** If the record was deleted before the worker ran, there is nothing left to tell anyone about. */
+    public bool $deleteWhenMissingModels = true;
+
+    public function backoff(): array
+    {
+        return [60, 300];
+    }
 
     public function __construct(
         public Lease $lease,
         public string $submittedBy
-    ) {}
+    ) {
+        $this->afterCommit(); // only after the database change is saved
+    }
 
     public function via(object $notifiable): array
     {

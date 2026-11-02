@@ -169,6 +169,12 @@ If `git pull` complains about untracked files in `public/build` (first pull afte
 9. **SSL**: cPanel → SSL/TLS Status → run AutoSSL for the domain.
 10. **Releases**: `git pull --ff-only`; `composer install --no-dev -o` if `composer.lock` changed; `php artisan migrate --force`; then `php artisan optimize:clear && php artisan optimize`.
 
+**Emails and notifications run on the queue**
+- Every notification (new lease, unit, maintenance ticket or clearance awaiting approval, team approvals, approve/reject decisions) is queued: the action returns at once and the worker sends the email and the in-app notification within about a minute, retrying a failed email up to 3 times.
+- The worker is started by the scheduler (`schedule:run` every minute from cron, see the Scheduler step). Keep `QUEUE_CONNECTION=database` in `.env`.
+- Check it with `php artisan queue:health`: it shows waiting jobs, failed jobs and when the worker last sent something, and says so if jobs are stuck. `php artisan queue:failed` lists failures and `php artisan queue:retry all` retries them.
+- Still sent immediately, on purpose, because the person clicking needs to know whether it worked: the "Email to tenant" buttons on proformas and the welcome/invite email for a new user.
+
 **Keeping it fast (production)**
 - After every release run `php artisan optimize:clear && php artisan optimize` (this rebuilds the config, route, event and view caches; a stale route cache is why a new page can answer 404 after a pull).
 - In the server `.env` use `SESSION_DRIVER=file` and `CACHE_STORE=file` (the defaults use the database, which adds database round trips to every request), then `php artisan config:clear`. Keep `APP_DEBUG=false` and `APP_ENV=production`.
