@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { formatPhone } from '@/utils/phone';
 import PhoneInput from '@/Components/PhoneInput';
+import CountrySelect from '@/Components/CountrySelect';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
@@ -553,7 +554,7 @@ export default function TenantsIndex({ tenants }) {
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">City</label><input className="form-input" value={data.city} onChange={e=>setData('city',e.target.value)} placeholder="e.g. Dar es Salaam" /></div>
-                <div className="form-group"><label className="form-label">Country</label><input className="form-input" value={data.country} onChange={e=>setData('country',e.target.value)} placeholder="e.g. Tanzania" /></div>
+                <div className="form-group"><label className="form-label">Country</label><CountrySelect value={data.country} onChange={(name)=>setData('country',name)} /></div>
               </div>
 
               {/* NOK — individuals only */}
