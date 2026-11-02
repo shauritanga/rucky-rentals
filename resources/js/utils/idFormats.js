@@ -58,3 +58,21 @@ export const TIN = {
   valid: (v) => /^\d{9}$/.test(v),
 };
 export const formatTin = (value) => (value ? (/^\d+$/.test(String(value)) ? TIN.format(value) : String(value)) : '');
+
+// Tanzania VRN: 8 digits then 1 letter, written NN-NNNNNN-L (e.g. 35-235223-P).
+// The kept value has no separators; anything that does not fit the pattern is shown as typed.
+const vrnCompact = (v) => String(v ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+export const VRN = {
+  placeholder: '40-012345-A',
+  normalize: (v) => {
+    const c = vrnCompact(v);
+    return c.slice(0, 8).replace(/\D/g, '') + (c.length > 8 && /^\d{8}/.test(c) ? c.slice(8, 9).replace(/\d/g, '') : '');
+  },
+  format: (v) => {
+    const c = vrnCompact(v);
+    if (c.length && !/^\d{0,8}[A-Z]?$/.test(c)) return String(v ?? '');
+    return group(c.slice(0, 8), [2, 6]).concat(c.length > 8 ? '-' + c.slice(8, 9) : '');
+  },
+  valid: (v) => /^\d{8}[A-Z]$/.test(vrnCompact(v)),
+};
+export const formatVrn = (value) => (value ? VRN.format(value) : '');

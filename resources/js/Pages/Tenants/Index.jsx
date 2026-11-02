@@ -6,7 +6,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm } from '@inertiajs/react';
 import useExchangeRate from '@/hooks/useExchangeRate';
 import { formatDisplayDate } from '@/utils/dateFormat';
-import { ID_TYPES, ID_TYPE_OPTIONS, TIN, formatId, formatTin, idLabel } from '@/utils/idFormats';
+import { ID_TYPES, ID_TYPE_OPTIONS, TIN, VRN, formatId, formatTin, formatVrn, idLabel } from '@/utils/idFormats';
 
 const fmt = (n) => Number(n).toLocaleString();
 
@@ -412,7 +412,7 @@ export default function TenantsIndex({ tenants }) {
                         <div className="tdr-kv"><div className="tdr-kv-label">Company Name</div><div className="tdr-kv-value">{selected.company_name||'—'}</div></div>
                         <div className="tdr-kv"><div className="tdr-kv-label">Incorporation No.</div><div className="tdr-kv-value">{selected.registration_number||'—'}</div></div>
                         <div className="tdr-kv"><div className="tdr-kv-label">TIN</div><div className="tdr-kv-value">{formatTin(selected.tin)||'—'}</div></div>
-                        <div className="tdr-kv"><div className="tdr-kv-label">VRN</div><div className="tdr-kv-value">{selected.vrn||'—'}</div></div>
+                        <div className="tdr-kv"><div className="tdr-kv-label">VRN</div><div className="tdr-kv-value">{formatVrn(selected.vrn)||'—'}</div></div>
                       </div>
                     </div>
                   ) : (
@@ -493,7 +493,7 @@ export default function TenantsIndex({ tenants }) {
                   </div>
                   <div className="form-row">
                     <div className="form-group"><label className="form-label">TIN *</label><input className="form-input" inputMode="numeric" maxLength={11} value={TIN.format(data.tin)} onChange={e=>setData('tin',TIN.normalize(e.target.value))} placeholder={TIN.placeholder} required />{errors.tin && <div className="form-error">{errors.tin}</div>}</div>
-                    <div className="form-group"><label className="form-label">VRN</label><input className="form-input" data-case="upper" value={data.vrn} onChange={e=>setData('vrn',e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">VRN</label><input className="form-input" data-case="upper" inputMode="text" maxLength={11} value={VRN.format(data.vrn)} onChange={e=>setData('vrn',VRN.normalize(e.target.value))} placeholder={VRN.placeholder} /></div>
                   </div>
                 </>
               )}

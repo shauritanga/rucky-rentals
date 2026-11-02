@@ -177,7 +177,7 @@ class Invoice extends Model
             'tenantId'          => $tenantId,
             'tenantPhone'       => $tenant?->phone ?? '',
             'tenantTin'         => $tenant?->tin ?? '',
-            'tenantVrn'         => $tenant?->vrn ?? '',
+            'tenantVrn'         => preg_match('/^(\d{2})(\d{6})([A-Z])$/', strtoupper((string) ($tenant?->vrn ?? '')), $m) ? "{$m[1]}-{$m[2]}-{$m[3]}" : ($tenant?->vrn ?? ''),
             'tenantAddress'     => $tenant?->address ?? '',
             'tenantCity'        => $tenant?->city ?? '',
             'bankName'          => $bankName,
