@@ -659,9 +659,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--red)'}}>{counts.overdue}</div><div className="tn-stat-label">Payment Overdue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{totalsLabel()}</div><div className="tn-stat-label">Monthly Revenue</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)',...(totalsLabel().includes(' + ') ? {fontSize:15} : {})}}>{totalsLabel()}</div><div className="tn-stat-label">Monthly Revenue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{totalsLabel(12)}</div><div className="tn-stat-label">Annual Contract Value</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)',...(totalsLabel(12).includes(' + ') ? {fontSize:15} : {})}}>{totalsLabel(12)}</div><div className="tn-stat-label">Annual Contract Value</div></div>
       </div>
 
       <div className="toolbar">
