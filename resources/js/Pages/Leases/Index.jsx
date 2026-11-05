@@ -42,7 +42,7 @@ function resolveCurrency(currency) {
 }
 
 // USD exists only on the unit. Where a lease form shows the unit's USD basis it has no symbol;
-// everything else shows TZS via leaseTzs() below.
+// everything else shows TZS via leaseMoney() below.
 const plainBasis = (amount) => Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const leaseIsUsd = (lease) => resolveCurrency(lease?.currency || lease?.unit?.currency) === 'USD';
@@ -91,13 +91,10 @@ function formatCompactMoney(amount, currency = CURRENCY_FALLBACK) {
   return formatMoney(value, code);
 }
 
-// A lease amount in TZS. A USD-unit lease uses the rate typed on its latest proforma (or the
-// deposit rate typed at approval); until one exists there is no TZS figure to show.
-function leaseTzs(amount, lease) {
+// A lease amount in the unit's own currency (USD stays USD). Conversion to TZS happens only on invoices.
+function leaseMoney(amount, lease) {
   if (amount == null || Number.isNaN(Number(amount))) return '—';
-  if (!leaseIsUsd(lease)) return formatMoney(amount, 'TZS');
-  const rate = Number(lease?.display_rate);
-  return rate > 0 ? formatMoney(Number(amount) * rate, 'TZS') : '—';
+  return leaseIsUsd(lease) ? `USD ${plainBasis(amount)}` : formatMoney(amount, 'TZS');
 }
 
 function fmtDateShort(dateStr) {
@@ -343,16 +340,21 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         ? leases.filter(l => l.status==='pending_accountant' || l.status==='pending_pm').length
         : leases.filter(l => l.status===s).length;
   });
-  const monthlyRevenueTzs = useMemo(() => {
-    return leases
+  // Totals per currency: a USD unit's rent is never converted on the lease screens.
+  const revenueByCurrency = useMemo(() => {
+    const totals = {};
+    leases
       .filter(l => !l.status || ['active', 'expiring', 'overdue'].includes(l.status))
-      .reduce((sum, lease) => {
-        const rate = leaseIsUsd(lease) ? Number(lease.display_rate) || 0 : 1;
-        return sum + Number(lease.monthly_rent || 0) * rate;
-      }, 0);
+      .forEach((lease) => {
+        const code = leaseIsUsd(lease) ? 'USD' : 'TZS';
+        totals[code] = (totals[code] || 0) + Number(lease.monthly_rent || 0);
+      });
+    return totals;
   }, [leases]);
-
-  const annualContractValueTzs = useMemo(() => monthlyRevenueTzs * 12, [monthlyRevenueTzs]);
+  const totalsLabel = (factor = 1) => {
+    const codes = ['TZS', 'USD'].filter((c) => revenueByCurrency[c] > 0);
+    return codes.length ? codes.map((c) => formatCompactMoney(revenueByCurrency[c] * factor, c)).join(' + ') : 'TZS 0';
+  };
 
   // A co-tenant unit takes its whole group at once; any other unit takes one tenant.
   const unitForTenants = units.find(u => String(u.id) === String(data.unit_id));
@@ -398,10 +400,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const unitChosen = !!selectedUnit;
   const isUsdUnit = unitChosen && selectedUnitCurrency === 'USD';
   const dayRate = Number(data.exchange_rate) || 0;
-  // USD units show only the TZS equivalent at today's rate (display only); without a rate, the unit currency.
-  const m = (value) => (isUsdUnit && dayRate > 0
-    ? formatMoneyPrecise(value * dayRate, 'TZS')
-    : formatMoneyPrecise(value, selectedUnitCurrency));
+  // The summary shows the unit's own currency; conversion to TZS happens on the invoices.
+  const m = (value) => (isUsdUnit ? `USD ${plainBasis(value)}` : formatMoneyPrecise(value, selectedUnitCurrency));
 
   const openLeaseModal = () => {
     reset();
@@ -641,9 +641,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         <div className="tn-stat-divider"></div>
         <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--red)'}}>{counts.overdue}</div><div className="tn-stat-label">Payment Overdue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{formatCompactMoney(monthlyRevenueTzs, 'TZS')}</div><div className="tn-stat-label">Monthly Revenue</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--green)'}}>{totalsLabel()}</div><div className="tn-stat-label">Monthly Revenue</div></div>
         <div className="tn-stat-divider"></div>
-        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{formatCompactMoney(annualContractValueTzs, 'TZS')}</div><div className="tn-stat-label">Annual Contract Value</div></div>
+        <div className="tn-stat"><div className="tn-stat-value" style={{color:'var(--accent)'}}>{totalsLabel(12)}</div><div className="tn-stat-label">Annual Contract Value</div></div>
       </div>
 
       <div className="toolbar">
@@ -676,9 +676,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <td style={{fontSize:'12.5px',color:'var(--text-secondary)'}}>{formatDisplayDate(l.end_date)}</td>
                 <td><span className={`lease-cycle-pill c${l.payment_cycle}`}>{CYCLE_LABELS[l.payment_cycle]}</span></td>
                 <td style={{fontWeight:600}}>
-                  {leaseTzs(l.monthly_rent, l)}
+                  {leaseMoney(l.monthly_rent, l)}
                 </td>
-                <td style={{fontWeight:600}}>{leaseTzs(l.monthly_service_charge ?? l.unit?.service_charge ?? 0, l)}</td>
+                <td style={{fontWeight:600}}>{leaseMoney(l.monthly_service_charge ?? l.unit?.service_charge ?? 0, l)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
                   {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':(l.status==='pending_accountant'||l.status==='pending_pm')?'⏳ Pending':l.status==='rejected'?'✕ Rejected':'—'}
                 </td>
@@ -776,11 +776,11 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <div className="kv-grid ldr-kv-grid">
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Status</div><div className={`kv-value ldr-kv-value ${STATUS_KV_MAP[selected.status] || ''}`}>{STATUS_LABEL_MAP[selected.status] || selected.status}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Payment Cycle</div><div className="kv-value ldr-kv-value" style={{fontSize:'12.5px'}}>{CYCLE_PAYMENTS[selected.payment_cycle] || `${selected.payment_cycle} months`}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.monthly_rent, selected)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Service Charge</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.monthly_service_charge ?? selected.unit?.service_charge ?? 0, selected)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{leaseTzs((Number(selected.monthly_rent || 0) + Number(selected.monthly_service_charge ?? selected.unit?.service_charge ?? 0)) * Number(selected.payment_cycle || 1), selected)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.monthly_rent * 12, selected)}</div></div>
-                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{leaseTzs(selected.deposit, selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Monthly Rent</div><div className="kv-value ldr-kv-value">{leaseMoney(selected.monthly_rent, selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Service Charge</div><div className="kv-value ldr-kv-value">{leaseMoney(selected.monthly_service_charge ?? selected.unit?.service_charge ?? 0, selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Instalment</div><div className="kv-value ldr-kv-value accent">{leaseMoney((Number(selected.monthly_rent || 0) + Number(selected.monthly_service_charge ?? selected.unit?.service_charge ?? 0)) * Number(selected.payment_cycle || 1), selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{leaseMoney(selected.monthly_rent * 12, selected)}</div></div>
+                  <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{leaseMoney(selected.deposit, selected)}</div></div>
                 </div>
               </div>
 
@@ -845,7 +845,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                           <td style={{color:'var(--text-muted)',fontSize:'12px'}}>{row.installNum}</td>
                           <td style={{fontWeight:600,fontSize:'13px'}}>{row.dueDate}</td>
                           <td style={{fontSize:'12px',color:'var(--text-muted)'}}>{row.period}</td>
-                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{leaseTzs(row.amount, selected)}</td>
+                          <td style={{fontWeight:700,fontVariantNumeric:'tabular-nums'}}>{leaseMoney(row.amount, selected)}</td>
                           <td>
                             <span style={{fontSize:'11.5px',fontWeight:600,color:row.status==='paid'?'var(--green)':row.status==='overdue'?'var(--red)':row.status==='partially_paid'?'var(--amber)':row.status==='upcoming'?'var(--amber)':row.status==='unpaid'?'var(--text-secondary)':'var(--text-muted)'}}>
                               {row.status === 'paid'
@@ -1214,7 +1214,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
               )}
               {isUsdUnit && (
                 <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-                  Used only to show this lease in TZS. Each proforma takes its own rate when it is created.
+                  Used for the security deposit proforma. Every other proforma takes its own rate.
                 </div>
               )}
 

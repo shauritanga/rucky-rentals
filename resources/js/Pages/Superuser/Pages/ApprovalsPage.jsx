@@ -21,13 +21,11 @@ function fmt(amount, currency = 'TZS') {
     return currency + ' ' + Number(amount).toLocaleString();
 }
 
-// USD exists only on the unit; a USD-unit lease is shown in TZS via the rate typed on its proformas.
+// A lease is shown in its unit's own currency; conversion to TZS happens only on invoices.
 function fmtLease(amount, lease) {
     if (amount == null) return '—';
     const currency = String(lease?.currency || lease?.unit?.currency || 'TZS').toUpperCase();
-    if (currency !== 'USD') return fmt(amount, 'TZS');
-    const rate = Number(lease?.display_rate);
-    return rate > 0 ? fmt(Math.round(Number(amount) * rate), 'TZS') : '—';
+    return fmt(currency === 'USD' ? Number(amount) : amount, currency === 'USD' ? 'USD' : 'TZS');
 }
 
 function invoiceTotal(items = []) {
