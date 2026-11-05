@@ -11,10 +11,12 @@ import { createRoot } from 'react-dom/client';
 import { createInertiaApp } from '@inertiajs/react';
 import { installInputCase } from './utils/inputCase';
 import { installBusyButtons } from './utils/busyButtons';
+import { installNetworkGuard } from './utils/networkGuard';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 
 installInputCase();
 installBusyButtons();
+installNetworkGuard();
 
 createInertiaApp({
     title: (title) => `${title} — Mwamba Properties`,

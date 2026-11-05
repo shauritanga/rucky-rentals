@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\EnforceSessionTimeout::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \App\Http\Middleware\UpdateLastSeen::class,
+            \App\Http\Middleware\EnsureIdempotent::class,
         ]);
 
         $middleware->alias([

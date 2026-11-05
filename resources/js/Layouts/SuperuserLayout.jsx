@@ -4,6 +4,7 @@ import useIdleLogout from '@/hooks/useIdleLogout';
 import { getEcho } from '@/echo';
 import DueInvoicesPopup from '@/Components/DueInvoicesPopup';
 import Toaster from '@/Components/Toaster';
+import OfflineBanner from '@/Components/OfflineBanner';
 
 /* ─── Notification Bell ──────────────────────────────────────────── */
 function timeAgo(ts) {
@@ -647,6 +648,7 @@ export default function SuperuserLayout({ activeView, onNavigate, title, subtitl
       </div>
 
       <DueInvoicesPopup user={user} />
+      <OfflineBanner />
       <Toaster />
     </div>
   );
