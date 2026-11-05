@@ -108,7 +108,7 @@ class PaymentController extends Controller
             ]);
         }
 
-        $paymentsQuery = Payment::with(['tenant', 'unit'])->orderByDesc('created_at');
+        $paymentsQuery = Payment::with(['tenant', 'unit', 'receipt:id,receipt_number'])->orderByDesc('created_at');
         $invoicesQuery = Invoice::with(['items', 'lease:id,vat_rate,wht_rate'])->orderByDesc('created_at');
         $tenantsQuery  = Tenant::query()->orderBy('name');
         $unitsQuery    = Unit::query()->approved()->orderBy('unit_number');

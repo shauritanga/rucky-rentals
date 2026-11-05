@@ -136,6 +136,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   const [depositFilter, setDepositFilter] = useState('all');
   const [depositSearch, setDepositSearch] = useState('');
   const [selectedDeposit, setSelectedDeposit] = useState(null);
+  const [selectedPayment, setSelectedPayment] = useState(null);
 
   const depositCounts = useMemo(() => {
     let refundDue = 0;
@@ -235,6 +236,9 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
       return {
         id: `p-${p.id}`,
+        payment: p,
+        invoice,
+        paidBefore,
         paymentId: p.id,
         invoiceId: invoiceId,
         invoiceNumber: invoice?.invoice_number || '—',
@@ -692,7 +696,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                     const tenantInitials = row.tenant?.initials || toInitials(row.tenant?.name);
 
                     return (
-                      <tr key={row.id} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', transition: 'background .1s' }} onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseOut={(e) => e.currentTarget.style.background = ''}>
+                      <tr key={row.id} onClick={() => setSelectedPayment(row)} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', transition: 'background .1s' }} onMouseOver={(e) => e.currentTarget.style.background = 'var(--bg-hover)'} onMouseOut={(e) => e.currentTarget.style.background = ''}>
                         <td style={{ padding: '11px 14px', paddingLeft: 20, fontSize: 13.5, verticalAlign: 'middle' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                             <div style={{ width: 26, height: 26, borderRadius: '50%', backgroundColor: tenantColor, color: tenantTextColor, fontSize: 10.5, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -1157,6 +1161,125 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* ── Payment Detail Drawer ───────────────────────────────────────── */}
+      <div
+        className={`drawer-overlay ${selectedPayment ? 'open' : ''}`}
+        onClick={(e) => e.target === e.currentTarget && setSelectedPayment(null)}
+      >
+        <div className="drawer" style={{ width: 480, maxWidth: 'calc(100vw - 24px)' }}>
+          {selectedPayment && (() => {
+            const row = selectedPayment;
+            const p = row.payment || {};
+            const inv = row.invoice;
+            const statusInfo = PAY_STATUS[row.status] || PAY_STATUS.pending;
+            const isDeposit = inv?.kind === 'deposit';
+            const invoiceKind = isDeposit ? 'Security deposit proforma' : (inv?.type === 'proforma' ? 'Proforma invoice' : 'Tax invoice');
+            const afterPaying = row.invoiceAmount - row.paidBefore - row.amountPaid;
+            const breakdown = [
+              ['Rent', Number(p.breakdown_rent || 0)],
+              ['Service charge', Number(p.breakdown_service_charge || 0)],
+              ['Electricity', Number(p.breakdown_electricity || 0)],
+            ].filter(([, amount]) => amount > 0);
+            const Row = ({ label, children, strong = false, last = false }) => (
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 14px', borderBottom: last ? 'none' : '1px solid var(--border-subtle)', fontSize: 12.5 }}>
+                <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+                <span style={{ fontWeight: strong ? 700 : 600, textAlign: 'right', wordBreak: 'break-word' }}>{children}</span>
+              </div>
+            );
+            const box = { border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' };
+
+            return (
+              <>
+                <div className="drawer-header">
+                  <div>
+                    <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-.3px' }}>Payment P{String(row.paymentId || '').padStart(3, '0')}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                      {row.tenant?.name || '—'} · Unit {row.unit?.unit_number || '—'}
+                    </div>
+                  </div>
+                  <button className="drawer-close" onClick={() => setSelectedPayment(null)}>✕</button>
+                </div>
+
+                <div className="drawer-body">
+                  <div style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: '14px 16px', border: '1px solid var(--border)', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Amount paid</div>
+                      <span style={{ background: statusInfo.bg, color: statusInfo.color, padding: '2px 9px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>{statusInfo.label}</span>
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent)', marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>{formatAmount(row.amountPaid, row.currency)}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Received {row.date || '—'} · {row.method}</div>
+                  </div>
+
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">Payment</div>
+                    <div style={box}>
+                      <Row label="Reference">{p.reference || '—'}</Row>
+                      <Row label="Method">{row.method}</Row>
+                      <Row label="Paid on">{row.date || '—'}</Row>
+                      <Row label="Period">{row.month || '—'}</Row>
+                      <Row label="Recorded">{formatDisplayDate(p.created_at)}</Row>
+                      <Row label="Notes" last>{p.notes || '—'}</Row>
+                    </div>
+                  </div>
+
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">Invoice</div>
+                    {inv ? (
+                      <div style={box}>
+                        <Row label="Number">{inv.invoice_number}</Row>
+                        <Row label="Type">{invoiceKind}</Row>
+                        <Row label="Due date">{row.dueDate || '—'}</Row>
+                        <Row label="Invoice total (incl. VAT)">{formatAmount(row.invoiceAmount, row.currency)}</Row>
+                        <Row label="Paid before this payment">{row.paidBefore > 0 ? formatAmount(row.paidBefore, row.currency) : '—'}</Row>
+                        <Row label="This payment">{formatAmount(row.amountPaid, row.currency)}</Row>
+                        <Row label={afterPaying < -0.005 ? 'Overpaid by' : 'Balance after this payment'} strong last>
+                          <span style={{ color: afterPaying < -0.005 ? '#a78bfa' : afterPaying > 0.005 ? 'var(--amber)' : 'var(--green)' }}>
+                            {afterPaying > 0.005 ? formatAmount(afterPaying, row.currency) : afterPaying < -0.005 ? formatAmount(Math.abs(afterPaying), row.currency) : 'Nothing owing'}
+                          </span>
+                        </Row>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>This payment is not linked to an invoice.</div>
+                    )}
+                  </div>
+
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">{isDeposit ? 'What it covers' : 'What this payment covers'}</div>
+                    <div style={box}>
+                      {isDeposit ? (
+                        <Row label="Security deposit (refundable)" last>{formatAmount(row.amountPaid, row.currency)}</Row>
+                      ) : breakdown.length > 0 ? breakdown.map(([label, amount], i) => (
+                        <Row key={label} label={label} last={i === breakdown.length - 1}>{formatAmount(amount, row.currency)}</Row>
+                      )) : (
+                        <Row label="Breakdown" last>Not recorded</Row>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="drawer-section">
+                    <div className="drawer-section-title">Withholding tax and receipt</div>
+                    <div style={box}>
+                      {isDeposit ? (
+                        <Row label="WHT" >Not applicable</Row>
+                      ) : (
+                        <Row label="WHT confirmed">{p.wht_confirmed ? `Yes${p.wht_reference ? ` · ${p.wht_reference}` : ''}` : 'No'}</Row>
+                      )}
+                      <Row label="Receipt" last>
+                        {isDeposit ? 'None for a security deposit' : (p.receipt?.receipt_number || (p.receipt_id ? 'Issued' : 'Not issued'))}
+                      </Row>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="drawer-footer">
+                  <button type="button" className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setSelectedPayment(null)}>Close</button>
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 
