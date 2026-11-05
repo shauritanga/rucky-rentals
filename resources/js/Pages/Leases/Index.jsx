@@ -1248,9 +1248,15 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={saving || processing || !tenantsComplete}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                {saving ? (editingLeaseId ? 'Saving…' : 'Creating…') : (editingLeaseId ? 'Save Changes' : 'Create Lease')}
+              <button type="submit" className="btn-primary" disabled={saving || processing || !tenantsComplete} aria-busy={saving}>
+                {saving ? (
+                  <><span className="btn-spinner" aria-hidden="true"></span><span>{editingLeaseId ? 'Saving…' : 'Creating…'}</span></>
+                ) : (
+                  <>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span>{editingLeaseId ? 'Save Changes' : 'Create Lease'}</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
