@@ -634,9 +634,9 @@ export default function TeamIndex({ teamMembers = [], archivedMembers = [], role
             </div>
             <div className="modal-footer" style={{flexShrink:0}}>
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing}>
+              <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/><circle cx="8.5" cy="7" r="4"/></svg>
-                Submit for Approval
+                {processing ? 'Submitting…' : 'Submit for Approval'}
               </button>
             </div>
           </form>

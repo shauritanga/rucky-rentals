@@ -602,7 +602,7 @@ export default function TenantsIndex({ tenants }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>{ setShowModal(false); setSubmitError(''); setEditingId(null); }}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing}>{editingId ? 'Save Changes' : 'Add Tenant'}</button>
+              <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>{processing ? <><span className="btn-spinner" aria-hidden="true"></span><span>{editingId ? 'Saving…' : 'Adding…'}</span></> : (editingId ? 'Save Changes' : 'Add Tenant')}</button>
             </div>
           </form>
         </div>

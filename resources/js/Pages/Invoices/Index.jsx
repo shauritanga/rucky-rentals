@@ -207,6 +207,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const [selected, setSelected] = useState(null);
   const [whtReference, setWhtReference] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState('send');
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [invType, setInvType] = useState('proforma');
   const [items, setItems] = useState([{description:'',sub_description:'',quantity:1,unit_price:0}]);
@@ -519,6 +520,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
   const submit = (e, action = 'send') => {
     e.preventDefault();
+    setPendingAction(action);
     if (!data.tenant_name?.trim()) { showError('Tenant name is required.'); return; }
     if (!data.issued_date) { showError('Issue date is required.'); return; }
     if (!data.due_date && action !== 'draft') { showError('Due date is required.'); return; }
@@ -774,8 +776,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
             </div>
             <div className="modal-footer" style={{flexShrink:0}}>
               <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingInvoice(null);}}>Cancel</button>
-              <button type="button" className="btn-secondary" onClick={(e)=>submit(e, 'draft')} disabled={processing}>Save as Draft</button>
-              <button type="submit" className="btn-primary" disabled={processing}>{editingInvoice ? 'Save Changes' : 'Submit for Approval'}</button>
+              <button type="button" className="btn-secondary" onClick={(e)=>submit(e, 'draft')} disabled={processing} aria-busy={processing && pendingAction === 'draft'}>{processing && pendingAction === 'draft' ? 'Saving…' : 'Save as Draft'}</button>
+              <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>{processing && pendingAction !== 'draft' ? <><span className="btn-spinner" aria-hidden="true"></span><span>{editingInvoice ? 'Saving…' : 'Submitting…'}</span></> : (editingInvoice ? 'Save Changes' : 'Submit for Approval')}</button>
             </div>
           </form>
         </div>

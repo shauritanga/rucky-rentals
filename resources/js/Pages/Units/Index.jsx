@@ -753,7 +753,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>setShowModal(false)}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={processing || !canCreateUnit || availableFloors.length===0}>Add Unit</button>
+              <button type="submit" className="btn-primary" disabled={processing || !canCreateUnit || availableFloors.length===0} aria-busy={processing}>{processing ? <><span className="btn-spinner" aria-hidden="true"></span><span>Adding…</span></> : 'Add Unit'}</button>
             </div>
           </form>
         </div>

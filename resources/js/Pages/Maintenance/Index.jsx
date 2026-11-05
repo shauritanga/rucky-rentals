@@ -931,9 +931,9 @@ export default function MaintenanceIndex({ tickets, units, scheduledTasks = [], 
             <div className="modal-footer" style={{ flexShrink: 0 }}>
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
 
-              <button type="submit" className="btn-primary" disabled={processing}>
+              <button type="submit" className="btn-primary" disabled={processing} aria-busy={processing}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9l20-7z"/></svg>
-                Submit for Approval
+                {processing ? 'Submitting…' : 'Submit for Approval'}
               </button>
             </div>
           </form>
