@@ -34,6 +34,8 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    // Sent by the page while the user is active, so working inside one page does not count as idle.
+    Route::post('/session/keep-alive', fn () => response()->noContent())->name('session.keep-alive');
     Route::get('/first-password-change', [AuthController::class, 'showForcePasswordChange'])->name('password.force');
     Route::post('/first-password-change', [AuthController::class, 'forcePasswordChange'])->name('password.force.update');
 
