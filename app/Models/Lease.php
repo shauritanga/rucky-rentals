@@ -39,6 +39,11 @@ class Lease extends Model
 
     protected $appends = ['display_rate', 'monthly_service_charge'];
 
+    public function changeRequests()
+    {
+        return $this->hasMany(LeaseChangeRequest::class);
+    }
+
     protected $casts = [
         'exchange_rate'  => 'float',
         'approval_log'   => 'array',

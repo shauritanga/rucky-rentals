@@ -29,6 +29,51 @@ function fmtLease(amount, lease) {
 }
 
 // Subtotal, VAT and total due exactly as the proforma itself shows them (a security deposit carries no VAT).
+// What an edit request would change: only the fields whose value differs, current -> proposed.
+const CHANGE_FIELDS = [
+    ['monthly_rent', 'Monthly rent', 'money'],
+    ['deposit', 'Security deposit', 'money'],
+    ['start_date', 'Start date', 'date'],
+    ['end_date', 'End date', 'date'],
+    ['rent_start_date', 'Rent start date', 'date'],
+    ['possession_date', 'Possession date', 'date'],
+    ['duration_months', 'Duration (months)', 'text'],
+    ['payment_cycle', 'Payment cycle (months)', 'text'],
+    ['wht_rate', 'Rent WHT %', 'text'],
+    ['service_charge_rate', 'Service charge WHT %', 'text'],
+    ['vat_rate', 'VAT %', 'text'],
+    ['fitout_enabled', 'Fit-out', 'bool'],
+    ['fitout_to_date', 'Fit-out until', 'date'],
+    ['terms', 'Special terms', 'text'],
+    ['tenant_id', 'Tenant', 'id'],
+    ['unit_id', 'Unit', 'id'],
+];
+
+function leaseChangeRows(change) {
+    const lease = change?.lease || {};
+    const proposed = change?.payload || {};
+    const currency = String(lease.currency || lease.unit?.currency || 'TZS').toUpperCase();
+    const show = (kind, value, field) => {
+        if (value === null || value === undefined || value === '') return '—';
+        if (kind === 'money') return fmt(Number(value), currency);
+        if (kind === 'date') return formatDate(value);
+        if (kind === 'bool') return value ? 'Yes' : 'No';
+        if (kind === 'id') return field === 'tenant_id' && String(value) === String(lease.tenant_id) ? (lease.tenant?.name ?? `#${value}`) : `#${value}`;
+        return String(value);
+    };
+    return CHANGE_FIELDS
+        .filter(([field]) => Object.prototype.hasOwnProperty.call(proposed, field))
+        .filter(([field, , kind]) => {
+            const before = lease[field];
+            const after = proposed[field];
+            if (kind === 'money' || ['duration_months', 'payment_cycle', 'wht_rate', 'service_charge_rate', 'vat_rate'].includes(field)) return Number(before) !== Number(after);
+            if (kind === 'bool') return Boolean(before) !== Boolean(after);
+            if (kind === 'date') return String(before ?? '').slice(0, 10) !== String(after ?? '').slice(0, 10);
+            return String(before ?? '') !== String(after ?? '');
+        })
+        .map(([field, label, kind]) => ({ label, before: show(kind, lease[field], field), after: show(kind, proposed[field], field) }));
+}
+
 function invoiceTotals(invoice) {
     const items = invoice?.items || [];
     const lines = items.filter((i) => i.item_type !== 'electricity_vat');
@@ -264,8 +309,11 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
     const isTeam = type === 'team';
     const isUnit = type === 'unit';
     const isInvoice = type === 'invoice';
+    const isLeaseChange = type === 'leasechange';
 
-    const title = !item ? '' : isLease
+    const title = !item ? '' : isLeaseChange
+        ? `${item.type === 'delete' ? 'Delete' : 'Edit'} · ${item.lease?.lease_number ?? `Lease #${item.lease_id}`}`
+        : isLease
         ? (item.lease_number ?? `Lease #${item.id}`)
         : isMaintenance
             ? (item.ticket_number ?? `TK #${item.id}`)
@@ -287,13 +335,13 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
 
     return (
         <div className={`drawer-overlay ${open ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && onClose()}>
-            <div className="drawer" style={isLease ? { width: 680, maxWidth: 'calc(100vw - 24px)' } : isInvoice ? { width: 620, maxWidth: 'calc(100vw - 24px)' } : undefined}>
+            <div className="drawer" style={isLease || isLeaseChange ? { width: 680, maxWidth: 'calc(100vw - 24px)' } : isInvoice ? { width: 620, maxWidth: 'calc(100vw - 24px)' } : undefined}>
                 <div className="drawer-header">
                     <div>
                         <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>
                         {item && (
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                                {isLease ? 'Lease Request' : isMaintenance ? 'Maintenance Request' : isTeam ? 'Team Request' : isUnit ? 'Unit Request' : 'Invoice Approval'}
+                                {isLeaseChange ? 'Lease Change Request' : isLease ? 'Lease Request' : isMaintenance ? 'Maintenance Request' : isTeam ? 'Team Request' : isUnit ? 'Unit Request' : 'Invoice Approval'}
                                 {daysAgo(item.created_at) && ` · Submitted ${daysAgo(item.created_at)}`}
                             </div>
                         )}
@@ -523,6 +571,49 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                         </>
                     )}
 
+                    {item && isLeaseChange && (
+                        <>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px', marginBottom: 20 }}>
+                                <Detail label="Request" value={item.type === 'delete' ? 'Delete the lease' : 'Edit the lease'} />
+                                <Detail label="Requested By" value={item.requester?.name ?? '—'} sub={item.requester?.email ?? '—'} />
+                                <Detail label="Tenant" value={item.lease?.tenant?.name ?? '—'} sub={item.lease?.tenant?.email ?? '—'} />
+                                <Detail label="Property / Unit" value={item.lease?.unit?.property?.name ?? '—'} sub={`Unit ${item.lease?.unit?.unit_number ?? '—'}`} />
+                            </div>
+                            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                                {item.type === 'delete' ? (
+                                    <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+                                        Approving removes this lease and frees the unit. The lease stays exactly as it is until you decide.
+                                    </p>
+                                ) : (() => {
+                                    const rows = leaseChangeRows(item);
+                                    return (
+                                        <>
+                                            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>What would change</div>
+                                            {rows.length === 0 ? (
+                                                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No field differs from the current lease.</p>
+                                            ) : (
+                                                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                                                    <table className="data-table" style={{ margin: 0, fontSize: 12.5 }}>
+                                                        <thead><tr><th>Field</th><th>Now</th><th>Requested</th></tr></thead>
+                                                        <tbody>
+                                                            {rows.map((row) => (
+                                                                <tr key={row.label}>
+                                                                    <td style={{ fontWeight: 500 }}>{row.label}</td>
+                                                                    <td style={{ color: 'var(--text-muted)' }}>{row.before}</td>
+                                                                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{row.after}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        </>
+                    )}
+
                     {item && isInvoice && (
                         <>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px', marginBottom: 20 }}>
@@ -611,7 +702,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
     );
 }
 
-export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [] }) {
+export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [] }) {
     const [drawer, setDrawer] = useState(null);
     const [modal, setModal] = useState(null);
     const [submitting, setSubmitting] = useState(false);
@@ -619,7 +710,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
         if (pendingInvoices.length > 0) return 'invoices';
         if (pendingUnits.length > 0) return 'units';
         if (pendingTeamMembers.length > 0) return 'team';
-        if (pendingLeases.length > 0) return 'leases';
+        if (pendingLeases.length > 0 || pendingLeaseChanges.length > 0) return 'leases';
         return 'maintenance';
     });
 
@@ -632,7 +723,9 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
         if (!modal || submitting) return;
         setSubmitting(true);
         const { action, type, item } = modal;
-        const url = type === 'lease'
+        const url = type === 'leasechange'
+            ? `/superuser/lease-changes/${item.id}/${action}`
+            : type === 'lease'
             ? `/superuser/leases/${item.id}/${action}`
             : type === 'maintenance'
                 ? `/superuser/maintenance/${item.id}/${action}`
@@ -649,18 +742,21 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
         });
     };
 
-    const totalPending = pendingLeases.length + pendingMaintenance.length + pendingTeamMembers.length + pendingUnits.length + pendingInvoices.length;
+    const totalPending = pendingLeases.length + pendingLeaseChanges.length + pendingMaintenance.length + pendingTeamMembers.length + pendingUnits.length + pendingInvoices.length;
     const tabs = [
         { key: 'invoices', label: 'Invoices', count: pendingInvoices.length },
         { key: 'units', label: 'Units', count: pendingUnits.length },
         { key: 'team', label: 'Team', count: pendingTeamMembers.length },
-        { key: 'leases', label: 'Leases', count: pendingLeases.length },
+        { key: 'leases', label: 'Leases', count: pendingLeases.length + pendingLeaseChanges.length },
         { key: 'maintenance', label: 'Maintenance', count: pendingMaintenance.length },
     ];
 
-    const modalSubject = modal ? (modal.type === 'lease' ? 'Lease' : modal.type === 'maintenance' ? 'Maintenance Ticket' : modal.type === 'team' ? 'Team Member' : modal.type === 'unit' ? 'Unit' : 'Invoice') : '';
+    const modalSubject = modal ? (modal.type === 'leasechange' ? 'Lease Change' : modal.type === 'lease' ? 'Lease' : modal.type === 'maintenance' ? 'Maintenance Ticket' : modal.type === 'team' ? 'Team Member' : modal.type === 'unit' ? 'Unit' : 'Invoice') : '';
     const modalContext = modal ? (() => {
         const item = modal.item;
+        if (modal.type === 'leasechange') {
+            return `${item.type === 'delete' ? 'deletion' : 'edit'} request for lease ${item.lease?.lease_number ?? `#${item.lease_id}`}`;
+        }
         if (modal.type === 'lease') {
             return `lease ${item.lease_number ?? `Lease #${item.id}`} for ${item.tenant?.name ?? 'the tenant'}`;
         }
@@ -803,11 +899,13 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
     };
 
     const renderLeaseTable = () => {
-        if (pendingLeases.length === 0) {
+        if (pendingLeases.length === 0 && pendingLeaseChanges.length === 0) {
             return renderEmptyState('No leases pending approval');
         }
 
         return (
+            <>
+            {pendingLeases.length > 0 && (
             <div className="card">
                 <table className="data-table">
                     <thead>
@@ -840,6 +938,39 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
                     </tbody>
                 </table>
             </div>
+            )}
+            {pendingLeaseChanges.length > 0 && (
+                <div className="card" style={{ marginTop: pendingLeases.length > 0 ? 16 : 0 }}>
+                    <div style={{ padding: '12px 16px 0', fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Change requests on live leases</div>
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Request</th>
+                                <th>Lease</th>
+                                <th>Tenant</th>
+                                <th>Property / Unit</th>
+                                <th>Requested By</th>
+                                <th>Submitted</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {pendingLeaseChanges.map((change) => (
+                                <tr key={change.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('leasechange', change)}>
+                                    <td><span className={`badge ${change.type === 'delete' ? 'overdue' : 'unpaid'}`}>{change.type === 'delete' ? 'Delete' : 'Edit'}</span></td>
+                                    <td style={{ fontWeight: 600 }}>{change.lease?.lease_number ?? `Lease #${change.lease_id}`}</td>
+                                    <td>{change.lease?.tenant?.name ?? '—'}</td>
+                                    <td><div>{change.lease?.unit?.property?.name ?? '—'}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Unit {change.lease?.unit?.unit_number ?? '—'}</div></td>
+                                    <td>{change.requester?.name ?? '—'}</td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>{daysAgo(change.created_at) ?? '—'}</td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: 16, textAlign: 'right' }}>›</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            </>
         );
     };
 
@@ -909,7 +1040,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
             </div>
             <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 13, padding: '16px 18px' }}>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 5 }}>Pending Leases</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--amber)' }}>{pendingLeases.length}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--amber)' }}>{pendingLeases.length + pendingLeaseChanges.length}</div>
             </div>
         </div>
 
@@ -934,7 +1065,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
                     : activeTab === 'team'
                         ? `Team Approvals · ${pendingTeamMembers.length}`
                         : activeTab === 'leases'
-                            ? `Lease Approvals · ${pendingLeases.length}`
+                            ? `Lease Approvals · ${pendingLeases.length + pendingLeaseChanges.length}`
                             : `Maintenance Approvals · ${pendingMaintenance.length}`}
             </div>
 

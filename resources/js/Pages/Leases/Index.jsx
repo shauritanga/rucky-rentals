@@ -620,6 +620,11 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   useEffect(() => { setEditingFitout(false); }, [selected?.id]);
 
   const isPending = selected ? ['pending_accountant', 'pending_pm', 'rejected'].includes(selected.status) : false;
+  // A manager's edit or deletion of a live lease is a request the superuser approves; a superuser's applies at once.
+  const isLiveStatus = (status) => ['active', 'expiring', 'overdue'].includes(status);
+  const selectedNeedsApproval = !!selected && user?.role !== 'superuser' && isLiveStatus(selected.status);
+  const editingLease = editingLeaseId ? leases.find((l) => l.id === editingLeaseId) : null;
+  const editNeedsApproval = !!editingLease && user?.role !== 'superuser' && isLiveStatus(editingLease.status);
   const approvalLog = useMemo(() => parseApprovalLog(selected?.approval_log), [selected]);
   const leaseProgress = useMemo(() => (selected ? calcLeaseProgress(selected) : { pct: 0, daysLeft: 0 }), [selected]);
   const paymentSchedule = useMemo(() => (selected ? buildPaymentSchedule(selected, isPending) : []), [selected, isPending]);
@@ -771,6 +776,13 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                       </>
                     )}
                   </div>
+                </div>
+              )}
+
+              {selected.pending_change && (
+                <div style={{margin:'0 0 14px',padding:'10px 14px',borderRadius:9,background:'var(--amber-dim, rgba(245,158,11,.12))',border:'1px solid var(--amber, #f59e0b)',fontSize:12.5,color:'var(--text-primary)'}}>
+                  <strong>Change pending approval.</strong>{' '}
+                  {selected.pending_change.type === 'delete' ? 'Deletion' : 'An edit'} requested{selected.pending_change.by ? ` by ${selected.pending_change.by}` : ''}. The lease stays as it is until a superuser decides.
                 </div>
               )}
 
@@ -959,8 +971,8 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 </>
               ) : (
                 <>
-                  {user?.role === 'superuser' && (
-                    <button className="btn-primary" style={{flex:'1 1 calc(100% - 56px)',justifyContent:'center',order:-2}} onClick={()=>openEditModal(selected)}>Edit Lease</button>
+                  {(user?.role === 'superuser' || user?.role === 'manager') && (
+                    <button className="btn-primary" style={{flex:'1 1 calc(100% - 56px)',justifyContent:'center',order:-2}} disabled={!!selected.pending_change} title={selected.pending_change ? 'A change is already waiting for approval' : undefined} onClick={()=>openEditModal(selected)}>{selectedNeedsApproval ? 'Request Edit' : 'Edit Lease'}</button>
                   )}
                   <button className="btn-secondary" onClick={renewFromDrawer}>Renew</button>
                   <button className="btn-secondary" onClick={()=>window.open(`/leases/${selected.id}/pdf`, '_blank')}>Download Agreement</button>
@@ -970,7 +982,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) <= 0 && user?.role === 'superuser' && (
                     <button className="btn-secondary" onClick={() => setShowTerminateConfirm(true)}>Terminate</button>
                   )}
-                  <button className="btn-danger" onClick={() => setShowDeleteConfirm(true)}>
+                  <button className="btn-danger" disabled={!!selected.pending_change} title={selectedNeedsApproval ? 'Request deletion' : 'Delete lease'} onClick={() => setShowDeleteConfirm(true)}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                   </button>
                 </>
@@ -984,7 +996,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       <div className={`modal-overlay ${showDeleteConfirm ? 'open' : ''}`} onClick={e => e.target === e.currentTarget && setShowDeleteConfirm(false)}>
         <div className="modal" style={{width: 420}}>
           <div className="modal-header">
-            <div className="modal-title">Delete Lease</div>
+            <div className="modal-title">{selectedNeedsApproval ? 'Request Lease Deletion' : 'Delete Lease'}</div>
             <button className="modal-close" onClick={() => setShowDeleteConfirm(false)}>✕</button>
           </div>
           <div className="modal-body">
@@ -992,16 +1004,20 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
               Are you sure you want to delete the lease for{' '}
               <strong>{selected?.tenant?.name}</strong> on unit{' '}
               <strong>{selected?.unit?.unit_number}</strong>?{' '}
-              This action cannot be undone.
+              {selectedNeedsApproval
+                ? 'The request goes to a superuser. The lease stays as it is until they approve it.'
+                : 'This action cannot be undone.'}
             </p>
           </div>
           <div className="modal-footer">
             <button className="btn-ghost" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
             <button className="btn-danger" onClick={() => {
-              router.delete(`/leases/${selected.id}`);
+              router.delete(`/leases/${selected.id}`, {
+                onError: (errs) => notify('error', Object.values(errs || {}).flat().find(Boolean) || 'The lease could not be deleted.'),
+              });
               setShowDeleteConfirm(false);
               setSelected(null);
-            }}>Delete Lease</button>
+            }}>{selectedNeedsApproval ? 'Send Request' : 'Delete Lease'}</button>
           </div>
         </div>
       </div>
@@ -1036,7 +1052,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       <div className={`modal-overlay ${showModal?'open':''}`} onClick={e=>e.target===e.currentTarget&&guard.ask(()=>{setShowModal(false);setEditingLeaseId(null);})}>
 {guard.dialog}
         <div className="modal" style={{width:'min(640px, calc(100vw - 24px))',maxHeight:'calc(100dvh - 24px)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">{editingLeaseId ? `Edit Lease — Unit ${selected?.unit?.unit_number || ''}` : 'New Lease Agreement'}</div><button className="modal-close" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>✕</button></div>
+          <div className="modal-header" style={{flexShrink:0}}><div className="modal-title">{editingLeaseId ? `${editNeedsApproval ? 'Request Lease Edit' : 'Edit Lease'} — Unit ${selected?.unit?.unit_number || editingLease?.unit?.unit_number || ''}` : 'New Lease Agreement'}</div><button className="modal-close" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>✕</button></div>
           <form onSubmit={submit} style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
             <div className="modal-body" style={{overflowY:'auto',flex:1,minHeight:0}}>
               <div style={{marginBottom:14}}>
@@ -1268,7 +1284,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 ) : (
                   <>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span>{editingLeaseId ? 'Save Changes' : 'Create Lease'}</span>
+                    <span>{editingLeaseId ? (editNeedsApproval ? 'Submit for Approval' : 'Save Changes') : 'Create Lease'}</span>
                   </>
                 )}
               </button>

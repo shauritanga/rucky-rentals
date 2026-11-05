@@ -15,6 +15,8 @@ use App\Models\Property;
 use App\Models\SystemSetting;
 use App\Models\Unit;
 use App\Models\User;
+use App\Models\LeaseChangeRequest;
+use App\Notifications\LeaseChangeDecisionNotification;
 use App\Notifications\LeaseDecisionNotification;
 use App\Notifications\MaintenanceApprovalNotification;
 use App\Notifications\MaintenanceDecisionNotification;
@@ -97,6 +99,17 @@ class SuperuserController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        // Managers' edit / delete requests on live leases, shown next to the leases awaiting first approval.
+        $pendingLeaseChanges = LeaseChangeRequest::with([
+                'lease.tenant:id,name,email',
+                'lease.unit:id,unit_number,floor,property_id,currency',
+                'lease.unit.property:id,name',
+                'requester:id,name,email',
+            ])
+            ->pending()
+            ->orderBy('created_at')
+            ->get();
+
         $pendingMaintenance = MaintenanceRecord::with([
                 'unit:id,unit_number,property_id',
                 'unit.property:id,name,manager_user_id',
@@ -154,6 +167,7 @@ class SuperuserController extends Controller
             'auditLogs'          => $auditLogs,
             'settings'           => $settings,
             'pendingLeases'      => $pendingLeases,
+            'pendingLeaseChanges' => $pendingLeaseChanges,
             'pendingMaintenance' => $pendingMaintenance,
             'pendingTeamMembers' => $pendingTeamMembers,
             'pendingUnits'       => $pendingUnits,
@@ -845,6 +859,79 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Lease rejected.');
+    }
+
+    // ── Lease change requests (a manager's edit / delete of a live lease) ──────────────
+
+    public function approveLeaseChange(Request $request, LeaseChangeRequest $leaseChange)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($leaseChange->status !== 'pending', 422, 'This request has already been decided.');
+
+        $lease = Lease::with(['tenant', 'unit.property'])->find($leaseChange->lease_id);
+        abort_if(!$lease, 422, 'The lease no longer exists.');
+        abort_if(!in_array($lease->status, ['active', 'expiring', 'overdue']), 422, 'The lease is no longer active, so this request cannot be applied.');
+
+        $leases = app(LeaseController::class);
+        $reference = $lease->lease_number ?? ('Lease #' . $lease->id);
+        $property = $lease->unit?->property;
+
+        if ($leaseChange->type === 'delete') {
+            abort_if((float) $lease->deposit > 0, 422, 'This lease has a deposit on file. Start a Clearance to inspect the unit and terminate it.');
+            $leases->applyDelete($lease);
+        } else {
+            $leases->applyEdit($lease, $leaseChange->payload ?? []);
+        }
+
+        $message = trim((string) $request->input('message', '')) ?: 'Approved by superuser.';
+        $leaseChange->update([
+            'status' => 'approved', 'decided_by' => Auth::id(), 'decided_at' => now(), 'decision_note' => $message,
+        ]);
+
+        foreach ($this->managersOf($property) as $manager) {
+            AfterResponse::notify($manager, new LeaseChangeDecisionNotification($lease->id, $reference, $leaseChange->type, 'approved', $message, Auth::user()->name));
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: $leaseChange->type === 'delete' ? 'Lease deletion approved' : 'Lease edit approved',
+            resource: $reference,
+            propertyName: $property?->name,
+            category: 'lease',
+            propertyId: $lease->property_id ? (int) $lease->property_id : null,
+        );
+
+        return back()->with('success', $leaseChange->type === 'delete' ? 'Lease deleted.' : 'Lease updated.');
+    }
+
+    public function rejectLeaseChange(Request $request, LeaseChangeRequest $leaseChange)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($leaseChange->status !== 'pending', 422, 'This request has already been decided.');
+
+        $data = $request->validate(['message' => 'required|string|min:5|max:1000']);
+
+        $lease = Lease::with(['unit.property'])->withTrashed()->find($leaseChange->lease_id);
+        $reference = $lease?->lease_number ?? ('Lease #' . $leaseChange->lease_id);
+
+        $leaseChange->update([
+            'status' => 'rejected', 'decided_by' => Auth::id(), 'decided_at' => now(), 'decision_note' => $data['message'],
+        ]);
+
+        foreach ($this->managersOf($lease?->unit?->property) as $manager) {
+            AfterResponse::notify($manager, new LeaseChangeDecisionNotification($leaseChange->lease_id, $reference, $leaseChange->type, 'rejected', $data['message'], Auth::user()->name));
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: $leaseChange->type === 'delete' ? 'Lease deletion rejected' : 'Lease edit rejected',
+            resource: $reference,
+            propertyName: $lease?->unit?->property?->name,
+            category: 'lease',
+            propertyId: $lease?->property_id ? (int) $lease->property_id : null,
+        );
+
+        return back()->with('success', 'Request rejected. The lease is unchanged.');
     }
 
     // ── Maintenance Approvals ────────────────────────────────────────

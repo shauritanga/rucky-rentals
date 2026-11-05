@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\AfterResponse;
 use App\Models\Lease;
+use App\Models\LeaseChangeRequest;
 use App\Models\LeaseInstallment;
 use App\Models\Property;
 use App\Models\SystemSetting;
@@ -11,6 +12,7 @@ use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\User;
 use App\Notifications\LeaseApprovalRequestNotification;
+use App\Notifications\LeaseChangeRequestNotification;
 use App\Services\LeaseNumberService;
 use App\Support\MockRentalData;
 use App\Traits\LogsAudit;
@@ -86,6 +88,11 @@ class LeaseController extends Controller
         $depositInvoices = \App\Models\Invoice::where('kind', 'deposit')->whereIn('lease_id', $leases->pluck('id'))
             ->get(['id', 'lease_id', 'invoice_number', 'status'])->keyBy('lease_id');
         $leases->each(fn ($l) => $l->setAttribute('deposit_invoice', $depositInvoices[$l->id] ?? null));
+        // An edit or deletion request waiting for a superuser: the drawer shows a tag and holds further changes.
+        $pendingChanges = LeaseChangeRequest::pending()->whereIn('lease_id', $leases->pluck('id'))->with('requester:id,name')->get()->keyBy('lease_id');
+        $leases->each(fn ($l) => $l->setAttribute('pending_change', isset($pendingChanges[$l->id])
+            ? ['type' => $pendingChanges[$l->id]->type, 'by' => $pendingChanges[$l->id]->requester?->name]
+            : null));
         $tenants  = $tenantsQuery->get();
         $units    = $unitsQuery->get();
         $settings = SystemSetting::pluck('value', 'key');
@@ -418,11 +425,10 @@ class LeaseController extends Controller
                 }
             });
         } elseif ($action === 'edit') {
-            // Active/expiring/overdue leases → superuser only
-            if (in_array($lease->status, ['active', 'expiring', 'overdue'])) {
-                abort_if($user->role !== 'superuser' && !$this->isSuperuserActing($request), 403, 'Only superuser can edit an active lease.');
-            }
-            // Pending/rejected → any authenticated user with property access can edit
+            // A live lease edited by anyone but a superuser is a request the superuser approves.
+            // Pending/rejected leases (not yet approved) are edited directly by whoever has property access.
+            $needsApproval = $this->isLive($lease)
+                && $user->role !== 'superuser' && !$this->isSuperuserActing($request);
 
             $editData = $request->validate([
                 'tenant_id'       => ['required', Rule::exists('tenants', 'id')],
@@ -459,35 +465,11 @@ class LeaseController extends Controller
                 ]);
             }
 
-            DB::transaction(function () use ($lease, $editData) {
-                $oldUnitId     = $lease->unit_id;
-                $newUnitId     = $editData['unit_id'];
-                $oldDeposit    = (float) $lease->deposit;
-                $wasActive     = in_array($lease->status, ['active', 'expiring', 'overdue']);
+            if ($needsApproval) {
+                return $this->submitChangeRequest($request, $lease, 'edit', $editData);
+            }
 
-                $lease->update($editData);
-
-                // Co-tenants share one set of terms and equal costs: a change to one applies to all.
-                if ($lease->co_tenant_group) {
-                    $shared = collect($editData)->except(['tenant_id', 'unit_id'])->all();
-                    Lease::where('co_tenant_group', $lease->co_tenant_group)->where('id', '!=', $lease->id)->get()
-                        ->each(fn (Lease $member) => $member->update($shared));
-                }
-
-                if ((int) $oldUnitId !== (int) $newUnitId) {
-                    $oldUnit = Unit::find($oldUnitId);
-                    if ($oldUnit && !$oldUnit->hasOtherActiveLeases(excludeLeaseId: $lease->id)) {
-                        $oldUnit->update(['status' => 'vacant']);
-                    }
-                    Unit::where('id', $newUnitId)->update(['status' => 'occupied']);
-                }
-
-                // If lease is active and deposit amount changed, re-post the deposit GL entry
-                $newDeposit = (float) ($editData['deposit'] ?? $oldDeposit);
-                if ($wasActive && abs($newDeposit - $oldDeposit) > 0.01) {
-                    $this->resyncDeposit($lease->fresh());
-                }
-            });
+            $this->applyEdit($lease, $editData);
         } elseif ($action === 'update_fitout') {
             abort_if($user->role !== 'superuser' && !$this->isSuperuserActing($request), 403, 'Only superuser can edit fit-out settings.');
             $fitoutData = $request->validate([
@@ -611,10 +593,72 @@ class LeaseController extends Controller
 
         abort_if((float) $lease->deposit > 0, 422, 'This lease has a deposit on file. Start a Clearance to inspect the unit and terminate it.');
 
+        // Deleting a live lease needs a superuser's approval unless a superuser is the one deleting it.
+        $user = $request->user();
+        if ($this->isLive($lease) && $user?->role !== 'superuser' && !$this->isSuperuserActing($request)) {
+            return $this->submitChangeRequest($request, $lease, 'delete');
+        }
+
         $propertyId   = $lease->property_id;
         $propertyName = Property::where('id', $propertyId)->value('name');
         $resource     = sprintf('Lease #%d', $lease->id);
 
+        $this->applyDelete($lease);
+
+        $this->logAudit(
+            request: $request,
+            action: 'Lease deleted',
+            resource: $resource,
+            propertyName: $propertyName,
+            category: 'lease',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
+        return back()->with('success', 'Lease terminated.' . $this->rebalanceNote);
+    }
+
+    private function isLive(Lease $lease): bool
+    {
+        return in_array($lease->status, ['active', 'expiring', 'overdue'], true);
+    }
+
+    /** Apply an edit to a lease (the manager's request after approval, or a superuser's edit made directly). */
+    public function applyEdit(Lease $lease, array $editData): void
+    {
+        DB::transaction(function () use ($lease, $editData) {
+            $oldUnitId     = $lease->unit_id;
+            $newUnitId     = $editData['unit_id'];
+            $oldDeposit    = (float) $lease->deposit;
+            $wasActive     = in_array($lease->status, ['active', 'expiring', 'overdue']);
+
+            $lease->update($editData);
+
+            // Co-tenants share one set of terms and equal costs: a change to one applies to all.
+            if ($lease->co_tenant_group) {
+                $shared = collect($editData)->except(['tenant_id', 'unit_id'])->all();
+                Lease::where('co_tenant_group', $lease->co_tenant_group)->where('id', '!=', $lease->id)->get()
+                    ->each(fn (Lease $member) => $member->update($shared));
+            }
+
+            if ((int) $oldUnitId !== (int) $newUnitId) {
+                $oldUnit = Unit::find($oldUnitId);
+                if ($oldUnit && !$oldUnit->hasOtherActiveLeases(excludeLeaseId: $lease->id)) {
+                    $oldUnit->update(['status' => 'vacant']);
+                }
+                Unit::where('id', $newUnitId)->update(['status' => 'occupied']);
+            }
+
+            // If lease is active and deposit amount changed, re-post the deposit GL entry
+            $newDeposit = (float) ($editData['deposit'] ?? $oldDeposit);
+            if ($wasActive && abs($newDeposit - $oldDeposit) > 0.01) {
+                $this->resyncDeposit($lease->fresh());
+            }
+        });
+    }
+
+    /** Remove a lease and free its unit (used for a direct delete and for an approved deletion request). */
+    public function applyDelete(Lease $lease): void
+    {
         DB::transaction(function () use ($lease) {
             $unitId = $lease->unit_id;
             // Soft-delete first so hasOtherActiveLeases() below excludes this lease.
@@ -630,17 +674,51 @@ class LeaseController extends Controller
                 }
             }
         });
+    }
 
+    /** A manager's edit or deletion of a live lease: kept as a request, the lease itself is not touched. */
+    private function submitChangeRequest(Request $request, Lease $lease, string $type, ?array $payload = null): \Illuminate\Http\RedirectResponse
+    {
+        if ($lease->changeRequests()->where('status', 'pending')->exists()) {
+            throw ValidationException::withMessages(['lease' => 'This lease already has a change waiting for approval.']);
+        }
+
+        $user = $request->user();
+        $lease->loadMissing(['tenant', 'unit.property']);
+
+        LeaseChangeRequest::create([
+            'lease_id'     => $lease->id,
+            'property_id'  => $lease->property_id,
+            'type'         => $type,
+            'payload'      => $payload,
+            'status'       => 'pending',
+            'requested_by' => $user->id,
+        ]);
+
+        $reference = $lease->lease_number ?? ('Lease #' . $lease->id);
         $this->logAudit(
             request: $request,
-            action: 'Lease deleted',
-            resource: $resource,
-            propertyName: $propertyName,
+            action: $type === 'delete' ? 'Lease deletion requested' : 'Lease edit requested',
+            resource: $reference,
+            propertyName: $lease->unit?->property?->name,
             category: 'lease',
-            propertyId: $propertyId ? (int) $propertyId : null,
+            propertyId: $lease->property_id ? (int) $lease->property_id : null,
         );
 
-        return back()->with('success', 'Lease terminated.' . $this->rebalanceNote);
+        AfterResponse::send(
+            User::where('role', 'superuser')->get(),
+            new LeaseChangeRequestNotification(
+                $lease->id,
+                $reference,
+                $type,
+                $lease->tenant?->name ?? 'Unknown tenant',
+                $lease->unit?->property?->name ?? 'Unknown property',
+                $lease->unit?->unit_number ?? '—',
+                $user->name,
+            )
+        );
+
+        return back()->with('success', ($type === 'delete' ? 'Deletion' : 'Edit') . ' submitted for superuser approval. The lease stays as it is until then.');
     }
 
     /** Issue the deposit proforma. A USD lease needs the exchange rate typed here; the rate lives on the proforma, not the lease. */
