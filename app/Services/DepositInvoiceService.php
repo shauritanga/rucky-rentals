@@ -60,7 +60,7 @@ class DepositInvoiceService
                 'approval_status'      => 'approved',
                 'approval_decided_at'  => now(),
                 'approval_decided_by'  => $userId,
-                'notes'                => 'Refundable security deposit. Not subject to VAT; a payment receipt is issued on payment.',
+                'notes'                => 'Refundable security deposit. Not subject to VAT. No receipt is issued.',
                 'currency'             => 'TZS',
                 'exchange_rate'        => 1.0,
                 'usd_rate'             => $rate,

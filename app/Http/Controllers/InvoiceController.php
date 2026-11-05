@@ -65,6 +65,7 @@ class InvoiceController extends Controller
 
             // Receipts are only issued against full payment; WHT is tracked once money has been received.
             $invoice->setAttribute('receipt_status', match (true) {
+                $invoice->kind === 'deposit' => 'na', // a security deposit never gets a receipt
                 $paid->contains(fn ($p) => !empty($p->receipt_id)) => 'issued',
                 $invoice->status === 'paid' => 'not_issued',
                 default => 'na',
@@ -562,6 +563,10 @@ class InvoiceController extends Controller
     public function issueReceipt(Request $request, Invoice $invoice, PaymentReceiptService $receiptService): \Illuminate\Http\RedirectResponse
     {
         $this->authorizeInvoiceProperty($request, $invoice);
+
+        if ($invoice->kind === 'deposit') {
+            return back()->with('error', 'No receipt is issued for a security deposit.');
+        }
 
         $invoice->load('items');
         $paid = Payment::where('invoice_id', $invoice->id)->where('status', 'paid')->orderBy('id')->get();

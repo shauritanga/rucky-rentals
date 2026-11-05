@@ -200,7 +200,8 @@ class PaymentController extends Controller
         $data['exchange_rate'] = 1.0;
         $data['amount_in_base'] = (float) $data['amount'];
 
-        $issueReceipt = (bool) ($data['issue_receipt'] ?? false);
+        // A security deposit never gets a receipt, whatever the form sent.
+        $issueReceipt = $invoice?->kind === 'deposit' ? false : (bool) ($data['issue_receipt'] ?? false);
         $whtConfirmed = (bool) ($data['wht_confirmed'] ?? false);
         $data['issue_receipt'] = $issueReceipt;
         $data['wht_confirmed'] = $whtConfirmed;
@@ -343,7 +344,7 @@ class PaymentController extends Controller
         $fullyPaid = $invoiceTotal > 0 && $paidTotal + 0.01 >= $invoiceTotal;
 
         // A proforma stays a proforma until the full amount (WHT included) is paid; it is then promoted to a tax invoice.
-        // A security-deposit proforma never becomes a tax invoice: it is just marked paid (a receipt is issued).
+        // A security-deposit proforma never becomes a tax invoice: it is just marked paid (no receipt is issued).
         if ($invoice->kind === 'deposit') {
             $invoice->status = $fullyPaid ? 'paid' : ($paidTotal > 0 ? 'partially_paid' : 'proforma');
             $invoice->save();

@@ -182,7 +182,7 @@ function InvoiceDoc({ inv, currency = 'TZS', lease = null }) {
       <div style={{marginLeft:'auto',width:320}}>
         <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>Subtotal</span><span>{formatMoney(subtotal, currency)}</span></div>
         {isDeposit
-          ? <div style={{padding:'5px 0',fontSize:12,color:'var(--text-muted)',borderTop:'1px solid var(--border-subtle)'}}>Refundable security deposit — no VAT. A receipt is issued on payment.</div>
+          ? <div style={{padding:'5px 0',fontSize:12,color:'var(--text-muted)',borderTop:'1px solid var(--border-subtle)'}}>Refundable security deposit — no VAT and no receipt.</div>
           : <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{vatLabel}</span><span>{formatMoney(vatAmount, currency)}</span></div>}
         <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(grandTotal, currency)}</span></div>
         {inv.usd_rate && (
@@ -655,7 +655,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
                   <span><strong>Sent:</strong> {selected.sent_to_tenant_at ? formatDisplayDate(selected.sent_to_tenant_at) : 'Not sent'}</span>
                 </div>
               )}
-              {(selected.type === 'invoice' || selected.kind === 'deposit') && (selected.receipt_status === 'not_issued' || selected.wht_status === 'pending') && (
+              {selected.type === 'invoice' && selected.kind !== 'deposit' && (selected.receipt_status === 'not_issued' || selected.wht_status === 'pending') && (
                 <div style={{marginBottom:14,padding:'12px 14px',background:'var(--bg-elevated)',borderRadius:9,fontSize:12.5,display:'flex',flexDirection:'column',gap:10}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
                     <span><strong>WHT:</strong> <TrackBadge status={selected.wht_status} labels={WHT_LABELS} /></span>

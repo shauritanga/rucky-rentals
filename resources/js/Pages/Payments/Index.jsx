@@ -443,7 +443,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   }, [selectedInvoice]);
   const isPartialPayment = selectedInvoice && received > 0 && received + 0.01 < selectedBalanceDue;
   const receiptValidationError = (() => {
-    if (!data.issue_receipt) return '';
+    if (!data.issue_receipt || invoiceBreakdown.isDeposit) return '';
     if (isPartialPayment) return 'Receipt cannot be issued for partial payments.';
     if (invoiceBreakdown.hasLeaseRelated && !data.wht_confirmed) {
       return 'WHT confirmation is required to issue receipt for rent/service charge payments.';
@@ -1098,15 +1098,16 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 {errors.notes && <div style={{ marginTop: 5, fontSize: 12, color: 'var(--red)' }}>{errors.notes}</div>}
               </div>
 
+              {invoiceBreakdown.isDeposit ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>Security deposit (refundable): no VAT, no WHT and no receipt.</div>
+              ) : (
               <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 14, marginTop: 8 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 600 }}>
                   <input type="checkbox" checked={!!data.issue_receipt} onChange={(e) => setData('issue_receipt', e.target.checked)} />
                   Issue Receipt
                 </label>
                 <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
-                  {invoiceBreakdown.isDeposit
-                    ? 'Security deposit (refundable): no VAT or WHT. A receipt can be issued once it is paid in full.'
-                    : invoiceBreakdown.electricityOnly
+                  {invoiceBreakdown.electricityOnly
                       ? 'Electricity-only payment: receipt can be issued without WHT confirmation.'
                       : 'Rent/service charge payments require WHT confirmation before receipt issuance.'}
                 </div>
@@ -1131,6 +1132,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                   <div style={{ marginTop: 6, fontSize: 12, color: 'var(--red)' }}>{receiptValidationError}</div>
                 )}
               </div>
+              )}
 
               {selectedInvoice && received > 0 && (
                 <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 4 }}>
@@ -1149,7 +1151,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
             <div className="modal-footer" style={{ flexShrink: 0 }}>
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)} disabled={processing}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={!canSubmit || processing || (data.issue_receipt && !!receiptValidationError)}>
+              <button type="submit" className="btn-primary" disabled={!canSubmit || processing || (data.issue_receipt && !invoiceBreakdown.isDeposit && !!receiptValidationError)}>
                 {processing ? <span className="btn-spinner" /> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>}
                 {processing ? 'Processing...' : 'Confirm Payment'}
               </button>
