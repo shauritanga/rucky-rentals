@@ -259,6 +259,7 @@ class DashboardController extends Controller
                 'overdueUnits'    => $overdueUnits,
                 'monthlyRevenue'  => $monthlyRevenueTzs,  // already in TZS
                 'revenueDelta'    => $revenueDelta,        // TZS change vs last month
+                'lastMonthRevenue' => $lastMonthRevenueTzs, // TZS collected last calendar month
                 'overdueBalance'  => $overdueBalanceTzs,  // already in TZS
             ],
             'recentPayments'   => $recentPayments,

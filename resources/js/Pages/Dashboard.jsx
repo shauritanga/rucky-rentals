@@ -42,14 +42,10 @@ export default function Dashboard({ stats, recentPayments, maintenanceItems, uni
         <div className="stat-card">
           <div className="stat-top">
             <div className="stat-icon amber"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg></div>
-            {!!stats.revenueDelta && (
-              <span className={`stat-delta ${stats.revenueDelta > 0 ? 'up' : 'down'}`}>
-                {stats.revenueDelta > 0 ? '↑' : '↓'} {formatCompactTzs(Math.abs(stats.revenueDelta))}
-              </span>
-            )}
           </div>
           <div className="stat-value">{formatCompactTzs(stats.monthlyRevenue)}</div>
-          <div className="stat-label">Revenue / Month</div>
+          <div className="stat-label">Collected This Month</div>
+          {stats.lastMonthRevenue != null && <div style={{fontSize:11.5,color:'var(--text-muted)',marginTop:2}}>Last month: {formatCompactTzs(stats.lastMonthRevenue)}</div>}
         </div>
         <div className="stat-card">
           <div className="stat-top">
