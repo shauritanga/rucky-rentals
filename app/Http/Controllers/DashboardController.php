@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\ScheduledMaintenance;
 use App\Models\Tenant;
 use App\Models\Unit;
+use App\Support\ComputesPaymentRevenue;
 use App\Support\MockRentalData;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -17,6 +18,8 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
+    use ComputesPaymentRevenue;
+
     public function index(Request $request)
     {
         // Redirect superuser to their panel unless they're in property-view mode
@@ -57,11 +60,14 @@ class DashboardController extends Controller
             ->where('created_at', '>=', $thisMonthStart)
             ->count();
 
-        // Leases running during last month (date-range based, status-agnostic)
-        $lastMonthOccupied = Lease::whereIn('unit_id', $unitIdsQuery)
+        // Units that had a lease running last month. Counted by unit (a co-tenant unit has several leases)
+        // and only for leases that were real: not pending, not rejected. Units that did not exist yet are left out.
+        $lastMonthOccupied = Lease::whereIn('unit_id', (clone $unitsBaseQuery)->where('created_at', '<=', $lastMonthEnd)->select('id'))
+            ->whereIn('status', ['active', 'expiring', 'overdue', 'terminated'])
             ->where('start_date', '<=', $lastMonthEnd)
             ->where(fn ($q) => $q->where('end_date', '>=', $lastMonthStart)->orWhereNull('end_date'))
-            ->count();
+            ->distinct()
+            ->count('unit_id');
 
         $lastMonthTotalUnits = (clone $unitsBaseQuery)
             ->where('created_at', '<=', $lastMonthEnd)
@@ -86,9 +92,12 @@ class DashboardController extends Controller
         // ── Overdue Invoices & Balance ─────────────────────────────────────────
         // Calculate real overdue rent from unpaid/overdue invoices past their due date.
         $today = Carbon::today();
-        $overdueInvoicesQuery = Invoice::with(['items', 'lease'])
-            ->where('kind', '!=', 'deposit')
-            ->whereNotIn('status', ['draft', 'proforma', 'paid'])
+        // Same invoices and the same maths as the Unpaid Invoices report: tax invoices and approved proformas
+        // (deposits excluded), balance = lines + VAT - what has been paid.
+        $overdueInvoicesQuery = Invoice::with(['items', 'lease', 'payments'])
+            ->where(fn ($q) => $q->where('kind', '!=', 'deposit')->orWhereNull('kind'))
+            ->whereIn('status', ['proforma', 'unpaid', 'overdue', 'partially_paid'])
+            ->where(fn ($q) => $q->where('type', 'invoice')->orWhere(fn ($q) => $q->where('type', 'proforma')->where('approval_status', 'approved')))
             ->where(function ($q) use ($today) {
                 $q->where('status', 'overdue')
                   ->orWhere('due_date', '<', $today);
@@ -108,19 +117,11 @@ class DashboardController extends Controller
 
         $overdueInvoices = $overdueInvoicesQuery->get();
 
-        $paidByInvoice = Payment::whereIn('invoice_id', $overdueInvoices->pluck('id'))
-            ->where('status', 'paid')
-            ->selectRaw('invoice_id, SUM(amount) as paid_sum')
-            ->groupBy('invoice_id')
-            ->pluck('paid_sum', 'invoice_id');
-
         $overdueBalanceTzs = 0.0;
         $overdueUnitsMap = [];
 
         foreach ($overdueInvoices as $inv) {
-            $gross = (float) $inv->items->sum('total');
-            $paid = (float) ($paidByInvoice[$inv->id] ?? 0);
-            $outstanding = max(0, round($gross - $paid, 2));
+            $outstanding = $this->invoiceOutstanding($inv);
             if ($outstanding <= 0) {
                 continue;
             }
@@ -176,13 +177,18 @@ class DashboardController extends Controller
         $events   = collect();
         $scopePropertyId = $this->shouldScopeToProperty($request) ? $this->effectivePropertyId($request) : null;
 
-        // 1. Unpaid invoices due within the window → Rent events
-        Invoice::where('status', 'unpaid')
+        // 1. Invoices still owing, due within the window → Rent events (unpaid, part-paid, approved proformas)
+        Invoice::with(['items', 'lease', 'payments'])
+            ->where(fn ($q) => $q->where('kind', '!=', 'deposit')->orWhereNull('kind'))
+            ->whereIn('status', ['proforma', 'unpaid', 'partially_paid'])
+            ->where(fn ($q) => $q->where('type', 'invoice')->orWhere(fn ($q) => $q->where('type', 'proforma')->where('approval_status', 'approved')))
             ->whereBetween('due_date', [$today, $windowEnd])
             ->when($scopePropertyId !== null, fn ($q) => $q->where('property_id', $scopePropertyId))
             ->orderBy('due_date')
-            ->limit(10)
+            ->limit(40)
             ->get()
+            ->filter(fn ($inv) => $this->invoiceOutstanding($inv) > 0)
+            ->take(10)
             ->each(function ($inv) use (&$events) {
                 $date = Carbon::parse($inv->due_date);
                 $events->push([
@@ -262,5 +268,14 @@ class DashboardController extends Controller
             'upcomingEvents'   => $upcomingEvents,
             'upcomingDays'     => $upcomingDays,
         ]);
+    }
+
+    /** What is still owing on an invoice in TZS: its lines plus lease VAT, minus the payments received. */
+    private function invoiceOutstanding(Invoice $invoice): float
+    {
+        $due = ((float) $invoice->items->sum('total') + $this->leaseVatAmountForInvoice($invoice)) * $this->invoiceFx($invoice);
+        $paid = (float) $invoice->payments->where('status', 'paid')->sum(fn (Payment $p) => $this->paymentBaseAmount($p));
+
+        return max(0.0, round($due - $paid, 2));
     }
 }
