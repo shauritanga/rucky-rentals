@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Payment;
+use App\Models\PaymentChangeRequest;
 use App\Models\Property;
 use App\Models\Invoice;
 use App\Models\Lease;
@@ -10,6 +11,9 @@ use App\Models\LeaseInstallment;
 use App\Models\Tenant;
 use App\Models\Unit;
 use App\Models\UnitClearance;
+use App\Models\User;
+use App\Notifications\PaymentChangeRequestNotification;
+use App\Support\AfterResponse;
 use App\Services\InvoiceNumberService;
 use App\Services\PaymentReceiptService;
 use App\Support\MockRentalData;
@@ -119,6 +123,38 @@ class PaymentController extends Controller
         $this->scopeByUserProperty($unitsQuery, $request, 'property_id');
 
         $payments = $paymentsQuery->get();
+
+        // A manager's edit or deletion waiting for a superuser: the drawer shows a note and holds further changes.
+        $waiting = PaymentChangeRequest::pending()->whereIn('payment_id', $payments->pluck('id'))->with('requester:id,name')->get()->keyBy('payment_id');
+        $payments->each(fn ($p) => $p->setAttribute('pending_change', isset($waiting[$p->id])
+            ? ['type' => $waiting[$p->id]->type, 'by' => $waiting[$p->id]->requester?->name]
+            : null));
+
+        // Requests still waiting, plus recent rejections with the superuser's reason.
+        $requestsQuery = PaymentChangeRequest::with('requester:id,name')
+            ->where(fn ($q) => $q->where('status', 'pending')
+                ->orWhere(fn ($q) => $q->where('status', 'rejected')->where('decided_at', '>=', now()->subDays(30))))
+            ->orderByDesc('created_at');
+        $this->scopeByUserProperty($requestsQuery, $request, 'property_id');
+        $paymentRequests = $requestsQuery->get()->map(function (PaymentChangeRequest $r) {
+            $snap = $r->payload['snapshot'] ?? [];
+
+            return [
+                'id'            => $r->id,
+                'type'          => $r->type,
+                'status'        => $r->status,
+                'tenant'        => $snap['tenant'] ?? '—',
+                'unit'          => $snap['unit'] ?? '—',
+                'invoice'       => $snap['invoice'] ?? '—',
+                'amount'        => (float) ($r->type === 'edit' ? ($r->payload['amount'] ?? $snap['amount'] ?? 0) : ($snap['amount'] ?? 0)),
+                'method'        => $r->payload['method'] ?? ($snap['method'] ?? null),
+                'paid_date'     => $r->payload['paid_date'] ?? ($snap['paid_date'] ?? null),
+                'decision_note' => $r->decision_note,
+                'requested_by'  => $r->requester?->name,
+                'created_at'    => $r->created_at?->toDateTimeString(),
+            ];
+        })->values();
+
         $invoices = $invoicesQuery->get();
         $tenants  = $tenantsQuery->get();
         $units    = $unitsQuery->get();
@@ -130,6 +166,7 @@ class PaymentController extends Controller
             'invoices'       => $invoices,
             'deposits'       => $depositsList,
             'depositRefunds' => $depositsList,
+            'paymentRequests' => $paymentRequests,
         ]);
     }
 
@@ -241,20 +278,18 @@ class PaymentController extends Controller
             isPartialPayment: $isPartialPayment
         );
 
-        DB::transaction(function () use ($data, $paymentReceiptService) {
-            $payment = Payment::create($data);
-            if ($data['issue_receipt'] ?? false) {
-                $invoice = !empty($payment->invoice_id) ? Invoice::with('items')->find($payment->invoice_id) : null;
-                $receipt = $paymentReceiptService->createReceiptForPayment($payment, $invoice);
-                $payment->update(['receipt_id' => $receipt->id]);
-            }
+        // A manager's payment waits for a superuser; a superuser's is recorded at once.
+        if ($this->needsApproval($request)) {
+            return $this->submitPaymentRequest($request, 'create', null, $data, $propertyId, [
+                'tenant'   => $tenant->name,
+                'unit'     => $unit->unit_number,
+                'invoice'  => $invoice?->invoice_number ?? '—',
+                'amount'   => (float) $data['amount'],
+                'currency' => 'TZS',
+            ]);
+        }
 
-            if ($data['status'] === 'paid') {
-                Unit::find($data['unit_id'])?->update(['status' => 'occupied']);
-            }
-
-            $this->reconcileInvoiceStatus($payment->invoice_id);
-        });
+        $this->applyCreate($data);
 
         $propertyName = Property::where('id', $propertyId)->value('name');
         $this->logAudit(
@@ -272,11 +307,24 @@ class PaymentController extends Controller
     public function update(Request $request, Payment $payment)
     {
         $this->authorizePaymentProperty($request, $payment);
-        $payment->update($request->only(['status', 'method', 'paid_date']));
 
-        // Observer handles status transitions (post/void as appropriate)
+        $data = $request->validate([
+            'amount'    => 'required|numeric|min:0.01',
+            'paid_date' => 'nullable|date',
+            'method'    => 'nullable|string|max:100',
+            'reference' => 'nullable|string|max:255',
+            'notes'     => 'nullable|string',
+        ]);
 
-        $this->reconcileInvoiceStatus($payment->invoice_id);
+        if (!empty($payment->receipt_id) && abs((float) $data['amount'] - (float) $payment->amount) > 0.001) {
+            throw ValidationException::withMessages(['amount' => 'A receipt has been issued for this payment, so its amount cannot change.']);
+        }
+
+        if ($this->needsApproval($request)) {
+            return $this->submitPaymentRequest($request, 'edit', $payment, $data, $payment->property_id, $this->snapshotOf($payment));
+        }
+
+        $this->applyEdit($payment, $data);
 
         $propertyName = Property::where('id', $payment->property_id)->value('name');
         $this->logAudit(
@@ -293,20 +341,25 @@ class PaymentController extends Controller
 
     public function destroy(Payment $payment)
     {
-        $this->authorizePaymentProperty(request(), $payment);
+        $request = request();
+        $this->authorizePaymentProperty($request, $payment);
+
+        if (!empty($payment->receipt_id)) {
+            throw ValidationException::withMessages(['payment' => 'A receipt has been issued for this payment, so it cannot be deleted.']);
+        }
+
+        if ($this->needsApproval($request)) {
+            return $this->submitPaymentRequest($request, 'delete', $payment, null, $payment->property_id, $this->snapshotOf($payment));
+        }
 
         $propertyId   = $payment->property_id;
         $propertyName = Property::where('id', $propertyId)->value('name');
         $resource     = sprintf('Payment #%d', $payment->id);
 
-        // Observer will handle voiding before deletion
-        $invoiceId = $payment->invoice_id;
-        $payment->delete();
-
-        $this->reconcileInvoiceStatus($invoiceId);
+        $this->applyDelete($payment);
 
         $this->logAudit(
-            request: request(),
+            request: $request,
             action: 'Payment deleted',
             resource: $resource,
             propertyName: $propertyName,
@@ -315,6 +368,135 @@ class PaymentController extends Controller
         );
 
         return back()->with('success', 'Payment deleted.');
+    }
+
+    /** A payment action by anyone but a superuser is a request the superuser approves. */
+    private function needsApproval(Request $request): bool
+    {
+        return $request->user()?->role !== 'superuser' && !$this->isSuperuserActing($request);
+    }
+
+    private function snapshotOf(Payment $payment): array
+    {
+        $payment->loadMissing(['tenant', 'unit', 'invoice']);
+
+        return [
+            'tenant'   => $payment->tenant?->name ?? '—',
+            'unit'     => $payment->unit?->unit_number ?? '—',
+            'invoice'  => $payment->invoice?->invoice_number ?? '—',
+            'amount'   => (float) $payment->amount,
+            'currency' => 'TZS',
+            'method'   => $payment->method,
+            'paid_date' => $payment->paid_date ? substr((string) $payment->paid_date, 0, 10) : null,
+            'reference' => $payment->reference,
+            'notes'     => $payment->notes,
+        ];
+    }
+
+    /** Record a payment (a superuser's own, or a manager's after approval): receipt, unit status, invoice status. */
+    public function applyCreate(array $data): Payment
+    {
+        unset($data['snapshot']);
+        $receipts = app(PaymentReceiptService::class);
+
+        return DB::transaction(function () use ($data, $receipts) {
+            $payment = Payment::create($data);
+            if ($data['issue_receipt'] ?? false) {
+                $invoice = !empty($payment->invoice_id) ? Invoice::with('items')->find($payment->invoice_id) : null;
+                $receipt = $receipts->createReceiptForPayment($payment, $invoice);
+                $payment->update(['receipt_id' => $receipt->id]);
+            }
+
+            if (($data['status'] ?? 'paid') === 'paid') {
+                Unit::find($data['unit_id'])?->update(['status' => 'occupied']);
+            }
+
+            $this->reconcileInvoiceStatus($payment->invoice_id);
+
+            return $payment;
+        });
+    }
+
+    /** Change a recorded payment: amount, date, method, reference, notes. The invoice status follows. */
+    public function applyEdit(Payment $payment, array $data): void
+    {
+        DB::transaction(function () use ($payment, $data) {
+            $amount = round((float) $data['amount'], 2);
+            $invoice = $payment->invoice_id ? Invoice::with('items')->find($payment->invoice_id) : null;
+            $breakdown = app(PaymentReceiptService::class)->buildPaymentBreakdown($invoice, $amount);
+
+            $payment->update([
+                'amount'                   => $amount,
+                'amount_in_base'           => $amount, // payments are always TZS
+                'paid_date'                => $data['paid_date'] ?? $payment->paid_date,
+                'method'                   => $data['method'] ?? $payment->method,
+                'reference'                => $data['reference'] ?? null,
+                'notes'                    => $data['notes'] ?? null,
+                'breakdown_rent'           => $breakdown['rent'],
+                'breakdown_service_charge' => $breakdown['service_charge'],
+                'breakdown_electricity'    => $breakdown['electricity'],
+            ]);
+
+            $this->reconcileInvoiceStatus($payment->invoice_id);
+        });
+    }
+
+    /** Remove a payment (a superuser's own, or a manager's after approval); the invoice balance goes back up. */
+    public function applyDelete(Payment $payment): void
+    {
+        $invoiceId = $payment->invoice_id;
+        DB::transaction(function () use ($payment, $invoiceId) {
+            $payment->delete();
+            $this->reconcileInvoiceStatus($invoiceId);
+        });
+    }
+
+    /** A manager's new payment, edit or deletion is kept as a request; nothing is recorded or changed yet. */
+    private function submitPaymentRequest(Request $request, string $type, ?Payment $payment, ?array $payload, $propertyId, array $snapshot): \Illuminate\Http\RedirectResponse
+    {
+        if ($payment && PaymentChangeRequest::pending()->where('payment_id', $payment->id)->exists()) {
+            throw ValidationException::withMessages(['payment' => 'This payment already has a change waiting for approval.']);
+        }
+
+        $user = $request->user();
+        $changeRequest = PaymentChangeRequest::create([
+            'payment_id'   => $payment?->id,
+            'property_id'  => $propertyId ?: null,
+            'type'         => $type,
+            'payload'      => array_merge($payload ?? [], ['snapshot' => $snapshot]),
+            'status'       => 'pending',
+            'requested_by' => $user->id,
+        ]);
+
+        $propertyName = Property::where('id', $propertyId)->value('name') ?? 'Unknown property';
+        $this->logAudit(
+            request: $request,
+            action: match ($type) { 'edit' => 'Payment edit requested', 'delete' => 'Payment deletion requested', default => 'Payment requested' },
+            resource: sprintf('%s - %s', $snapshot['tenant'] ?? '—', number_format((float) ($snapshot['amount'] ?? 0))),
+            propertyName: $propertyName,
+            category: 'payment',
+            propertyId: $propertyId ? (int) $propertyId : null,
+        );
+
+        AfterResponse::send(
+            User::where('role', 'superuser')->get(),
+            new PaymentChangeRequestNotification(
+                $changeRequest->id,
+                $type,
+                (string) ($snapshot['tenant'] ?? '—'),
+                (string) ($snapshot['unit'] ?? '—'),
+                (string) ($snapshot['invoice'] ?? '—'),
+                'TZS ' . number_format((float) ($snapshot['amount'] ?? 0)),
+                $propertyName,
+                $user->name,
+            )
+        );
+
+        return back()->with('success', match ($type) {
+            'edit' => 'Change submitted for superuser approval. The payment stays as it is until then.',
+            'delete' => 'Deletion submitted for superuser approval. The payment stays until then.',
+            default => 'Payment submitted for superuser approval. It is recorded once approved.',
+        });
     }
 
     /**

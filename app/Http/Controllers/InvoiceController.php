@@ -310,6 +310,11 @@ class InvoiceController extends Controller
             'status' => 'required|in:draft,proforma,unpaid,partially_paid,paid,overdue',
         ]);
 
+        // Payments are recorded only from the Payments page (and approved there); an invoice is never marked paid by hand.
+        if (($data['status'] ?? '') === 'paid') {
+            abort(422, 'Payments are recorded from the Payments page.');
+        }
+
         // A proforma becomes a tax invoice only automatically, once fully paid
         // (PaymentController::reconcileInvoiceStatus). No manual conversion.
         if ($invoice->type === 'proforma' && !in_array($data['status'] ?? '', ['draft', 'proforma'], true)) {
@@ -318,19 +323,7 @@ class InvoiceController extends Controller
 
         $invoice->update($data);
 
-        // Observer handles status transitions (post/void as appropriate)
-
-        // Ensure corresponding Payment record exists when marked as paid
-        if ($data['status'] === 'paid' && ($original['status'] ?? '') !== 'paid') {
-            $this->ensurePaymentRecordedForInvoice($invoice);
-        } elseif ($data['status'] !== 'paid' && ($original['status'] ?? '') === 'paid') {
-            Payment::where('invoice_id', $invoice->id)
-                ->where('notes', 'like', '%auto-recorded%')
-                ->get()
-                ->each(fn($p) => $p->delete());
-        }
-
-        // Manual status changes here (e.g. the "Mark as Paid" button) don't go through
+        // Manual status changes here don't go through
         // PaymentController's payment-driven reconciliation, so the linked lease
         // installment's status/paid_amount would otherwise stay stale (e.g. still
         // "overdue" after the invoice is marked paid). Mirror the chosen status onto it.
@@ -824,50 +817,6 @@ class InvoiceController extends Controller
         return back()->with('success', $approvalStatus === 'draft'
             ? 'Draft invoice updated.'
             : 'Proforma invoice updated and resubmitted for approval.');
-    }
-
-    private function ensurePaymentRecordedForInvoice(Invoice $invoice): void
-    {
-        $invoice->loadMissing(['items', 'lease.tenant', 'lease.unit']);
-        $alreadyPaid = (float) Payment::where('invoice_id', $invoice->id)
-            ->where('status', 'paid')
-            ->sum('amount');
-        $grossTotal = $this->invoiceGrossTotal($invoice);
-        $remaining = max(0, round($grossTotal - $alreadyPaid, 2));
-
-        if ($remaining <= 0) {
-            return;
-        }
-
-        $lease = $invoice->lease;
-        $tenantId = $lease?->tenant_id ?: Tenant::where('property_id', $invoice->property_id)->where('name', $invoice->tenant_name)->value('id');
-        $unitId = $lease?->unit_id ?: Unit::where('property_id', $invoice->property_id)->where('unit_number', $invoice->unit_ref)->value('id');
-
-        if (!$tenantId || !$unitId) {
-            return;
-        }
-
-        $paymentReceiptService = app(PaymentReceiptService::class);
-        $breakdown = $paymentReceiptService->buildPaymentBreakdown($invoice, $remaining);
-
-        Payment::create([
-            'property_id'              => $invoice->property_id,
-            'invoice_id'               => $invoice->id,
-            'tenant_id'                => $tenantId,
-            'unit_id'                  => $unitId,
-            'month'                    => $invoice->period ?: Carbon::now()->format('M Y'),
-            'amount'                   => $remaining,
-            'method'                   => 'Bank Transfer',
-            'status'                   => 'paid',
-            'paid_date'                => Carbon::now()->toDateString(),
-            'currency'                 => $invoice->currency ?: 'TZS',
-            'breakdown_rent'           => $breakdown['rent'],
-            'breakdown_service_charge' => $breakdown['service_charge'],
-            'breakdown_electricity'    => $breakdown['electricity'],
-            'notes'                    => 'Payment auto-recorded when invoice was marked as paid',
-        ]);
-
-        Unit::find($unitId)?->update(['status' => 'occupied']);
     }
 
     private function invoiceGrossTotal(Invoice $invoice): float

@@ -521,7 +521,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const confirmWht = (inv) => router.post(`/invoices/${inv.id}/wht`, { wht_reference: whtReference || null }, { preserveScroll: true, onSuccess: () => setWhtReference('') });
   const issueReceipt = (inv) => router.post(`/invoices/${inv.id}/receipt`, {}, { preserveScroll: true });
 
-  const markPaid = (inv) => router.patch(`/invoices/${inv.id}`, { status:'paid' }, { onSuccess: () => setSelected(s=>s?{...s,status:'paid'}:null) });
 
   const showError = (msg) => notify('error', msg);
 
@@ -688,7 +687,6 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               <InvoiceDoc inv={selected} currency={resolveInvoiceCurrency(selected, leases)} lease={leases.find((l) => Number(l.id) === Number(selected?.lease_id))} />
             </div>
             <div style={{padding:'12px 20px',borderTop:'1px solid var(--border-subtle)',display:'flex',gap:8,flexShrink:0,background:'var(--bg-surface)'}}>
-              {selected.type === 'invoice' && (selected.status==='unpaid'||selected.status==='overdue'||selected.status==='partially_paid') && <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>markPaid(selected)}>✓ Mark as Paid</button>}
               {selected.status==='paid' && <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} onClick={()=>window.location.href=`/invoices/${selected.id}/pdf`}>Save PDF</button>}
               {canEditProforma(selected) && <button className="btn-secondary" onClick={()=>openEditInvoiceModal(selected)}>Edit</button>}
               {selected.type === 'proforma' && selected.approval_status === 'rejected' && !selected.sent_to_tenant_at && (

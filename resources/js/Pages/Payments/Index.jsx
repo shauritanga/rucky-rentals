@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { formatPhone } from '@/utils/phone';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import AppLayout from '@/Layouts/AppLayout';
-import { Head, useForm } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { notify } from '@/Components/Toaster';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
 import MoneyInput from '@/Components/MoneyInput';
 import Pagination, { usePagination } from '@/Components/Pagination';
@@ -66,7 +67,11 @@ const DEPOSIT_STATUS_META = {
   cancelled: { label: 'Cancelled', bg: 'var(--bg-elevated)', color: 'var(--text-muted)' },
 };
 
-export default function PaymentsIndex({ payments, invoices = [], tenants, units, deposits = [], depositRefunds = [] }) {
+export default function PaymentsIndex({ payments, invoices = [], tenants, units, deposits = [], depositRefunds = [], paymentRequests = [] }) {
+  const { props: pageProps } = usePage();
+  // A manager's payment, edit or deletion is a request a superuser approves; a superuser's applies at once.
+  const needsApproval = pageProps?.auth?.user?.role !== 'superuser';
+  const pendingRequests = paymentRequests.filter((r) => r.status === 'pending');
   const guard = useDiscardGuard();
   const depositList = (deposits && deposits.length > 0) ? deposits : (depositRefunds || []);
 
@@ -121,7 +126,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
   const [activeTab, setActiveTab] = useState(() => {
     const p = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
-    if (['pay-ledger', 'pay-deposits', 'pay-credits', 'pay-refunds'].includes(p)) {
+    if (['pay-ledger', 'pay-deposits', 'pay-credits', 'pay-refunds', 'pay-requests'].includes(p)) {
       return p === 'pay-refunds' ? 'pay-deposits' : p;
     }
     return 'pay-ledger';
@@ -137,6 +142,44 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   const [depositSearch, setDepositSearch] = useState('');
   const [selectedDeposit, setSelectedDeposit] = useState(null);
   const [selectedPayment, setSelectedPayment] = useState(null);
+  const [editPayment, setEditPayment] = useState(null);   // the ledger row being edited
+  const [editForm, setEditForm] = useState({ amount: '', paid_date: '', method: 'Bank Transfer', reference: '', notes: '' });
+  const [deletePayment, setDeletePayment] = useState(null);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+
+  const openEditPayment = (row) => {
+    const p = row.payment || {};
+    setEditForm({
+      amount: p.amount ?? '',
+      paid_date: String(p.paid_date || '').slice(0, 10),
+      method: p.method || 'Bank Transfer',
+      reference: p.reference || '',
+      notes: p.notes || '',
+    });
+    setEditPayment(row);
+  };
+  const failToast = (errs, fallback) => notify('error', Object.values(errs || {}).flat().find(Boolean) || fallback);
+  const submitEditPayment = (e) => {
+    e.preventDefault();
+    if (paymentBusy || !editPayment) return;
+    setPaymentBusy(true);
+    router.patch(`/payments/${editPayment.paymentId}`, editForm, {
+      preserveScroll: true,
+      onSuccess: () => { setEditPayment(null); setSelectedPayment(null); },
+      onError: (errs) => failToast(errs, 'The payment could not be updated.'),
+      onFinish: () => setPaymentBusy(false),
+    });
+  };
+  const confirmDeletePayment = () => {
+    if (paymentBusy || !deletePayment) return;
+    setPaymentBusy(true);
+    router.delete(`/payments/${deletePayment.paymentId}`, {
+      preserveScroll: true,
+      onSuccess: () => { setDeletePayment(null); setSelectedPayment(null); },
+      onError: (errs) => { setDeletePayment(null); failToast(errs, 'The payment could not be deleted.'); },
+      onFinish: () => setPaymentBusy(false),
+    });
+  };
 
   const depositCounts = useMemo(() => {
     let refundDue = 0;
@@ -621,6 +664,12 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
           )}
         </button>
         <button className={`team-tab ${activeTab === 'pay-credits' ? 'active' : ''}`} onClick={() => setActiveTab('pay-credits')}>Tenant Credits</button>
+        {(needsApproval || paymentRequests.length > 0) && (
+          <button className={`team-tab ${activeTab === 'pay-requests' ? 'active' : ''}`} onClick={() => setActiveTab('pay-requests')}>
+            Awaiting approval
+            {pendingRequests.length > 0 && <span className="pill-count" style={{ marginLeft: 6 }}>{pendingRequests.length}</span>}
+          </button>
+        )}
       </div>
 
       {activeTab === 'pay-ledger' && (
@@ -927,6 +976,48 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
         </>
       )}
 
+      {activeTab === 'pay-requests' && (
+        <div className="card" style={{ overflow: 'hidden' }}>
+          {paymentRequests.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: 13 }}>Nothing is waiting for approval</div>
+          ) : (
+            <table className="units-list-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  {['REQUEST', 'TENANT', 'UNIT', 'INVOICE', 'AMOUNT', 'METHOD', 'STATUS'].map((h, i) => (
+                    <th key={h} style={{ textAlign: 'left', fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '8px 14px', paddingLeft: i === 0 ? 20 : 14, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paymentRequests.map((r) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '11px 14px', paddingLeft: 20, fontSize: 12.5 }}>
+                      <span className={`badge ${r.type === 'delete' ? 'overdue' : 'unpaid'}`}>{r.type === 'delete' ? 'Delete' : r.type === 'edit' ? 'Edit' : 'New payment'}</span>
+                    </td>
+                    <td style={{ padding: '11px 14px', fontSize: 13.5, fontWeight: 600 }}>{r.tenant}</td>
+                    <td style={{ padding: '11px 14px', fontSize: 13.5 }}>{r.unit}</td>
+                    <td style={{ padding: '11px 14px', fontSize: 12.5, color: 'var(--accent)' }}>{r.invoice}</td>
+                    <td style={{ padding: '11px 14px', fontSize: 13.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatAmount(r.amount, 'TZS')}</td>
+                    <td style={{ padding: '11px 14px', fontSize: 12.5, color: 'var(--text-secondary)' }}>{r.method || '—'}</td>
+                    <td style={{ padding: '11px 14px', fontSize: 12.5 }}>
+                      {r.status === 'rejected' ? (
+                        <div>
+                          <span style={{ background: 'var(--red-dim)', color: 'var(--red)', padding: '2px 9px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>Rejected</span>
+                          {r.decision_note && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4, maxWidth: 260 }}>{r.decision_note}</div>}
+                        </div>
+                      ) : (
+                        <span style={{ background: 'var(--amber-dim)', color: 'var(--amber)', padding: '2px 9px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>Waiting for superuser</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
       {activeTab === 'pay-credits' && (
         <>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>Credits are overpayments sitting on a tenant account. They are automatically applied when the next invoice is recorded.</div>
@@ -1157,10 +1248,86 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
               <button type="button" className="btn-ghost" onClick={() => setShowModal(false)} disabled={processing}>Cancel</button>
               <button type="submit" className="btn-primary" disabled={!canSubmit || processing || (data.issue_receipt && !invoiceBreakdown.isDeposit && !!receiptValidationError)}>
                 {processing ? <span className="btn-spinner" /> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>}
-                {processing ? 'Processing...' : 'Confirm Payment'}
+                {processing ? 'Processing...' : (needsApproval ? 'Submit for Approval' : 'Confirm Payment')}
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* ── Edit payment ─────────────────────────────────────────────────── */}
+      <div className={`modal-overlay ${editPayment ? 'open' : ''}`} style={{ zIndex: 1600 }} onClick={(e) => e.target === e.currentTarget && !paymentBusy && setEditPayment(null)}>
+        <div className="modal" style={{ width: 'min(460px, calc(100vw - 24px))' }}>
+          <form onSubmit={submitEditPayment}>
+            <div className="modal-header">
+              <div className="modal-title">{needsApproval ? 'Request Payment Edit' : 'Edit Payment'}</div>
+              <button type="button" className="modal-close" onClick={() => setEditPayment(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {editPayment && (
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 12 }}>
+                  {editPayment.tenant?.name || '—'} · {editPayment.invoiceNumber} {needsApproval && '· The change is applied once a superuser approves it.'}
+                </div>
+              )}
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Amount (TZS) *</label>
+                  <MoneyInput className="form-input" value={editForm.amount} onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))} required />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Paid on</label>
+                  <input className="form-input" type="date" value={editForm.paid_date} onChange={(e) => setEditForm((f) => ({ ...f, paid_date: e.target.value }))} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Method</label>
+                  <select className="form-input form-select" value={editForm.method} onChange={(e) => setEditForm((f) => ({ ...f, method: e.target.value }))}>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Mobile Money">Mobile Money</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Reference</label>
+                  <input className="form-input" type="text" value={editForm.reference} onChange={(e) => setEditForm((f) => ({ ...f, reference: e.target.value }))} placeholder="Optional" />
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Notes</label>
+                <input className="form-input" type="text" value={editForm.notes} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Optional" />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-ghost" onClick={() => setEditPayment(null)} disabled={paymentBusy}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={paymentBusy || !(Number(editForm.amount) > 0)} aria-busy={paymentBusy}>
+                {paymentBusy ? 'Saving…' : (needsApproval ? 'Submit for Approval' : 'Save Changes')}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* ── Delete payment ───────────────────────────────────────────────── */}
+      <div className={`modal-overlay ${deletePayment ? 'open' : ''}`} style={{ zIndex: 1600 }} onClick={(e) => e.target === e.currentTarget && !paymentBusy && setDeletePayment(null)}>
+        <div className="modal" style={{ width: 'min(420px, calc(100vw - 24px))' }}>
+          <div className="modal-header">
+            <div className="modal-title">{needsApproval ? 'Request Payment Deletion' : 'Delete Payment'}</div>
+            <button type="button" className="modal-close" onClick={() => setDeletePayment(null)}>✕</button>
+          </div>
+          <div className="modal-body">
+            <p style={{ margin: 0, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              {deletePayment ? <>Delete the payment of <strong>{formatAmount(deletePayment.amountPaid, deletePayment.currency)}</strong> from <strong>{deletePayment.tenant?.name || 'the tenant'}</strong>? The invoice balance goes back up. </> : null}
+              {needsApproval ? 'The request goes to a superuser and the payment stays until they approve it.' : 'This cannot be undone.'}
+            </p>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn-ghost" onClick={() => setDeletePayment(null)} disabled={paymentBusy}>Cancel</button>
+            <button type="button" className="btn-danger" onClick={confirmDeletePayment} disabled={paymentBusy} aria-busy={paymentBusy}>
+              {paymentBusy ? 'Sending…' : (needsApproval ? 'Send Request' : 'Delete Payment')}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1274,8 +1441,19 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                   </div>
                 </div>
 
-                <div className="drawer-footer">
-                  <button type="button" className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setSelectedPayment(null)}>Close</button>
+                <div className="drawer-footer" style={{ flexWrap: 'wrap' }}>
+                  {p.pending_change && (
+                    <div style={{ flex: '1 1 100%', padding: '8px 12px', borderRadius: 8, background: 'var(--amber-dim)', border: '1px solid var(--amber)', fontSize: 12, color: 'var(--text-primary)' }}>
+                      <strong>Change pending approval.</strong> {p.pending_change.type === 'delete' ? 'Deletion' : 'An edit'} requested{p.pending_change.by ? ` by ${p.pending_change.by}` : ''}. The payment stays as it is until a superuser decides.
+                    </div>
+                  )}
+                  <button type="button" className="btn-secondary" style={{ flex: '1 1 auto', justifyContent: 'center' }} onClick={() => setSelectedPayment(null)}>Close</button>
+                  <button type="button" className="btn-primary" style={{ flex: '1 1 auto', justifyContent: 'center' }} disabled={!!p.pending_change} onClick={() => openEditPayment(row)}>
+                    {needsApproval ? 'Request Edit' : 'Edit'}
+                  </button>
+                  <button type="button" className="btn-danger" style={{ flex: '0 0 auto' }} disabled={!!p.pending_change || !!p.receipt_id} title={p.receipt_id ? 'A receipt was issued, so this payment cannot be deleted' : (needsApproval ? 'Request deletion' : 'Delete payment')} onClick={() => setDeletePayment(row)}>
+                    {needsApproval ? 'Request Deletion' : 'Delete'}
+                  </button>
                 </div>
               </>
             );

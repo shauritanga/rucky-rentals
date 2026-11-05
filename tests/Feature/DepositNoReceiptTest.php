@@ -36,8 +36,9 @@ class DepositNoReceiptTest extends TestCase
     public function test_paying_a_deposit_in_full_issues_no_receipt_even_if_one_is_requested(): void
     {
         [$property, $manager, $unit, $tenant, $invoice] = $this->deposit();
+        $superuser = User::factory()->create(['role' => 'superuser', 'status' => 'active', 'must_change_password' => false]);
 
-        $this->actingAs($manager)->post('/payments', [
+        $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id])->post('/payments', [
             'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'invoice_id' => $invoice->id, 'amount' => 5000, 'method' => 'cash',
             'status' => 'paid', 'month' => 'Nov 2026', 'paid_date' => now()->toDateString(), 'issue_receipt' => true,
         ])->assertSessionHasNoErrors();

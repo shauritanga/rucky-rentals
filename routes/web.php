@@ -123,6 +123,8 @@ Route::middleware('auth')->group(function () {
         Route::post('superuser/leases/{lease}/reject', [SuperuserController::class, 'rejectLease'])->name('superuser.leases.reject');
         Route::post('superuser/lease-changes/{leaseChange}/approve', [SuperuserController::class, 'approveLeaseChange'])->name('superuser.lease-changes.approve');
         Route::post('superuser/lease-changes/{leaseChange}/reject', [SuperuserController::class, 'rejectLeaseChange'])->name('superuser.lease-changes.reject');
+        Route::post('superuser/payment-changes/{paymentChange}/approve', [SuperuserController::class, 'approvePaymentChange'])->name('superuser.payment-changes.approve');
+        Route::post('superuser/payment-changes/{paymentChange}/reject', [SuperuserController::class, 'rejectPaymentChange'])->name('superuser.payment-changes.reject');
         Route::post('superuser/maintenance/{ticket}/approve', [SuperuserController::class, 'approveMaintenance'])->name('superuser.maintenance.approve');
         Route::post('superuser/maintenance/{ticket}/reject', [SuperuserController::class, 'rejectMaintenance'])->name('superuser.maintenance.reject');
         Route::post('superuser/team/{user}/approve', [SuperuserController::class, 'approveTeamMember'])->name('superuser.team.approve');

@@ -16,6 +16,8 @@ use App\Models\SystemSetting;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\LeaseChangeRequest;
+use App\Models\PaymentChangeRequest;
+use App\Notifications\PaymentChangeDecisionNotification;
 use App\Notifications\LeaseChangeDecisionNotification;
 use App\Notifications\LeaseDecisionNotification;
 use App\Notifications\MaintenanceApprovalNotification;
@@ -110,6 +112,18 @@ class SuperuserController extends Controller
             ->orderBy('created_at')
             ->get();
 
+        // Payments a manager asked to record, edit or delete.
+        $pendingPaymentChanges = PaymentChangeRequest::with([
+                'payment.tenant:id,name',
+                'payment.unit:id,unit_number',
+                'payment.invoice:id,invoice_number,type,kind,status',
+                'requester:id,name,email',
+            ])
+            ->pending()
+            ->orderBy('created_at')
+            ->get()
+            ->each(fn ($r) => $r->setAttribute('property_name', \App\Models\Property::where('id', $r->property_id)->value('name')));
+
         $pendingMaintenance = MaintenanceRecord::with([
                 'unit:id,unit_number,property_id',
                 'unit.property:id,name,manager_user_id',
@@ -168,6 +182,7 @@ class SuperuserController extends Controller
             'settings'           => $settings,
             'pendingLeases'      => $pendingLeases,
             'pendingLeaseChanges' => $pendingLeaseChanges,
+            'pendingPaymentChanges' => $pendingPaymentChanges,
             'pendingMaintenance' => $pendingMaintenance,
             'pendingTeamMembers' => $pendingTeamMembers,
             'pendingUnits'       => $pendingUnits,
@@ -932,6 +947,94 @@ class SuperuserController extends Controller
         );
 
         return back()->with('success', 'Request rejected. The lease is unchanged.');
+    }
+
+    // ── Payment change requests (a manager's new payment / edit / delete) ──────────────
+
+    private function paymentChangeSummary(PaymentChangeRequest $change): array
+    {
+        $snap = $change->payload['snapshot'] ?? [];
+
+        return [
+            (string) ($snap['tenant'] ?? '—'),
+            (string) ($snap['invoice'] ?? '—'),
+            'TZS ' . number_format((float) ($snap['amount'] ?? 0)),
+        ];
+    }
+
+    public function approvePaymentChange(Request $request, PaymentChangeRequest $paymentChange)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($paymentChange->status !== 'pending', 422, 'This request has already been decided.');
+
+        $payments = app(PaymentController::class);
+        $payload  = $paymentChange->payload ?? [];
+
+        if ($paymentChange->type === 'create') {
+            if (!empty($payload['invoice_id'])) {
+                $invoice = \App\Models\Invoice::find($payload['invoice_id']);
+                abort_if(!$invoice, 422, 'The invoice no longer exists.');
+                abort_if($invoice->type === 'proforma' && $invoice->approval_status !== 'approved', 422, 'The invoice is not approved yet.');
+            }
+            $payments->applyCreate($payload);
+        } else {
+            $payment = Payment::find($paymentChange->payment_id);
+            abort_if(!$payment, 422, 'The payment no longer exists.');
+            abort_if(!empty($payment->receipt_id), 422, 'A receipt has been issued for this payment, so it cannot be changed or deleted.');
+
+            if ($paymentChange->type === 'delete') {
+                $payments->applyDelete($payment);
+            } else {
+                $payments->applyEdit($payment, $payload);
+            }
+        }
+
+        $message = trim((string) $request->input('message', '')) ?: 'Approved by superuser.';
+        $paymentChange->update(['status' => 'approved', 'decided_by' => Auth::id(), 'decided_at' => now(), 'decision_note' => $message]);
+
+        [$tenant, $invoiceNumber, $amount] = $this->paymentChangeSummary($paymentChange);
+        $property = \App\Models\Property::find($paymentChange->property_id);
+        foreach ($this->managersOf($property) as $manager) {
+            AfterResponse::notify($manager, new PaymentChangeDecisionNotification($paymentChange->id, $paymentChange->type, 'approved', $tenant, $invoiceNumber, $amount, $message, Auth::user()->name));
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: match ($paymentChange->type) { 'edit' => 'Payment edit approved', 'delete' => 'Payment deletion approved', default => 'Payment approved' },
+            resource: $tenant . ' - ' . $amount,
+            propertyName: $property?->name,
+            category: 'payment',
+            propertyId: $paymentChange->property_id ? (int) $paymentChange->property_id : null,
+        );
+
+        return back()->with('success', match ($paymentChange->type) { 'edit' => 'Payment updated.', 'delete' => 'Payment deleted.', default => 'Payment recorded.' });
+    }
+
+    public function rejectPaymentChange(Request $request, PaymentChangeRequest $paymentChange)
+    {
+        abort_if(Auth::user()->role !== 'superuser', 403);
+        abort_if($paymentChange->status !== 'pending', 422, 'This request has already been decided.');
+
+        $data = $request->validate(['message' => 'required|string|min:5|max:1000']);
+
+        $paymentChange->update(['status' => 'rejected', 'decided_by' => Auth::id(), 'decided_at' => now(), 'decision_note' => $data['message']]);
+
+        [$tenant, $invoiceNumber, $amount] = $this->paymentChangeSummary($paymentChange);
+        $property = \App\Models\Property::find($paymentChange->property_id);
+        foreach ($this->managersOf($property) as $manager) {
+            AfterResponse::notify($manager, new PaymentChangeDecisionNotification($paymentChange->id, $paymentChange->type, 'rejected', $tenant, $invoiceNumber, $amount, $data['message'], Auth::user()->name));
+        }
+
+        $this->logAudit(
+            request: $request,
+            action: match ($paymentChange->type) { 'edit' => 'Payment edit rejected', 'delete' => 'Payment deletion rejected', default => 'Payment rejected' },
+            resource: $tenant . ' - ' . $amount,
+            propertyName: $property?->name,
+            category: 'payment',
+            propertyId: $paymentChange->property_id ? (int) $paymentChange->property_id : null,
+        );
+
+        return back()->with('success', 'Request rejected. Nothing was changed.');
     }
 
     // ── Maintenance Approvals ────────────────────────────────────────

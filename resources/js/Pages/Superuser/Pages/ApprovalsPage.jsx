@@ -74,6 +74,21 @@ function leaseChangeRows(change) {
         .map(([field, label, kind]) => ({ label, before: show(kind, lease[field], field), after: show(kind, proposed[field], field) }));
 }
 
+// What an edit to a payment would change: current -> requested.
+function paymentChangeRows(change) {
+    const now = change?.payment || {};
+    const next = change?.payload || {};
+    const rows = [
+        ['Amount', fmt(Number(now.amount ?? 0), 'TZS'), fmt(Number(next.amount ?? 0), 'TZS'), Number(now.amount ?? 0) !== Number(next.amount ?? 0)],
+        ['Paid on', formatDate(now.paid_date), formatDate(next.paid_date ?? now.paid_date), String(now.paid_date ?? '').slice(0, 10) !== String(next.paid_date ?? now.paid_date ?? '').slice(0, 10)],
+        ['Method', now.method || '—', next.method || now.method || '—', (now.method || '') !== (next.method || now.method || '')],
+        ['Reference', now.reference || '—', next.reference || '—', (now.reference || '') !== (next.reference || '')],
+        ['Notes', now.notes || '—', next.notes || '—', (now.notes || '') !== (next.notes || '')],
+    ];
+
+    return rows.filter((row) => row[3]).map(([label, before, after]) => ({ label, before, after }));
+}
+
 function invoiceTotals(invoice) {
     const items = invoice?.items || [];
     const lines = items.filter((i) => i.item_type !== 'electricity_vat');
@@ -310,8 +325,11 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
     const isUnit = type === 'unit';
     const isInvoice = type === 'invoice';
     const isLeaseChange = type === 'leasechange';
+    const isPaymentChange = type === 'paymentchange';
 
-    const title = !item ? '' : isLeaseChange
+    const title = !item ? '' : isPaymentChange
+        ? `${item.type === 'delete' ? 'Delete payment' : item.type === 'edit' ? 'Edit payment' : 'New payment'} · ${item.payload?.snapshot?.tenant ?? '—'}`
+        : isLeaseChange
         ? `${item.type === 'delete' ? 'Delete' : 'Edit'} · ${item.lease?.lease_number ?? `Lease #${item.lease_id}`}`
         : isLease
         ? (item.lease_number ?? `Lease #${item.id}`)
@@ -341,7 +359,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                         <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>
                         {item && (
                             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                                {isLeaseChange ? 'Lease Change Request' : isLease ? 'Lease Request' : isMaintenance ? 'Maintenance Request' : isTeam ? 'Team Request' : isUnit ? 'Unit Request' : 'Invoice Approval'}
+                                {isPaymentChange ? 'Payment Request' : isLeaseChange ? 'Lease Change Request' : isLease ? 'Lease Request' : isMaintenance ? 'Maintenance Request' : isTeam ? 'Team Request' : isUnit ? 'Unit Request' : 'Invoice Approval'}
                                 {daysAgo(item.created_at) && ` · Submitted ${daysAgo(item.created_at)}`}
                             </div>
                         )}
@@ -571,6 +589,72 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                         </>
                     )}
 
+                    {item && isPaymentChange && (() => {
+                        const snap = item.payload?.snapshot || {};
+                        const data = item.payload || {};
+                        const rows = item.type === 'edit' ? paymentChangeRows(item) : [];
+                        return (
+                            <>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px', marginBottom: 20 }}>
+                                    <Detail label="Request" value={item.type === 'delete' ? 'Delete the payment' : item.type === 'edit' ? 'Edit the payment' : 'Record a new payment'} />
+                                    <Detail label="Requested By" value={item.requester?.name ?? '—'} sub={item.requester?.email ?? '—'} />
+                                    <Detail label="Tenant" value={snap.tenant ?? '—'} />
+                                    <Detail label="Property / Unit" value={item.property_name ?? '—'} sub={`Unit ${snap.unit ?? '—'}`} />
+                                    <Detail label="Invoice" value={snap.invoice ?? '—'} />
+                                    <Detail label="Amount" value={fmt(Number(item.type === 'edit' ? (snap.amount ?? 0) : (snap.amount ?? data.amount ?? 0)), 'TZS')} />
+                                </div>
+                                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                                    {item.type === 'delete' && (
+                                        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+                                            Approving removes this payment and the invoice balance goes back up. The payment stays exactly as it is until you decide.
+                                        </p>
+                                    )}
+                                    {item.type === 'create' && (
+                                        <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', fontSize: 12.5 }}>
+                                            {[
+                                                ['Paid on', formatDate(data.paid_date)],
+                                                ['Method', data.method || '—'],
+                                                ['Period', data.month || '—'],
+                                                ['Reference', data.reference || '—'],
+                                                ['Notes', data.notes || '—'],
+                                                ['Receipt requested', data.issue_receipt ? 'Yes' : 'No'],
+                                                ['WHT confirmed', data.wht_confirmed ? `Yes${data.wht_reference ? ` · ${data.wht_reference}` : ''}` : 'No'],
+                                            ].map(([label, value], i, all) => (
+                                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 14px', borderBottom: i === all.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                                                    <span style={{ fontWeight: 600, textAlign: 'right' }}>{value}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {item.type === 'edit' && (
+                                        <>
+                                            <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>What would change</div>
+                                            {rows.length === 0 ? (
+                                                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>No field differs from the current payment.</p>
+                                            ) : (
+                                                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                                                    <table className="data-table" style={{ margin: 0, fontSize: 12.5 }}>
+                                                        <thead><tr><th>Field</th><th>Now</th><th>Requested</th></tr></thead>
+                                                        <tbody>
+                                                            {rows.map((row) => (
+                                                                <tr key={row.label}>
+                                                                    <td style={{ fontWeight: 500 }}>{row.label}</td>
+                                                                    <td style={{ color: 'var(--text-muted)' }}>{row.before}</td>
+                                                                    <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{row.after}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </>
+                        );
+                    })()}
+
                     {item && isLeaseChange && (
                         <>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px', marginBottom: 20 }}>
@@ -702,12 +786,13 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
     );
 }
 
-export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [] }) {
+export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges = [], pendingPaymentChanges = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [] }) {
     const [drawer, setDrawer] = useState(null);
     const [modal, setModal] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [activeTab, setActiveTab] = useState(() => {
         if (pendingInvoices.length > 0) return 'invoices';
+        if (pendingPaymentChanges.length > 0) return 'payments';
         if (pendingUnits.length > 0) return 'units';
         if (pendingTeamMembers.length > 0) return 'team';
         if (pendingLeases.length > 0 || pendingLeaseChanges.length > 0) return 'leases';
@@ -723,7 +808,9 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
         if (!modal || submitting) return;
         setSubmitting(true);
         const { action, type, item } = modal;
-        const url = type === 'leasechange'
+        const url = type === 'paymentchange'
+            ? `/superuser/payment-changes/${item.id}/${action}`
+            : type === 'leasechange'
             ? `/superuser/lease-changes/${item.id}/${action}`
             : type === 'lease'
             ? `/superuser/leases/${item.id}/${action}`
@@ -742,18 +829,22 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
         });
     };
 
-    const totalPending = pendingLeases.length + pendingLeaseChanges.length + pendingMaintenance.length + pendingTeamMembers.length + pendingUnits.length + pendingInvoices.length;
+    const totalPending = pendingLeases.length + pendingLeaseChanges.length + pendingPaymentChanges.length + pendingMaintenance.length + pendingTeamMembers.length + pendingUnits.length + pendingInvoices.length;
     const tabs = [
         { key: 'invoices', label: 'Invoices', count: pendingInvoices.length },
+        { key: 'payments', label: 'Payments', count: pendingPaymentChanges.length },
         { key: 'units', label: 'Units', count: pendingUnits.length },
         { key: 'team', label: 'Team', count: pendingTeamMembers.length },
         { key: 'leases', label: 'Leases', count: pendingLeases.length + pendingLeaseChanges.length },
         { key: 'maintenance', label: 'Maintenance', count: pendingMaintenance.length },
     ];
 
-    const modalSubject = modal ? (modal.type === 'leasechange' ? 'Lease Change' : modal.type === 'lease' ? 'Lease' : modal.type === 'maintenance' ? 'Maintenance Ticket' : modal.type === 'team' ? 'Team Member' : modal.type === 'unit' ? 'Unit' : 'Invoice') : '';
+    const modalSubject = modal ? (modal.type === 'paymentchange' ? 'Payment Request' : modal.type === 'leasechange' ? 'Lease Change' : modal.type === 'lease' ? 'Lease' : modal.type === 'maintenance' ? 'Maintenance Ticket' : modal.type === 'team' ? 'Team Member' : modal.type === 'unit' ? 'Unit' : 'Invoice') : '';
     const modalContext = modal ? (() => {
         const item = modal.item;
+        if (modal.type === 'paymentchange') {
+            return `${item.type === 'delete' ? 'deletion' : item.type === 'edit' ? 'edit' : 'new payment'} request from ${item.payload?.snapshot?.tenant ?? 'the tenant'} (${item.payload?.snapshot?.invoice ?? 'invoice'})`;
+        }
         if (modal.type === 'leasechange') {
             return `${item.type === 'delete' ? 'deletion' : 'edit'} request for lease ${item.lease?.lease_number ?? `#${item.lease_id}`}`;
         }
@@ -892,6 +983,48 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                                 <td style={{ color: 'var(--text-muted)', fontSize: 16, textAlign: 'right' }}>›</td>
                             </tr>
                         ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
+
+    const renderPaymentTable = () => {
+        if (pendingPaymentChanges.length === 0) {
+            return renderEmptyState('No payment requests pending approval');
+        }
+
+        return (
+            <div className="card">
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th>Request</th>
+                            <th>Tenant</th>
+                            <th>Property / Unit</th>
+                            <th>Invoice</th>
+                            <th>Amount</th>
+                            <th>Requested By</th>
+                            <th>Submitted</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {pendingPaymentChanges.map((change) => {
+                            const snap = change.payload?.snapshot ?? {};
+                            return (
+                                <tr key={change.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('paymentchange', change)}>
+                                    <td><span className={`badge ${change.type === 'delete' ? 'overdue' : 'unpaid'}`}>{change.type === 'delete' ? 'Delete' : change.type === 'edit' ? 'Edit' : 'New'}</span></td>
+                                    <td style={{ fontWeight: 600 }}>{snap.tenant ?? '—'}</td>
+                                    <td><div>{change.property_name ?? '—'}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Unit {snap.unit ?? '—'}</div></td>
+                                    <td>{snap.invoice ?? '—'}</td>
+                                    <td style={{ fontWeight: 600 }}>{fmt(Number(change.type === 'edit' ? (change.payload?.amount ?? snap.amount ?? 0) : (snap.amount ?? 0)), 'TZS')}</td>
+                                    <td>{change.requester?.name ?? '—'}</td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>{daysAgo(change.created_at) ?? '—'}</td>
+                                    <td style={{ color: 'var(--text-muted)', fontSize: 16, textAlign: 'right' }}>›</td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
@@ -1060,6 +1193,8 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
             <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {activeTab === 'invoices'
                     ? `Invoice Approvals · ${pendingInvoices.length}`
+                    : activeTab === 'payments'
+                    ? `Payment Approvals · ${pendingPaymentChanges.length}`
                     : activeTab === 'units'
                     ? `Unit Approvals · ${pendingUnits.length}`
                     : activeTab === 'team'
@@ -1070,6 +1205,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
             </div>
 
             {activeTab === 'invoices' && renderInvoiceTable()}
+            {activeTab === 'payments' && renderPaymentTable()}
             {activeTab === 'units' && renderUnitTable()}
             {activeTab === 'team' && renderTeamTable()}
             {activeTab === 'leases' && renderLeaseTable()}

@@ -23,7 +23,7 @@ const VIEW_META = {
   settings: { title: 'Settings', subtitle: 'System configuration', actionLabel: null },
 };
 
-export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingLeaseChanges = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [], archivedManagers = [] }) {
+export default function SuperuserIndex({ properties = [], managers = [], auditLogs = [], settings = {}, pendingLeases = [], pendingLeaseChanges = [], pendingPaymentChanges = [], pendingMaintenance = [], pendingTeamMembers = [], pendingUnits = [], pendingInvoices = [], archivedManagers = [] }) {
   const guard = useDiscardGuard();
   const [activeView, setActiveView] = useState(() => {
     const v = new URLSearchParams(window.location.search).get('view') || 'overview';
@@ -199,7 +199,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
       subtitle={meta.subtitle}
       actionLabel={meta.actionLabel}
       onAction={onAction}
-      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length, approvals: pendingLeases.length + pendingLeaseChanges.length + pendingMaintenance.length + pendingTeamMembers.length + pendingUnits.length + pendingInvoices.length }}
+      navCounts={{ properties: effectiveProperties.length, managers: effectiveManagers.length, approvals: pendingLeases.length + pendingLeaseChanges.length + pendingPaymentChanges.length + pendingMaintenance.length + pendingTeamMembers.length + pendingUnits.length + pendingInvoices.length }}
     >
       <Head title={`Superuser - ${meta.title}`} />
 
@@ -231,7 +231,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
 
       {activeView === 'managers' && <ManagersPage managers={effectiveManagers} properties={effectiveProperties} archivedManagers={archivedManagers} onOpenManagerModal={() => setShowManagerModal(true)} />}
       {activeView === 'roles' && <RolesPage settings={settings} />}
-      {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingLeaseChanges={pendingLeaseChanges} pendingMaintenance={pendingMaintenance} pendingTeamMembers={pendingTeamMembers} pendingUnits={pendingUnits} pendingInvoices={pendingInvoices} />}
+      {activeView === 'approvals' && <ApprovalsPage pendingLeases={pendingLeases} pendingLeaseChanges={pendingLeaseChanges} pendingPaymentChanges={pendingPaymentChanges} pendingMaintenance={pendingMaintenance} pendingTeamMembers={pendingTeamMembers} pendingUnits={pendingUnits} pendingInvoices={pendingInvoices} />}
       {activeView === 'audit' && <AuditPage properties={effectiveProperties} managers={effectiveManagers} auditLogs={auditLogs} />}
       {activeView === 'settings' && <SettingsPage settings={settings} properties={effectiveProperties} />}
 
