@@ -99,7 +99,8 @@ function formatCompactMoney(amount, currency = CURRENCY_FALLBACK) {
   if (abs >= 1_000_000) return `${code} ${(value / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `${code} ${(value / 1_000).toFixed(0)}k`;
 
-  return formatMoney(value, code);
+  // Under 1,000: keep the currency code (USD amounts are otherwise shown without a symbol).
+  return code === 'USD' ? `USD ${plainBasis(value)}` : formatMoney(value, code);
 }
 
 // A lease amount in the unit's own currency (USD stays USD). Conversion to TZS happens only on invoices.
