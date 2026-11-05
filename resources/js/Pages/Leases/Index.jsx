@@ -297,22 +297,29 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     // individually before combining them causes the displayed components to
     // not sum exactly to the displayed totals. Only the final render rounds
     // (to 2dp) for display.
-    const subtotal = rent + serviceCharge;
-    const vat = subtotal * (LEASE_VAT_RATE / 100);
-    const gross = subtotal + vat;
-    const rentWht = rent * (Number(rentWhtRate || 0) / 100);
-    const serviceChargeWht = serviceCharge * (Number(serviceChargeWhtRate || 0) / 100);
-    const wht = rentWht + serviceChargeWht;
-    const net = gross - wht;
-    const instalment = net * cycle;
-    const deposit = Number(data.deposit) || (rent > 0
-      ? (rent * depositRentMonths) + (serviceCharge * depositScMonths)
-      : 0);
+    // Fit-out service charge (the days before rent starts) is billed on the first invoice: it sits above the
+    // subtotal so VAT applies to it, and service-charge WHT is deducted from it like the rest of the service charge.
     const fitoutDays = fitoutEnabled && possessionDate && fitoutToDate
       ? Math.max(0, Math.round((new Date(`${fitoutToDate}T00:00:00`) - new Date(`${possessionDate}T00:00:00`)) / 86400000) + 1)
       : 0;
     const fitoutExtraSC = fitoutDays > 0 ? serviceCharge * fitoutDays / 30 : 0;
-    const fitoutExtraVAT = fitoutDays > 0 ? fitoutExtraSC * (LEASE_VAT_RATE / 100) : 0;
+    const fitoutExtraVAT = fitoutExtraSC * (LEASE_VAT_RATE / 100);
+    const fitoutWht = fitoutExtraSC * (Number(serviceChargeWhtRate || 0) / 100);
+    const fitoutNet = fitoutExtraSC + fitoutExtraVAT - fitoutWht;
+
+    const subtotal = rent + serviceCharge + fitoutExtraSC;
+    const vat = subtotal * (LEASE_VAT_RATE / 100);
+    const gross = subtotal + vat;
+    const rentWht = rent * (Number(rentWhtRate || 0) / 100);
+    const serviceChargeWht = serviceCharge * (Number(serviceChargeWhtRate || 0) / 100);
+    const wht = rentWht + serviceChargeWht + fitoutWht;
+    const net = gross - wht;
+    // The instalment is the regular months at the monthly net, plus the one-off fit-out amount.
+    const monthlyNet = (rent + serviceCharge) * (1 + LEASE_VAT_RATE / 100) - rentWht - serviceChargeWht;
+    const instalment = monthlyNet * cycle + fitoutNet;
+    const deposit = Number(data.deposit) || (rent > 0
+      ? (rent * depositRentMonths) + (serviceCharge * depositScMonths)
+      : 0);
 
     return {
       rent,
@@ -333,6 +340,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       fitoutDays,
       fitoutExtraSC,
       fitoutExtraVAT,
+      fitoutWht,
       period: `${fmtDateShort(rentStartDate)} -> ${fmtDateShort(data.end_date)} (${duration} months)`,
     };
   }, [data.monthly_rent, data.payment_cycle, data.duration_months, data.deposit, data.end_date, data.unit_id, rentStartDate, rentWhtRate, serviceChargeWhtRate, fitoutEnabled, possessionDate, fitoutToDate, units, depositRentMonths, depositScMonths, leases, editingLeaseId]);
@@ -1222,23 +1230,23 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 <div className="nl-summary-card" style={{marginBottom:14}}>
                   <div className="nl-summary-row"><span>Monthly Rent</span><strong>{m(summary.rent)}</strong></div>
                   <div className="nl-summary-row"><span>Service Charge (unit flat rate)</span><strong>{m(summary.serviceCharge)}</strong></div>
+                  {summary.fitoutDays > 0 && (
+                    <div className="nl-summary-row"><span style={{color:'var(--amber)'}}>Fit-out service charge ({summary.fitoutDays} days)</span><strong style={{color:'var(--amber)'}}>{m(summary.fitoutExtraSC)}</strong></div>
+                  )}
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Subtotal</span><strong>{m(summary.subtotal)}</strong></div>
                   <div className="nl-summary-row"><span>VAT (18%)</span><strong>{m(summary.vat)}</strong></div>
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Gross Total (incl. VAT)</span><strong>{m(summary.gross)}</strong></div>
-                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(rentWhtRate)}% rent + {Math.round(serviceChargeWhtRate)}% service charge, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${m(summary.wht)})`}</strong></div>
-                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>Net Payable / month</span><strong style={{fontSize:15}}>{m(summary.net)}</strong></div>
+                  <div className="nl-summary-row"><span style={{color:'var(--red)'}}>Less: WHT ({Math.round(rentWhtRate)}% rent + {Math.round(serviceChargeWhtRate)}% service charge{summary.fitoutDays > 0 ? ' incl. fit-out' : ''}, excl. VAT)</span><strong style={{color:'var(--red)'}}>{`(${m(summary.wht)})`}</strong></div>
+                  <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span style={{fontWeight:700}}>{summary.fitoutDays > 0 ? 'Net Payable (first month, incl. fit-out)' : 'Net Payable / month'}</span><strong style={{fontSize:15}}>{m(summary.net)}</strong></div>
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>WHT remittable to TRA / month</span><strong>{m(summary.wht)}</strong></div>
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Rent WHT portion</span><strong>{m(summary.rentWht)}</strong></div>
                   <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Service charge WHT portion</span><strong>{m(summary.serviceChargeWht)}</strong></div>
+                  {summary.fitoutDays > 0 && (
+                    <div className="nl-summary-row" style={{color:'var(--text-muted)',fontSize:12}}><span>Fit-out service charge WHT portion</span><strong>{m(summary.fitoutWht)}</strong></div>
+                  )}
                   <div className="nl-summary-row" style={{borderTop:'1px solid var(--border)',paddingTop:6,marginTop:4}}><span>Total initial {summary.cycle} months installment</span><strong>{m(summary.instalment)}</strong></div>
                   <div className="nl-summary-row"><span>Security deposit</span><strong>{m(summary.deposit)}</strong></div>
                   <div className="nl-summary-row"><span>Lease period</span><strong>{summary.period}</strong></div>
-                  {fitoutEnabled && summary.fitoutDays > 0 && (
-                    <div className="nl-summary-row">
-                      <span style={{color:'var(--amber)'}}>First invoice SC extra days</span>
-                      <strong style={{color:'var(--amber)'}}>{`${summary.fitoutDays} days · SC ${formatMoneyPrecise(summary.fitoutExtraSC, selectedUnitCurrency)} + VAT ${formatMoneyPrecise(summary.fitoutExtraVAT, selectedUnitCurrency)}`}</strong>
-                    </div>
-                  )}
                 </div>
               )}
 
