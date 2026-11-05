@@ -800,6 +800,33 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Annual Value</div><div className="kv-value ldr-kv-value">{leaseMoney(selected.monthly_rent * 12, selected)}</div></div>
                   <div className="kv ldr-kv"><div className="kv-label ldr-kv-label">Security Deposit</div><div className="kv-value ldr-kv-value">{leaseMoney(selected.deposit, selected)}</div></div>
                 </div>
+                {Number(selected.deposit) > 0 && (
+                  <div style={{marginTop:10,background:'var(--bg-elevated)',borderRadius:9,padding:'11px 14px',display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontSize:10.5,fontWeight:700,letterSpacing:'.7px',textTransform:'uppercase',color:'var(--text-muted)'}}>Deposit proforma</div>
+                      <div style={{fontSize:13,fontWeight:600,marginTop:2,wordBreak:'break-all'}}>{selected.deposit_invoice ? selected.deposit_invoice.invoice_number : 'Not issued yet'}</div>
+                    </div>
+                    {selected.deposit_invoice ? (
+                      <span className={`badge ${selected.deposit_invoice.status === 'paid' ? 'paid' : 'unpaid'}`}>{({ proforma: 'Awaiting payment', partially_paid: 'Part paid', paid: 'Paid' })[selected.deposit_invoice.status] || String(selected.deposit_invoice.status).replace('_', ' ')}</span>
+                    ) : (['active','expiring','overdue'].includes(selected.status) && (user?.role === 'superuser' || user?.role === 'manager')) && (
+                      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        {leaseIsUsd(selected) && (
+                          <MoneyInput decimals={4} className="form-input" style={{ width: 150 }} value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder={Number(selected.exchange_rate) > 0 ? `Lease rate ${selected.exchange_rate}` : 'USD → TZS rate'} />
+                        )}
+                        <button
+                          className="btn-secondary"
+                          disabled={leaseIsUsd(selected) && !(Number(depositRate) > 0) && !(Number(selected.exchange_rate) > 0)}
+                          title={leaseIsUsd(selected) && !(Number(depositRate) > 0) && !(Number(selected.exchange_rate) > 0) ? 'Enter the USD → TZS rate for this proforma' : undefined}
+                          onClick={() => router.post(`/leases/${selected.id}/deposit-invoice`, { deposit_rate: leaseIsUsd(selected) ? depositRate : null }, {
+                            preserveScroll: true,
+                            onSuccess: () => setDepositRate(''),
+                            onError: (errs) => notify('error', Object.values(errs || {}).flat().find(Boolean) || 'The deposit proforma could not be issued.'),
+                          })}
+                        >Issue Deposit Proforma</button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="drawer-section ldr-section">
@@ -933,32 +960,10 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
               ) : (
                 <>
                   {user?.role === 'superuser' && (
-                    <button className="btn-primary" style={{flex:1,justifyContent:'center'}} onClick={()=>openEditModal(selected)}>Edit Lease</button>
+                    <button className="btn-primary" style={{flex:'1 1 calc(100% - 56px)',justifyContent:'center',order:-2}} onClick={()=>openEditModal(selected)}>Edit Lease</button>
                   )}
                   <button className="btn-secondary" onClick={renewFromDrawer}>Renew</button>
                   <button className="btn-secondary" onClick={()=>window.open(`/leases/${selected.id}/pdf`, '_blank')}>Download Agreement</button>
-                  {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) > 0 && !selected.deposit_invoice && (user?.role === 'superuser' || user?.role === 'manager') && (
-                    <>
-                      {leaseIsUsd(selected) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <MoneyInput decimals={4} className="form-input" style={{ width: 150 }} value={depositRate} onChange={(e) => setDepositRate(e.target.value)} placeholder={Number(selected.exchange_rate) > 0 ? `Lease rate ${selected.exchange_rate}` : 'USD → TZS rate'} />
-                        </div>
-                      )}
-                      <button
-                        className="btn-secondary"
-                        disabled={leaseIsUsd(selected) && !(Number(depositRate) > 0) && !(Number(selected.exchange_rate) > 0)}
-                        title={leaseIsUsd(selected) && !(Number(depositRate) > 0) && !(Number(selected.exchange_rate) > 0) ? 'Enter the USD → TZS rate for this proforma' : undefined}
-                        onClick={() => router.post(`/leases/${selected.id}/deposit-invoice`, { deposit_rate: leaseIsUsd(selected) ? depositRate : null }, {
-                          preserveScroll: true,
-                          onSuccess: () => setDepositRate(''),
-                          onError: (errs) => notify('error', Object.values(errs || {}).flat().find(Boolean) || 'The deposit proforma could not be issued.'),
-                        })}
-                      >Issue Deposit Proforma</button>
-                    </>
-                  )}
-                  {selected.deposit_invoice && (
-                    <span style={{fontSize:12,color:'var(--text-muted)',alignSelf:'center'}}>Deposit proforma {selected.deposit_invoice.invoice_number} · {String(selected.deposit_invoice.status).replace('_',' ')}</span>
-                  )}
                   {['active','expiring','overdue'].includes(selected.status) && Number(selected.deposit) > 0 && (user?.role === 'superuser' || user?.role === 'manager') && (
                     <button className="btn-secondary" onClick={() => router.get('/clearance', { lease_id: selected.id })}>{new Date(`${selected.end_date}T00:00:00`) > new Date() ? 'Terminate Early (Clearance)' : 'Start Clearance'}</button>
                   )}

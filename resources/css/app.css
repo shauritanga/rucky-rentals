@@ -668,7 +668,9 @@ button[data-busy="true"]>svg,button[aria-busy="true"]>svg{display:none}
 .ldr-schedule-table td:first-child{padding-left:0}
 .ldr-schedule-table tr:last-child td{border-bottom:none}
 
-.ldr-footer{padding:14px 24px;border-top:1px solid var(--border-subtle);display:flex;gap:8px;flex-shrink:0}
+.ldr-footer{padding:14px 24px;border-top:1px solid var(--border-subtle);display:flex;flex-wrap:wrap;gap:8px;flex-shrink:0}
+.ldr-footer > button{flex:1 1 auto;justify-content:center}
+.ldr-footer > .btn-danger{flex:0 0 auto;order:-1}
 
 .apv-stepper{display:flex;align-items:flex-start;gap:0;margin-bottom:12px}
 .apv-step{flex:1;text-align:center;position:relative;padding:2px 4px}
