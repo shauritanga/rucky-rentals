@@ -359,6 +359,13 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     const fitoutDays = lease.fitout_enabled ? (Number(lease.fitout_days) || 0) : 0;
     const dailyServiceCharge = unitServiceCharge / 30;
     const fitoutExtraSC = fitoutDays > 0 ? Math.round(dailyServiceCharge * fitoutDays * 100) / 100 : 0;
+    // The fit-out ends the day before rent starts (rent start 16 Apr means fit-out to 15 Apr).
+    const fitoutEndDate = lease.fitout_to_date || (() => {
+      const d = new Date(`${rentStartDate}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return rentStartDate;
+      d.setDate(d.getDate() - 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
     // Fit-out charges only appear if no prior invoice for this lease already contains them
     const fitoutAlreadyInvoiced = invoices.some(inv =>
       String(inv.lease_id) === String(lease.id) &&
@@ -384,7 +391,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
     if (!fitoutAlreadyInvoiced && fitoutExtraSC > 0) {
       nextItems.push({
         description: `Service Charge - Fit-Out Period (${fitoutDays} days)`,
-        sub_description: `${possessionDate} to ${rentStartDate} (rent-free period)`,
+        sub_description: `${formatDisplayDate(possessionDate)} - ${formatDisplayDate(fitoutEndDate)} (rent-free period)`,
         quantity: 1,
         unit_price: fitoutExtraSC,
       });
