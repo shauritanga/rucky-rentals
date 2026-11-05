@@ -121,7 +121,7 @@ class LeaseShareRebalancer
     {
         $n = $leases->filter(fn (Lease $l) =>
             Carbon::parse($l->rent_start_date ?: $l->start_date)->lte($date)
-            && Carbon::parse($l->end_date)->gt($date)
+            && Carbon::parse($l->end_date)->addDay()->gt($date)
         )->count();
 
         return max(1, $n);

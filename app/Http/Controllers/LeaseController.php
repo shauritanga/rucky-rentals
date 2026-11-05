@@ -217,8 +217,8 @@ class LeaseController extends Controller
         $endsInPast = Carbon::parse($validated['end_date'])->startOfDay()->lt(Carbon::today());
         if (!$endsInPast && Lease::where('unit_id', $unit->id)
             ->whereIn('status', ['pending_accountant', 'pending_pm', 'active', 'expiring', 'overdue'])
-            ->whereDate('start_date', '<', $validated['end_date'])
-            ->whereDate('end_date', '>', $validated['start_date'])
+            ->whereDate('start_date', '<=', $validated['end_date'])
+            ->whereDate('end_date', '>=', $validated['start_date'])
             ->exists()) {
             throw ValidationException::withMessages([
                 'unit_id' => "Unit {$unit->unit_number} already has a lease for these dates.",
@@ -764,7 +764,11 @@ class LeaseController extends Controller
             : 'USD';
 
         $start = Carbon::parse($lease->rent_start_date ?: $lease->start_date)->startOfDay();
-        $end = Carbon::parse($lease->end_date)->startOfDay();
+        // end_date is the last day of the lease; the schedule runs up to the day after it (never beyond the stated duration).
+        $end = Carbon::parse($lease->end_date)->startOfDay()->addDay();
+        if ((int) $lease->duration_months > 0) {
+            $end = $end->min($start->copy()->addMonths((int) $lease->duration_months));
+        }
         $today = Carbon::today();
 
         $sequence = 1;

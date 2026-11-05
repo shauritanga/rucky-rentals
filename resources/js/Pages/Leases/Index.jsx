@@ -20,11 +20,22 @@ const DURATION_OPTIONS = Array.from({ length: 15 }, (_, i) => {
 });
 const LEASE_VAT_RATE = 18;
 
+// The last day of a lease: one day before the same date N months later (6 Apr 2026 for 12 months ends 5 Apr 2027).
 function addMonthsISO(startDate, months) {
   if (!startDate) return '';
   const d = new Date(`${startDate}T00:00:00`);
   if (Number.isNaN(d.getTime())) return '';
   d.setMonth(d.getMonth() + Number(months || 0));
+  d.setDate(d.getDate() - 1);
+  return toLocalIsoDate(d);
+}
+
+// The day after a date as ISO (a renewal starts the day after the old lease ends).
+function nextDayISO(isoDate) {
+  if (!isoDate) return '';
+  const d = new Date(`${String(isoDate).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + 1);
   return toLocalIsoDate(d);
 }
 
@@ -154,6 +165,7 @@ function buildPaymentSchedule(lease, isPending) {
 
   const start = new Date(`${lease?.start_date}T00:00:00`);
   const end = new Date(`${lease?.end_date}T00:00:00`);
+  end.setDate(end.getDate() + 1); // the end date is the last day; periods run up to the day after it
   const cycle = Number(lease?.payment_cycle) || 3;
   const monthlyRent = Number(lease?.monthly_rent) || 0;
   const unitServiceCharge = Number(lease?.monthly_service_charge ?? lease?.unit?.service_charge) || 0;
@@ -235,7 +247,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
 
   const [saving, setSaving] = useState(false);
   const { data, setData, post, processing, reset } = useForm({
-    tenant_id:'', tenant_ids:[], exchange_rate:'', unit_id:'', start_date:'2026-04-01', end_date:'2027-04-01',
+    tenant_id:'', tenant_ids:[], exchange_rate:'', unit_id:'', start_date:'2026-04-01', end_date:'2027-03-31',
     duration_months:12, payment_cycle:3, monthly_rent:'', deposit:'', terms:'',
     possession_date:'2026-04-01', rent_start_date:'2026-04-01', fitout_enabled:false, fitout_to_date:'', fitout_days:0,
     wht_rate:10, service_charge_rate:5, vat_rate:LEASE_VAT_RATE,
@@ -276,7 +288,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
           String(l.unit_id) === String(data.unit_id)
           && ['active', 'expiring', 'overdue'].includes(l.status)
           && String(l.id) !== String(editingLeaseId)
-          && (!rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) > rentStartDate)
+          && (!rentStartDate || !l.end_date || String(l.end_date).slice(0, 10) >= rentStartDate)
         ).length
       : (summaryUnit?.allows_co_tenants ? Math.max(2, Number(summaryUnit.co_tenant_count) || 2) - 1 : 0);
     const shares = coTenantCount + 1;
@@ -416,7 +428,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
     setData(d => ({
       ...d,
       start_date: '2026-04-01',
-      end_date: '2027-04-01',
+      end_date: '2027-03-31',
       duration_months: 12,
       payment_cycle: 3,
       unit_id: '',
@@ -617,15 +629,15 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       tenant_id: lease.tenant_id || lease.tenant?.id || '',
       tenant_ids: [lease.tenant_id || lease.tenant?.id].filter(Boolean),
       unit_id: lease.unit_id || lease.unit?.id || '',
-      start_date: lease.end_date || lease.start_date || '2026-04-01',
+      start_date: nextDayISO(lease.end_date) || lease.start_date || '2026-04-01',
       duration_months: lease.duration_months || 12,
       payment_cycle: lease.payment_cycle || 3,
       monthly_rent: lease.monthly_rent || '',
       deposit: lease.deposit || '',
       terms: lease.terms || '',
     }));
-    setPossessionDate(lease.end_date || lease.start_date || '2026-04-01');
-    setRentStartDate(lease.end_date || lease.start_date || '2026-04-01');
+    setPossessionDate(nextDayISO(lease.end_date) || lease.start_date || '2026-04-01');
+    setRentStartDate(nextDayISO(lease.end_date) || lease.start_date || '2026-04-01');
     setEditingLeaseId(null);
     setSelected(null);
   };
