@@ -287,7 +287,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
 
     return (
         <div className={`drawer-overlay ${open ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && onClose()}>
-            <div className="drawer" style={isLease ? { width: 680, maxWidth: 'calc(100vw - 24px)' } : undefined}>
+            <div className="drawer" style={isLease ? { width: 680, maxWidth: 'calc(100vw - 24px)' } : isInvoice ? { width: 620, maxWidth: 'calc(100vw - 24px)' } : undefined}>
                 <div className="drawer-header">
                     <div>
                         <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>
