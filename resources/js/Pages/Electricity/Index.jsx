@@ -338,6 +338,7 @@ export default function Electricity({
                                             <button
                                                 className="btn-primary"
                                                 disabled={savingReading}
+                                                aria-busy={savingReading}
                                                 onClick={() => {
                                                     setActiveTab('direct');
                                                     setSavingReading(true);

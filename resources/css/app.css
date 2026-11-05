@@ -62,6 +62,12 @@ html,body,#app{height:100%;font-family:'DM Sans',sans-serif;font-size:14px;backg
 .btn-primary:disabled,.btn-ghost:disabled{opacity:.65;cursor:not-allowed;box-shadow:none}
 .btn-spinner{width:12px;height:12px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;display:inline-block;animation:btnSpin .7s linear infinite}
 @keyframes btnSpin{to{transform:rotate(360deg)}}
+/* One circular spinner for any button that is busy: its own (aria-busy) or a request started by its click (data-busy). */
+button[data-busy="true"],button[aria-busy="true"]{pointer-events:none}
+button[data-busy="true"]::before,button[aria-busy="true"]::before{content:'';width:12px;height:12px;flex-shrink:0;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;animation:btnSpin .7s linear infinite;opacity:.8}
+button[data-busy="true"]:has(.btn-spinner)::before,button[aria-busy="true"]:has(.btn-spinner)::before{display:none}
+button[data-busy="true"]>svg,button[aria-busy="true"]>svg{display:none}
+
 .btn-danger{display:flex;align-items:center;gap:5px;background:var(--red-dim);color:var(--red);border:1px solid transparent;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;transition:background .15s}
 .btn-danger:hover{background:rgba(239,68,68,.2)}
 .btn-secondary{display:flex;align-items:center;gap:5px;background:var(--bg-elevated);color:var(--text-secondary);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;transition:background .15s,color .15s}

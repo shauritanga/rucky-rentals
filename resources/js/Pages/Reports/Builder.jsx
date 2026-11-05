@@ -417,10 +417,10 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
                 Shared with my team
               </label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn-primary" disabled={savingTemplate} onClick={() => saveTemplate(true)}>Save as new</button>
+                <button className="btn-primary" disabled={savingTemplate} aria-busy={savingTemplate} onClick={() => saveTemplate(true)}>Save as new</button>
                 {activeTemplateId && (
                   <>
-                    <button className="btn-secondary" disabled={savingTemplate} onClick={() => saveTemplate(false)}>Update</button>
+                    <button className="btn-secondary" disabled={savingTemplate} aria-busy={savingTemplate} onClick={() => saveTemplate(false)}>Update</button>
                     <button className="btn-secondary" onClick={deleteTemplate}>Delete</button>
                   </>
                 )}
@@ -556,7 +556,7 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3>Preview</h3>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn-primary" onClick={runPreview} disabled={loadingPreview}>
+              <button className="btn-primary" onClick={runPreview} disabled={loadingPreview} aria-busy={loadingPreview}>
                 {loadingPreview ? 'Running…' : 'Run Preview'}
               </button>
               <button className="btn-secondary" onClick={() => exportReport('csv')} disabled={selectedColumns.length === 0}>Export CSV</button>

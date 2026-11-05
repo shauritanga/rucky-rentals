@@ -740,6 +740,7 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
                             className="btn-primary"
                             style={{ width: '100%', justifyContent: 'center', marginTop: 12 }}
                             disabled={submittingReview || wizardClearance.status !== 'in_progress'}
+                            aria-busy={submittingReview}
                             onClick={submitForReview}
                           >
                             {submittingReview ? 'Submitting…' : 'Submit for Superuser Review'}
@@ -784,13 +785,13 @@ export default function ClearanceIndex({ clearances = [], eligibleLeases = [], c
             <div style={{ display: 'flex', gap: 8 }}>
               <button type="button" className="btn-ghost" onClick={closeWizard}>{wizardIsCompleted ? 'Close' : 'Save & Close'}</button>
               {wizardStep === 1 && !wizardClearance && (
-                <button type="button" className="btn-primary" disabled={!wizardLeaseId || creating} onClick={startClearance}>{creating ? 'Starting…' : 'Start Inspection'}</button>
+                <button type="button" className="btn-primary" disabled={!wizardLeaseId || creating} aria-busy={creating} onClick={startClearance}>{creating ? 'Starting…' : 'Start Inspection'}</button>
               )}
               {wizardStep === 1 && wizardClearance && (
                 <button type="button" className="btn-primary" onClick={() => setWizardStep(2)}>Continue</button>
               )}
               {wizardStep === 2 && (
-                <button type="button" className="btn-primary" disabled={checklistSaving} onClick={saveChecklist}>{checklistSaving ? 'Saving…' : 'Save & Continue'}</button>
+                <button type="button" className="btn-primary" disabled={checklistSaving} aria-busy={checklistSaving} onClick={saveChecklist}>{checklistSaving ? 'Saving…' : 'Save & Continue'}</button>
               )}
               {wizardStep === 3 && (
                 <button type="button" className="btn-primary" onClick={() => setWizardStep(4)}>Continue to Review</button>

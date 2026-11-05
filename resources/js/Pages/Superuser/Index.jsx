@@ -245,7 +245,7 @@ export default function SuperuserIndex({ properties = [], managers = [], auditLo
           </div>
           <div className="modal-footer">
             <button type="button" className="btn-ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</button>
-            <button type="button" className="btn-danger" onClick={confirmDeleteProperty} disabled={deleting || deleteConfirm.trim() !== (deleteTarget?.name || '\u0000')}>{deleting ? 'Deleting…' : 'Delete Property'}</button>
+            <button type="button" className="btn-danger" onClick={confirmDeleteProperty} disabled={deleting || deleteConfirm.trim() !== (deleteTarget?.name || '\u0000')} aria-busy={deleting}>{deleting ? 'Deleting…' : 'Delete Property'}</button>
           </div>
         </div>
       </div>

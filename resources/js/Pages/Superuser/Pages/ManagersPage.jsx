@@ -272,6 +272,7 @@ export default function ManagersPage({ managers = [], properties = [], archivedM
                             type="button"
                             className="btn-danger"
                             disabled={deleting || confirmName !== deleteTarget?.name}
+                            aria-busy={deleting}
                             onClick={handleDelete}
                         >
                             {deleting ? 'Removing…' : 'Remove'}

@@ -237,7 +237,7 @@ function DecisionModal({ open, action, subject, context, onClose, onConfirm, sub
                 </div>
                 <div className="modal-footer">
                     <button type="button" className="btn-ghost" onClick={handleClose} disabled={submitting}>Cancel</button>
-                    <button type="button" className={isReject ? 'btn-danger' : 'btn-primary'} disabled={!isValid || submitting} onClick={handleConfirm}>
+                    <button type="button" className={isReject ? 'btn-danger' : 'btn-primary'} disabled={!isValid || submitting} aria-busy={submitting} onClick={handleConfirm}>
                         {submitting ? (isReject ? 'Rejecting…' : 'Approving…') : (isReject ? 'Reject' : 'Approve')}
                     </button>
                 </div>
