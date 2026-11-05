@@ -154,12 +154,9 @@ class LeaseController extends Controller
             abort_if((int) $propertyId !== $effectivePropertyId, 403);
         }
 
-        // A USD unit needs today's rate so the lease can show its amounts in TZS. It is for display only:
-        // every proforma carries its own rate, typed when the proforma is created.
+        // A lease is kept in its unit's currency; no exchange rate is asked for. USD is converted to TZS only on
+        // proformas and invoices, each with its own typed rate (a rate sent with the lease is still stored).
         $isUsdUnit = strtoupper((string) ($unit->currency ?: 'TZS')) === 'USD';
-        if ($isUsdUnit && (float) ($validated['exchange_rate'] ?? 0) <= 0) {
-            throw ValidationException::withMessages(['exchange_rate' => 'Enter today\'s USD → TZS exchange rate for this lease.']);
-        }
 
         $tenantId = $validated['tenant_id'] ?? null;
 
@@ -286,7 +283,7 @@ class LeaseController extends Controller
             'status' => $status,
             'approval_log' => $approvalLog,
             'co_tenant_group' => $groupId,
-            'exchange_rate' => $isUsdUnit ? round((float) $validated['exchange_rate'], 4) : null,
+            'exchange_rate' => $isUsdUnit && (float) ($validated['exchange_rate'] ?? 0) > 0 ? round((float) $validated['exchange_rate'], 4) : null,
         ];
 
         $created = collect();

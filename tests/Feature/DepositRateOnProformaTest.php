@@ -50,7 +50,7 @@ class DepositRateOnProformaTest extends TestCase
         $this->assertEquals(2650.0, (float) $invoice->usd_rate);
     }
 
-    public function test_a_usd_lease_cannot_be_created_without_todays_rate_and_a_tzs_lease_stores_none(): void
+    public function test_a_usd_lease_is_created_without_any_rate_and_a_tzs_lease_stores_none(): void
     {
         $property = Property::create(['name' => 'Rate Tower 2', 'code' => 'RT2', 'status' => 'active', 'unit_count' => 0, 'occupied_units' => 0, 'country' => 'Tanzania']);
         $manager = User::factory()->create(['role' => 'manager', 'status' => 'active', 'property_id' => $property->id, 'must_change_password' => false]);
@@ -64,8 +64,8 @@ class DepositRateOnProformaTest extends TestCase
         $tenant = Tenant::create(['property_id' => $property->id, 'name' => 'T', 'email' => 't@example.com', 'phone' => '0700000000', 'initials' => 'T', 'tenant_type' => 'individual']);
         $payload = fn ($unit) => ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2026-04-01', 'end_date' => '2027-04-01', 'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 1000];
 
-        $this->actingAs($manager)->post('/leases', $payload($usd))->assertSessionHasErrors('exchange_rate');
-        $this->assertSame(0, Lease::count());
+        $this->actingAs($manager)->post('/leases', $payload($usd))->assertSessionHasNoErrors();
+        $this->assertNull(Lease::where('unit_id', $usd->id)->value('exchange_rate'));
 
         $this->actingAs($manager)->post('/leases', $payload($tzs) + ['exchange_rate' => 2600])->assertSessionHasNoErrors();
         $this->assertNull(Lease::where('unit_id', $tzs->id)->value('exchange_rate'));

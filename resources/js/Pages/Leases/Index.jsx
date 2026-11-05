@@ -411,7 +411,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
   const selectedUnitCurrency = resolveCurrency(selectedUnit?.currency);
   const unitChosen = !!selectedUnit;
   const isUsdUnit = unitChosen && selectedUnitCurrency === 'USD';
-  const dayRate = Number(data.exchange_rate) || 0;
   // The summary shows the unit's own currency; conversion to TZS happens on the invoices.
   const m = (value) => (isUsdUnit ? `USD ${plainBasis(value)}` : formatMoneyPrecise(value, selectedUnitCurrency));
 
@@ -463,7 +462,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
       payment_cycle: lease.payment_cycle || 3,
       monthly_rent: lease.monthly_rent ?? '',
       deposit: lease.deposit ?? '',
-      exchange_rate: lease.exchange_rate ?? lease.display_rate ?? '',
       wht_rate: lease.wht_rate ?? 10,
       service_charge_rate: lease.service_charge_rate ?? 5,
       vat_rate: lease.vat_rate ?? LEASE_VAT_RATE,
@@ -588,7 +586,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
         fitout_days: summary.fitoutDays || 0,
         monthly_rent: data.monthly_rent,
         deposit: data.deposit,
-        exchange_rate: data.exchange_rate || null,
         wht_rate: Number(rentWhtRate === '' ? 0 : rentWhtRate),
         service_charge_rate: Number(serviceChargeWhtRate === '' ? 0 : serviceChargeWhtRate),
         vat_rate: LEASE_VAT_RATE,
@@ -1216,20 +1213,6 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                   <MoneyInput className="form-input" value={data.deposit} onChange={e=>setData('deposit',e.target.value)} placeholder={unitChosen ? 'Calculated from the unit' : ''} />
                 </div>
               </div>
-              {isUsdUnit && (
-                <div className="form-row" style={{ marginBottom: 6 }}>
-                  <div className="form-group">
-                    <label className="form-label">Exchange rate today (USD → TZS) *</label>
-                    <MoneyInput decimals={4} className="form-input" value={data.exchange_rate} onChange={e=>setData('exchange_rate',e.target.value)} placeholder="e.g. 2650" required />
-                  </div>
-                </div>
-              )}
-              {isUsdUnit && (
-                <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-                  Used for the security deposit proforma. Every other proforma takes its own rate.
-                </div>
-              )}
-
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Rent WHT (%)</label><input className="form-input" type="number" inputMode="decimal" min="0" max="100" value={rentWhtRate} onChange={e=>setRentWhtRate(e.target.value)} /></div>
                 <div className="form-group"><label className="form-label">Service Charge WHT (%)</label><input className="form-input" type="number" inputMode="decimal" min="0" max="100" value={serviceChargeWhtRate} onChange={e=>setServiceChargeWhtRate(e.target.value)} /></div>
@@ -1265,7 +1248,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
             </div>
             <div className="modal-footer">
               <button type="button" className="btn-ghost" onClick={()=>{setShowModal(false);setEditingLeaseId(null);}}>Cancel</button>
-              <button type="submit" className="btn-primary" disabled={saving || processing || !tenantsComplete || (isUsdUnit && !(dayRate > 0))}>
+              <button type="submit" className="btn-primary" disabled={saving || processing || !tenantsComplete}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 {saving ? (editingLeaseId ? 'Saving…' : 'Creating…') : (editingLeaseId ? 'Save Changes' : 'Create Lease')}
               </button>
