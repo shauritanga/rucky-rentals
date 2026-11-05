@@ -28,8 +28,17 @@ function fmtLease(amount, lease) {
     return fmt(currency === 'USD' ? Number(amount) : amount, currency === 'USD' ? 'USD' : 'TZS');
 }
 
-function invoiceTotal(items = []) {
-    return (items || []).reduce((sum, item) => sum + Number(item.total || 0), 0);
+// Subtotal, VAT and total due exactly as the proforma itself shows them (a security deposit carries no VAT).
+function invoiceTotals(invoice) {
+    const items = invoice?.items || [];
+    const lines = items.filter((i) => i.item_type !== 'electricity_vat');
+    const subtotal = lines.reduce((sum, i) => sum + Number(i.total || 0), 0);
+    const vatFromItems = items.filter((i) => i.item_type === 'electricity_vat').reduce((sum, i) => sum + Number(i.total || 0), 0);
+    const vatRate = Number(invoice?.lease?.vat_rate ?? 18);
+    const isDeposit = invoice?.kind === 'deposit';
+    const vat = isDeposit ? 0 : (vatFromItems > 0 ? vatFromItems : Math.round(subtotal * vatRate / 100));
+
+    return { lines, subtotal, vat, vatRate, isDeposit, total: subtotal + vat };
 }
 
 function parseApprovalLog(raw) {
@@ -518,7 +527,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                         <>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px', marginBottom: 20 }}>
                                 <Detail label="Status" value={<StatusBadge status={item.approval_status} />} />
-                                <Detail label="Total" value={fmt(invoiceTotal(item.items), item.currency)} />
+                                <Detail label="Total Due" value={fmt(invoiceTotals(item).total, item.currency)} />
                                 <Detail label="Tenant" value={item.tenant_name ?? '—'} sub={item.tenant_email ?? '—'} />
                                 <Detail label="Property / Unit" value={item.property?.name ?? item.lease?.unit?.property?.name ?? '—'} sub={`Unit ${item.unit_ref ?? '—'}`} />
                                 <Detail label="Issued" value={formatDate(item.issued_date)} />
@@ -542,7 +551,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {(item.items || []).map((line) => (
+                                            {invoiceTotals(item).lines.map((line) => (
                                                 <tr key={line.id ?? `${line.description}-${line.quantity}-${line.unit_price}`}>
                                                     <td>
                                                         <div style={{ fontWeight: 500 }}>{line.description}</div>
@@ -554,6 +563,22 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                                 </tr>
                                             ))}
                                         </tbody>
+                                        <tfoot>
+                                            <tr>
+                                                <td colSpan={3} style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>Subtotal</td>
+                                                <td style={{ fontWeight: 600 }}>{fmt(invoiceTotals(item).subtotal, item.currency)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td colSpan={3} style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
+                                                    {invoiceTotals(item).isDeposit ? 'Refundable security deposit — no VAT' : `VAT (${invoiceTotals(item).vatRate}%)`}
+                                                </td>
+                                                <td style={{ fontWeight: 600 }}>{invoiceTotals(item).isDeposit ? '—' : fmt(invoiceTotals(item).vat, item.currency)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td colSpan={3} style={{ textAlign: 'right', fontWeight: 700 }}>Total Due</td>
+                                                <td style={{ fontWeight: 800, color: 'var(--accent)' }}>{fmt(invoiceTotals(item).total, item.currency)}</td>
+                                            </tr>
+                                        </tfoot>
                                     </table>
                                 </div>
                             </div>
@@ -762,7 +787,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingMaintenance =
                                     <div>{invoice.property?.name ?? invoice.lease?.unit?.property?.name ?? '—'}</div>
                                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Unit {invoice.unit_ref ?? '—'}</div>
                                 </td>
-                                <td>{fmt(invoiceTotal(invoice.items), invoice.currency)}</td>
+                                <td>{fmt(invoiceTotals(invoice).total, invoice.currency)}</td>
                                 <td>
                                     <div style={{ fontWeight: 500 }}>{invoice.requested_by?.name ?? '—'}</div>
                                     <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{invoice.requested_by?.email ?? '—'}</div>
