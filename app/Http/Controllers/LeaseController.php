@@ -229,8 +229,8 @@ class LeaseController extends Controller
             ]);
         }
 
-        // Determine initial status — superuser acting in property view mode auto-approves
-        if ($this->isSuperuserActing($request)) {
+        // Determine initial status — a superuser's own lease needs no approval
+        if ($user->role === 'superuser' || $this->isSuperuserActing($request)) {
             $status = 'active';
             $approvalLog = json_encode([[
                 'step' => 1, 'action' => 'approved',
@@ -338,7 +338,7 @@ class LeaseController extends Controller
             );
         }
 
-        $message = $this->isSuperuserActing($request)
+        $message = ($user->role === 'superuser' || $this->isSuperuserActing($request))
             ? 'Lease created and approved.'
             : 'Lease created and submitted for approval.';
 

@@ -145,8 +145,8 @@ class MaintenanceController extends Controller
             ->where('property_id', $propertyId)
             ->first();
 
-        // Superuser acting in property view → auto-approve
-        if ($this->isSuperuserActing($request)) {
+        // A superuser's own ticket needs no approval
+        if ($request->user()?->role === 'superuser' || $this->isSuperuserActing($request)) {
             $workflowStatus = 'approved';
         } else {
             $workflowStatus = 'submitted';

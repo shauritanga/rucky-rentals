@@ -187,8 +187,10 @@ class InvoiceController extends Controller
             ? 'draft'
             : ($data['type'] === 'proforma' ? 'proforma' : 'unpaid');
 
+        // A superuser's own proforma needs no approval; a manager's waits for one.
+        $isSuperuser = $request->user()?->role === 'superuser';
         $approvalStatus = $data['type'] === 'proforma'
-            ? (($status === 'draft') ? 'draft' : 'pending_approval')
+            ? (($status === 'draft') ? 'draft' : ($isSuperuser ? 'approved' : 'pending_approval'))
             : 'approved';
 
         $propertyId = null;
@@ -289,9 +291,9 @@ class InvoiceController extends Controller
         );
 
         return back()
-            ->with('success', $createdInvoice?->type === 'proforma'
+            ->with('success', $createdInvoice?->type === 'proforma' && $createdInvoice->approval_status === 'pending_approval'
                 ? 'Proforma invoice submitted for superuser approval.'
-                : 'Invoice created.')
+                : ($createdInvoice?->type === 'proforma' ? 'Proforma invoice created.' : 'Invoice created.'))
             ->with('created_invoice_id', $createdInvoiceId);
     }
 
@@ -378,11 +380,12 @@ class InvoiceController extends Controller
         abort_if($invoice->sent_to_tenant_at !== null, 422, 'Sent proforma invoices cannot be resubmitted.');
         abort_if(!in_array($invoice->approval_status, ['draft', 'rejected', 'approved', 'pending_approval'], true), 422, 'Invoice cannot be resubmitted.');
 
+        $isSuperuser = $request->user()?->role === 'superuser';
         $invoice->update([
-            'approval_status' => 'pending_approval',
-            'approval_requested_at' => now(),
-            'approval_decided_at' => null,
-            'approval_decided_by' => null,
+            'approval_status' => $isSuperuser ? 'approved' : 'pending_approval',
+            'approval_requested_at' => $isSuperuser ? null : now(),
+            'approval_decided_at' => $isSuperuser ? now() : null,
+            'approval_decided_by' => $isSuperuser ? $request->user()->id : null,
             'approval_note' => null,
         ]);
 
@@ -396,7 +399,7 @@ class InvoiceController extends Controller
             propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
         );
 
-        return back()->with('success', 'Proforma invoice resubmitted for approval.');
+        return back()->with('success', $isSuperuser ? 'Proforma invoice approved.' : 'Proforma invoice resubmitted for approval.');
     }
 
     public function destroy(Invoice $invoice)
@@ -745,7 +748,8 @@ class InvoiceController extends Controller
             abort_if((int) $propertyId !== $effectivePropertyId, 403);
         }
 
-        $approvalStatus = ($data['status'] ?? null) === 'draft' ? 'draft' : 'pending_approval';
+        $isSuperuser = $request->user()?->role === 'superuser';
+        $approvalStatus = ($data['status'] ?? null) === 'draft' ? 'draft' : ($isSuperuser ? 'approved' : 'pending_approval');
 
         DB::transaction(function () use ($invoice, $data, $propertyId, $lease, $approvalStatus) {
             $usdRate = $this->resolveUsdRate($lease, $data['usd_rate'] ?? null);
@@ -766,8 +770,8 @@ class InvoiceController extends Controller
                 'notes' => $data['notes'] ?? null,
                 'approval_status' => $approvalStatus,
                 'approval_requested_at' => $approvalStatus === 'pending_approval' ? now() : null,
-                'approval_decided_at' => null,
-                'approval_decided_by' => null,
+                'approval_decided_at' => $approvalStatus === 'approved' ? now() : null,
+                'approval_decided_by' => $approvalStatus === 'approved' ? $request->user()?->id : null,
                 'approval_note' => null,
             ]);
 
@@ -816,7 +820,7 @@ class InvoiceController extends Controller
 
         return back()->with('success', $approvalStatus === 'draft'
             ? 'Draft invoice updated.'
-            : 'Proforma invoice updated and resubmitted for approval.');
+            : ($approvalStatus === 'approved' ? 'Proforma invoice updated.' : 'Proforma invoice updated and resubmitted for approval.'));
     }
 
     private function invoiceGrossTotal(Invoice $invoice): float
