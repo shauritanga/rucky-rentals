@@ -541,7 +541,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginBottom: 16 }}>
                                 <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Line Items</div>
                                 <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
-                                    <table className="data-table" style={{ margin: 0 }}>
+                                    <table className="data-table" style={{ margin: 0, fontSize: 12 }}>
                                         <thead>
                                             <tr>
                                                 <th>Description</th>
@@ -558,25 +558,25 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                                         {line.sub_description && <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{line.sub_description}</div>}
                                                     </td>
                                                     <td>{line.quantity}</td>
-                                                    <td>{fmt(line.unit_price, item.currency)}</td>
-                                                    <td style={{ fontWeight: 600 }}>{fmt(line.total, item.currency)}</td>
+                                                    <td style={{ whiteSpace: 'nowrap' }}>{fmt(line.unit_price, item.currency)}</td>
+                                                    <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(line.total, item.currency)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
                                         <tfoot>
                                             <tr>
                                                 <td colSpan={3} style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>Subtotal</td>
-                                                <td style={{ fontWeight: 600 }}>{fmt(invoiceTotals(item).subtotal, item.currency)}</td>
+                                                <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmt(invoiceTotals(item).subtotal, item.currency)}</td>
                                             </tr>
                                             <tr>
                                                 <td colSpan={3} style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
                                                     {invoiceTotals(item).isDeposit ? 'Refundable security deposit — no VAT' : `VAT (${invoiceTotals(item).vatRate}%)`}
                                                 </td>
-                                                <td style={{ fontWeight: 600 }}>{invoiceTotals(item).isDeposit ? '—' : fmt(invoiceTotals(item).vat, item.currency)}</td>
+                                                <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{invoiceTotals(item).isDeposit ? '—' : fmt(invoiceTotals(item).vat, item.currency)}</td>
                                             </tr>
                                             <tr>
                                                 <td colSpan={3} style={{ textAlign: 'right', fontWeight: 700 }}>Total Due</td>
-                                                <td style={{ fontWeight: 800, color: 'var(--accent)' }}>{fmt(invoiceTotals(item).total, item.currency)}</td>
+                                                <td style={{ fontWeight: 800, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{fmt(invoiceTotals(item).total, item.currency)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
