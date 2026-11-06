@@ -51,7 +51,9 @@ export default function PageLoader() {
 
   return (
     <div className="page-loader" role="status" aria-live="polite" aria-label="Loading">
-      <div className="page-loader-ring" />
+      <div className="page-loader-spinner" aria-hidden="true">
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <i key={i} style={{ '--i': i }} />)}
+      </div>
     </div>
   );
 }
