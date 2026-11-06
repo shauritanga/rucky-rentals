@@ -307,6 +307,14 @@ class LeaseController extends Controller
             if ($base['status'] !== 'terminated') {
                 $unit->update(['status' => 'occupied']);
             }
+            // A historical lease follows the normal flow too: its payment schedule and deposit proforma are generated so the
+            // past periods can be invoiced and paid. It is not live, so the unit is not occupied and shares are not settled.
+            if ($base['status'] === 'terminated') {
+                foreach ($created as $l) {
+                    $this->ensureInstallmentsGenerated($l->fresh());
+                    $this->issueDepositInvoice($l->fresh());
+                }
+            }
             // Auto-approved: every lease in the group goes live together, then the shares are settled once.
             if ($base['status'] === 'active') {
                 foreach ($created as $l) {

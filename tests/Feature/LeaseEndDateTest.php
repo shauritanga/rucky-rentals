@@ -80,4 +80,42 @@ class LeaseEndDateTest extends TestCase
         $this->assertSame('terminated', $theirs->status);
         $this->assertStringContainsString('"action":"recorded"', (string) $theirs->approval_log);
     }
+
+    public function test_a_historical_lease_follows_the_normal_flow_and_leaves_the_invoice_list_once_every_instalment_is_paid(): void
+    {
+        [$property, $superuser, $manager, $unit, $tenant] = $this->world();
+        $acting = fn () => $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id]);
+
+        $acting()->post('/leases', ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2024-01-01', 'end_date' => '2024-12-31',
+            'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 500])->assertSessionHasNoErrors();
+        $lease = Lease::firstOrFail();
+
+        // Normal billing is generated, but the unit is not occupied by a lease that has ended.
+        $this->assertSame('terminated', $lease->status);
+        $this->assertSame(4, LeaseInstallment::where('lease_id', $lease->id)->count());
+        $this->assertSame(1, \App\Models\Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->count());
+        $this->assertSame('vacant', $unit->fresh()->status);
+
+        // It can be invoiced while any instalment is unpaid...
+        $acting()->get('/invoices')->assertInertia(fn ($p) => $p->has('leases', 1));
+
+        // ...and disappears from the list once the whole payment schedule is paid.
+        LeaseInstallment::where('lease_id', $lease->id)->update(['status' => 'paid']);
+        $acting()->get('/invoices')->assertInertia(fn ($p) => $p->has('leases', 0));
+    }
+
+    public function test_a_deposit_is_held_only_once_its_proforma_is_paid(): void
+    {
+        [$property, $superuser, $manager, $unit, $tenant] = $this->world();
+        $acting = fn () => $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id]);
+
+        $acting()->post('/leases', ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2024-01-01', 'end_date' => '2024-12-31',
+            'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 500]);
+        $lease = Lease::firstOrFail();
+
+        $acting()->get('/payments')->assertInertia(fn ($p) => $p->has('deposits', 0));          // proforma issued, not paid
+
+        \App\Models\Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->update(['status' => 'paid']);
+        $acting()->get('/payments')->assertInertia(fn ($p) => $p->has('deposits', 1));
+    }
 }

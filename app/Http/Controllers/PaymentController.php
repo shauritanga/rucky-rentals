@@ -48,8 +48,8 @@ class PaymentController extends Controller
         $activeLeasesQuery = Lease::with(['tenant', 'unit', 'property'])
             ->where('deposit', '>', 0)
             ->whereNotIn('id', $clearedLeaseIds)
-            // A deposit counts as held only once its proforma is paid.
-            ->whereNotIn('id', Invoice::where('kind', 'deposit')->where('status', '!=', 'paid')->whereNotNull('lease_id')->select('lease_id'))
+            // A deposit counts as held only once its proforma is paid (no proforma, or an unpaid one, means nothing is held).
+            ->whereIn('id', Invoice::where('kind', 'deposit')->where('status', 'paid')->whereNotNull('lease_id')->select('lease_id'))
             ->orderByDesc('created_at');
         $this->scopeByUserProperty($activeLeasesQuery, $request, 'property_id');
         $activeLeases = $activeLeasesQuery->get();

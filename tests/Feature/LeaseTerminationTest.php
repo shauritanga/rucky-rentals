@@ -36,7 +36,8 @@ class LeaseTerminationTest extends TestCase
         $lease = Lease::where('tenant_id', $tenant->id)->firstOrFail();
         $this->assertSame('terminated', $lease->status);
         $this->assertSame('vacant', $unit->fresh()->status);
-        $this->assertSame(0, $lease->installments()->count());
+        // It follows the normal flow: the payment schedule exists so the past periods can be invoiced and paid.
+        $this->assertSame(4, $lease->installments()->count());
     }
 
     public function test_terminating_an_active_lease_keeps_the_record_and_vacates_the_unit(): void

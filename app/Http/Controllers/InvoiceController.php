@@ -49,8 +49,14 @@ class InvoiceController extends Controller
         }
 
         $invoicesQuery = Invoice::with(['items', 'lease:id,tenant_id', 'payments:id,invoice_id,status,receipt_id,wht_confirmed,source,amount'])->orderByDesc('created_at');
+        // Leases that can still be invoiced: running leases and historical (terminated) ones, until every instalment of
+        // their payment schedule is paid. A lease with no schedule yet is offered too.
         $leasesQuery = Lease::with(['tenant', 'unit', 'installments'])
-            ->where('status', 'active');
+            ->whereIn('status', ['active', 'expiring', 'overdue', 'terminated'])
+            ->where(function ($q) {
+                $q->whereDoesntHave('installments')
+                    ->orWhereHas('installments', fn ($i) => $i->where('status', '!=', 'paid'));
+            });
         $tenantsQuery = Tenant::query()->orderBy('name');
 
         $this->scopeByUserProperty($invoicesQuery, $request, 'property_id');
@@ -162,7 +168,7 @@ class InvoiceController extends Controller
                 Rule::exists('leases', 'id')->when(
                     true,
                     fn($rule) => $rule->where(function ($q) use ($effectivePropertyId) {
-                        $q->where('status', 'active');
+                        $q->whereIn('status', ['active', 'expiring', 'overdue', 'terminated']);
 
                         if ($effectivePropertyId) {
                             $q->where('property_id', $effectivePropertyId);
@@ -719,7 +725,7 @@ class InvoiceController extends Controller
                 Rule::exists('leases', 'id')->when(
                     true,
                     fn($rule) => $rule->where(function ($q) use ($effectivePropertyId) {
-                        $q->where('status', 'active');
+                        $q->whereIn('status', ['active', 'expiring', 'overdue', 'terminated']);
 
                         if ($effectivePropertyId) {
                             $q->where('property_id', $effectivePropertyId);
