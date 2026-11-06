@@ -398,6 +398,17 @@
                     <td>Invoice Total {{ $currency }}</td>
                     <td class="right">{{ number_format($grandTotal, 2) }}</td>
                 </tr>
+                @php $creditApplied = $invoice->creditApplied(); @endphp
+                @if($creditApplied > 0)
+                <tr>
+                    <td>Less: credit applied (earlier overpayment)</td>
+                    <td class="right">({{ number_format($creditApplied, 2) }})</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Balance due {{ $currency }}</td>
+                    <td class="right">{{ number_format(max(0, $grandTotal - $creditApplied), 2) }}</td>
+                </tr>
+                @endif
                 @if(!empty($invoice->usd_rate))
                 @php
                     $formattedRate = number_format((float) $invoice->usd_rate, 4, '.', ',');

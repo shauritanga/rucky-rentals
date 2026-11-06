@@ -124,6 +124,17 @@
                                         {{ $invoice->currency ?? 'TZS' }} {{ number_format($grandTotal, 2) }}
                                     </td>
                                 </tr>
+                                @php $creditApplied = $invoice->creditApplied(); @endphp
+                                @if($creditApplied > 0)
+                                <tr>
+                                    <td style="padding:5px 10px;font-size:13px;color:#475569;">Less: credit applied (earlier overpayment)</td>
+                                    <td style="padding:5px 10px;font-size:13px;color:#475569;text-align:right;">({{ $invoice->currency ?? 'TZS' }} {{ number_format($creditApplied, 2) }})</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding:8px 10px;font-size:15px;font-weight:700;border-top:1px solid #e2e8f0;">Balance due</td>
+                                    <td style="padding:8px 10px;font-size:15px;font-weight:700;text-align:right;border-top:1px solid #e2e8f0;color:#0f766e;">{{ $invoice->currency ?? 'TZS' }} {{ number_format(max(0, $grandTotal - $creditApplied), 2) }}</td>
+                                </tr>
+                                @endif
                             </table>
                         </td>
                     </tr>

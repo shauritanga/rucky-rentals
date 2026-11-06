@@ -44,6 +44,8 @@ class PaymentChangeRequestNotification extends Notification implements ShouldBro
         return match ($this->type) {
             'edit' => 'a change to a payment',
             'delete' => 'the deletion of a payment',
+            'credit' => 'the use of tenant credit on an invoice',
+            'refund' => 'a refund of tenant credit',
             default => 'a new payment',
         };
     }

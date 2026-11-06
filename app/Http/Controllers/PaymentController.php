@@ -9,6 +9,8 @@ use App\Models\Invoice;
 use App\Models\Lease;
 use App\Models\LeaseInstallment;
 use App\Models\Tenant;
+use App\Models\TenantCredit;
+use App\Services\TenantCreditService;
 use App\Models\Unit;
 use App\Models\UnitClearance;
 use App\Models\User;
@@ -155,6 +157,20 @@ class PaymentController extends Controller
             ];
         })->values();
 
+        // Tenant credit (overpayments not yet used or refunded) from the ledger.
+        $creditRows = TenantCredit::with('tenant:id,name,initials,color,text_color')->orderByDesc('id');
+        $this->scopeByUserProperty($creditRows, $request, 'property_id');
+        $creditRows = $creditRows->get();
+        $credits = $creditRows->groupBy('tenant_id')->map(fn ($rows) => [
+            'tenant' => $rows->first()->tenant,
+            'amount' => round((float) $rows->sum('amount'), 2),
+            'currency' => 'TZS',
+        ])->filter(fn ($c) => $c['amount'] > 0.005)->values();
+        $creditHistory = $creditRows->take(100)->map(fn ($r) => [
+            'id' => $r->id, 'tenant' => $r->tenant, 'amount' => (float) $r->amount, 'type' => $r->type, 'currency' => 'TZS',
+            'date' => $r->created_at?->toDateString(), 'desc' => $r->note ?: ucfirst($r->type), 'method' => $r->method, 'reference' => $r->reference,
+        ])->values();
+
         $invoices = $invoicesQuery->get();
         $tenants  = $tenantsQuery->get();
         $units    = $unitsQuery->get();
@@ -167,6 +183,8 @@ class PaymentController extends Controller
             'deposits'       => $depositsList,
             'depositRefunds' => $depositsList,
             'paymentRequests' => $paymentRequests,
+            'credits'        => $credits,
+            'creditHistory'  => $creditHistory,
         ]);
     }
 
@@ -370,6 +388,93 @@ class PaymentController extends Controller
         return back()->with('success', 'Payment deleted.');
     }
 
+    /** Put a tenant's credit against an invoice (a manager's click is a request a superuser approves). */
+    public function applyCredit(Request $request)
+    {
+        $data = $request->validate([
+            'invoice_id' => 'required|exists:invoices,id',
+            'amount'     => 'nullable|numeric|min:0.01',
+        ]);
+
+        $invoice = Invoice::with(['items', 'lease'])->findOrFail($data['invoice_id']);
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $invoice->property_id !== $effectiveId, 403);
+        }
+
+        $service = app(TenantCreditService::class);
+        $tenant = Tenant::findOrFail($service->tenantIdFor($invoice) ?? 0);
+        $amount = isset($data['amount']) ? (float) $data['amount'] : null;
+
+        if ($this->needsApproval($request)) {
+            $balance = $tenant->creditBalance();
+            $outstanding = round($this->invoiceGrossTotalInBase($invoice) - $service->paidOn($invoice), 2);
+            $shown = round(min($amount ?? PHP_FLOAT_MAX, $balance, max(0, $outstanding)), 2);
+            if ($shown <= 0) {
+                throw ValidationException::withMessages(['amount' => $balance <= 0 ? 'This tenant has no credit to apply.' : 'Nothing is owing on this invoice.']);
+            }
+            foreach (PaymentChangeRequest::pending()->where('type', 'credit')->get() as $open) {
+                if ((int) ($open->payload['invoice_id'] ?? 0) === (int) $invoice->id) {
+                    throw ValidationException::withMessages(['invoice_id' => 'Applying credit to this invoice is already waiting for approval.']);
+                }
+            }
+
+            return $this->submitPaymentRequest($request, 'credit', null, ['invoice_id' => $invoice->id, 'tenant_id' => $tenant->id, 'amount' => $amount], $invoice->property_id, [
+                'tenant' => $tenant->name, 'unit' => $invoice->unit_ref ?? '—', 'invoice' => $invoice->invoice_number, 'amount' => $shown, 'currency' => 'TZS',
+            ]);
+        }
+
+        $payment = $service->apply($tenant, $invoice, $amount, $request->user()?->id);
+
+        $this->logAudit(
+            request: $request, action: 'Tenant credit applied',
+            resource: sprintf('%s - %s on %s', $tenant->name, number_format((float) $payment->amount), $invoice->invoice_number),
+            propertyName: Property::where('id', $invoice->property_id)->value('name'), category: 'payment',
+            propertyId: $invoice->property_id ? (int) $invoice->property_id : null,
+        );
+
+        return back()->with('success', 'Credit of TZS ' . number_format((float) $payment->amount) . ' applied to ' . $invoice->invoice_number . '.');
+    }
+
+    /** Give a tenant's credit back as money (a manager's click is a request a superuser approves). */
+    public function refundCredit(Request $request)
+    {
+        $data = $request->validate([
+            'tenant_id' => 'required|exists:tenants,id',
+            'amount'    => 'required|numeric|min:0.01',
+            'method'    => 'nullable|string|max:50',
+            'reference' => 'nullable|string|max:255',
+            'note'      => 'nullable|string|max:500',
+        ]);
+
+        $tenant = Tenant::findOrFail($data['tenant_id']);
+        if ($this->shouldScopeToProperty($request)) {
+            $effectiveId = $this->effectivePropertyId($request);
+            abort_if($effectiveId !== null && (int) $tenant->property_id !== $effectiveId, 403);
+        }
+
+        if ((float) $data['amount'] > $tenant->creditBalance() + 0.005) {
+            throw ValidationException::withMessages(['amount' => 'Enter an amount up to the credit this tenant has.']);
+        }
+
+        if ($this->needsApproval($request)) {
+            return $this->submitPaymentRequest($request, 'refund', null, $data, $tenant->property_id, [
+                'tenant' => $tenant->name, 'unit' => '—', 'invoice' => 'Credit refund', 'amount' => (float) $data['amount'], 'currency' => 'TZS',
+            ]);
+        }
+
+        app(TenantCreditService::class)->refund($tenant, (float) $data['amount'], $data['method'] ?? null, $data['reference'] ?? null, $data['note'] ?? null, $request->user()?->id);
+
+        $this->logAudit(
+            request: $request, action: 'Tenant credit refunded',
+            resource: sprintf('%s - %s', $tenant->name, number_format((float) $data['amount'])),
+            propertyName: Property::where('id', $tenant->property_id)->value('name'), category: 'payment',
+            propertyId: $tenant->property_id ? (int) $tenant->property_id : null,
+        );
+
+        return back()->with('success', 'Refund of TZS ' . number_format((float) $data['amount']) . ' recorded.');
+    }
+
     /** A payment action by anyone but a superuser is a request the superuser approves. */
     private function needsApproval(Request $request): bool
     {
@@ -471,7 +576,7 @@ class PaymentController extends Controller
         $propertyName = Property::where('id', $propertyId)->value('name') ?? 'Unknown property';
         $this->logAudit(
             request: $request,
-            action: match ($type) { 'edit' => 'Payment edit requested', 'delete' => 'Payment deletion requested', default => 'Payment requested' },
+            action: match ($type) { 'edit' => 'Payment edit requested', 'delete' => 'Payment deletion requested', 'credit' => 'Credit application requested', 'refund' => 'Credit refund requested', default => 'Payment requested' },
             resource: sprintf('%s - %s', $snapshot['tenant'] ?? '—', number_format((float) ($snapshot['amount'] ?? 0))),
             propertyName: $propertyName,
             category: 'payment',
@@ -493,6 +598,8 @@ class PaymentController extends Controller
         );
 
         return back()->with('success', match ($type) {
+            'credit' => 'Credit application submitted for superuser approval. The invoice stays as it is until then.',
+            'refund' => 'Refund submitted for superuser approval. The credit stays as it is until then.',
             'edit' => 'Change submitted for superuser approval. The payment stays as it is until then.',
             'delete' => 'Deletion submitted for superuser approval. The payment stays until then.',
             default => 'Payment submitted for superuser approval. It is recorded once approved.',
@@ -512,7 +619,20 @@ class PaymentController extends Controller
         return round($deposit * (float) ($lease->exchange_rate ?: ($lease->display_rate ?? 0)), 2);
     }
 
-    private function reconcileInvoiceStatus(?int $invoiceId): void
+    /** Bring the invoice's status in line with what it has received, and keep the tenant's overpayment credit in step. */
+    public function reconcileInvoiceStatus(?int $invoiceId): void
+    {
+        if (empty($invoiceId)) return;
+
+        $this->reconcileInvoiceStatusCore($invoiceId);
+
+        $invoice = Invoice::with(['items', 'lease:id,vat_rate,tenant_id'])->find($invoiceId);
+        if ($invoice) {
+            app(\App\Services\TenantCreditService::class)->syncOverpayment($invoice);
+        }
+    }
+
+    private function reconcileInvoiceStatusCore(?int $invoiceId): void
     {
         if (empty($invoiceId)) return;
 
@@ -622,7 +742,7 @@ class PaymentController extends Controller
         return round($itemsTotal + ($leaseVatBase * ($vatRate / 100)), 2);
     }
 
-    private function invoiceGrossTotalInBase(Invoice $invoice): float
+    public function invoiceGrossTotalInBase(Invoice $invoice): float
     {
         if (!empty($invoice->total_in_base)) {
             return (float) $invoice->total_in_base;

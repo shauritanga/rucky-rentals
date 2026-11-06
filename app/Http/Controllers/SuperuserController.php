@@ -970,7 +970,17 @@ class SuperuserController extends Controller
         $payments = app(PaymentController::class);
         $payload  = $paymentChange->payload ?? [];
 
-        if ($paymentChange->type === 'create') {
+        if ($paymentChange->type === 'credit') {
+            $invoice = \App\Models\Invoice::with(['items', 'lease'])->find($payload['invoice_id'] ?? 0);
+            abort_if(!$invoice, 422, 'The invoice no longer exists.');
+            $tenant = \App\Models\Tenant::find($payload['tenant_id'] ?? 0);
+            abort_if(!$tenant, 422, 'The tenant no longer exists.');
+            app(\App\Services\TenantCreditService::class)->apply($tenant, $invoice, isset($payload['amount']) ? (float) $payload['amount'] : null, Auth::id());
+        } elseif ($paymentChange->type === 'refund') {
+            $tenant = \App\Models\Tenant::find($payload['tenant_id'] ?? 0);
+            abort_if(!$tenant, 422, 'The tenant no longer exists.');
+            app(\App\Services\TenantCreditService::class)->refund($tenant, (float) ($payload['amount'] ?? 0), $payload['method'] ?? null, $payload['reference'] ?? null, $payload['note'] ?? null, Auth::id());
+        } elseif ($paymentChange->type === 'create') {
             if (!empty($payload['invoice_id'])) {
                 $invoice = \App\Models\Invoice::find($payload['invoice_id']);
                 abort_if(!$invoice, 422, 'The invoice no longer exists.');
@@ -1000,14 +1010,14 @@ class SuperuserController extends Controller
 
         $this->logAudit(
             request: $request,
-            action: match ($paymentChange->type) { 'edit' => 'Payment edit approved', 'delete' => 'Payment deletion approved', default => 'Payment approved' },
+            action: match ($paymentChange->type) { 'edit' => 'Payment edit approved', 'delete' => 'Payment deletion approved', 'credit' => 'Credit application approved', 'refund' => 'Credit refund approved', default => 'Payment approved' },
             resource: $tenant . ' - ' . $amount,
             propertyName: $property?->name,
             category: 'payment',
             propertyId: $paymentChange->property_id ? (int) $paymentChange->property_id : null,
         );
 
-        return back()->with('success', match ($paymentChange->type) { 'edit' => 'Payment updated.', 'delete' => 'Payment deleted.', default => 'Payment recorded.' });
+        return back()->with('success', match ($paymentChange->type) { 'edit' => 'Payment updated.', 'delete' => 'Payment deleted.', 'credit' => 'Credit applied.', 'refund' => 'Refund recorded.', default => 'Payment recorded.' });
     }
 
     public function rejectPaymentChange(Request $request, PaymentChangeRequest $paymentChange)
@@ -1027,7 +1037,7 @@ class SuperuserController extends Controller
 
         $this->logAudit(
             request: $request,
-            action: match ($paymentChange->type) { 'edit' => 'Payment edit rejected', 'delete' => 'Payment deletion rejected', default => 'Payment rejected' },
+            action: match ($paymentChange->type) { 'edit' => 'Payment edit rejected', 'delete' => 'Payment deletion rejected', 'credit' => 'Credit application rejected', 'refund' => 'Credit refund rejected', default => 'Payment rejected' },
             resource: $tenant . ' - ' . $amount,
             propertyName: $property?->name,
             category: 'payment',

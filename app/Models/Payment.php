@@ -14,6 +14,7 @@ class Payment extends Model
         'month',
         'amount',
         'method',
+        'source',
         'status',
         'paid_date',
         'reference',

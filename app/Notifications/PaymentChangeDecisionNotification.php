@@ -43,6 +43,8 @@ class PaymentChangeDecisionNotification extends Notification implements ShouldBr
         return match ($this->type) {
             'edit' => 'change to the payment',
             'delete' => 'deletion of the payment',
+            'credit' => 'use of tenant credit',
+            'refund' => 'refund of tenant credit',
             default => 'payment',
         };
     }

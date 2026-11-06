@@ -328,7 +328,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
     const isPaymentChange = type === 'paymentchange';
 
     const title = !item ? '' : isPaymentChange
-        ? `${item.type === 'delete' ? 'Delete payment' : item.type === 'edit' ? 'Edit payment' : 'New payment'} · ${item.payload?.snapshot?.tenant ?? '—'}`
+        ? `${item.type === 'delete' ? 'Delete payment' : item.type === 'edit' ? 'Edit payment' : item.type === 'credit' ? 'Apply credit' : item.type === 'refund' ? 'Refund credit' : 'New payment'} · ${item.payload?.snapshot?.tenant ?? '—'}`
         : isLeaseChange
         ? `${item.type === 'delete' ? 'Delete' : 'Edit'} · ${item.lease?.lease_number ?? `Lease #${item.lease_id}`}`
         : isLease
@@ -596,7 +596,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                         return (
                             <>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px', marginBottom: 20 }}>
-                                    <Detail label="Request" value={item.type === 'delete' ? 'Delete the payment' : item.type === 'edit' ? 'Edit the payment' : 'Record a new payment'} />
+                                    <Detail label="Request" value={item.type === 'delete' ? 'Delete the payment' : item.type === 'edit' ? 'Edit the payment' : item.type === 'credit' ? 'Apply the tenant\'s credit to an invoice' : item.type === 'refund' ? 'Refund the tenant\'s credit' : 'Record a new payment'} />
                                     <Detail label="Requested By" value={item.requester?.name ?? '—'} sub={item.requester?.email ?? '—'} />
                                     <Detail label="Tenant" value={snap.tenant ?? '—'} />
                                     <Detail label="Property / Unit" value={item.property_name ?? '—'} sub={`Unit ${snap.unit ?? '—'}`} />
@@ -608,6 +608,27 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                         <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65 }}>
                                             Approving removes this payment and the invoice balance goes back up. The payment stays exactly as it is until you decide.
                                         </p>
+                                    )}
+                                    {item.type === 'credit' && (
+                                        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+                                            Approving puts {fmt(Number(snap.amount ?? 0), 'TZS')} of the tenant's earlier overpayment against invoice <strong>{snap.invoice}</strong>.
+                                            No new cash is recorded; the invoice balance goes down and the tenant's credit is used up.
+                                        </p>
+                                    )}
+                                    {item.type === 'refund' && (
+                                        <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', fontSize: 12.5 }}>
+                                            {[
+                                                ['Refund amount', fmt(Number(snap.amount ?? 0), 'TZS')],
+                                                ['Method', data.method || '—'],
+                                                ['Reference', data.reference || '—'],
+                                                ['Note', data.note || '—'],
+                                            ].map(([label, value], i, all) => (
+                                                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 14, padding: '9px 14px', borderBottom: i === all.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                                                    <span style={{ fontWeight: 600, textAlign: 'right' }}>{value}</span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     )}
                                     {item.type === 'create' && (
                                         <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', fontSize: 12.5 }}>
@@ -843,7 +864,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
     const modalContext = modal ? (() => {
         const item = modal.item;
         if (modal.type === 'paymentchange') {
-            return `${item.type === 'delete' ? 'deletion' : item.type === 'edit' ? 'edit' : 'new payment'} request from ${item.payload?.snapshot?.tenant ?? 'the tenant'} (${item.payload?.snapshot?.invoice ?? 'invoice'})`;
+            return `${item.type === 'delete' ? 'deletion' : item.type === 'edit' ? 'edit' : item.type === 'credit' ? 'credit application' : item.type === 'refund' ? 'credit refund' : 'new payment'} request from ${item.payload?.snapshot?.tenant ?? 'the tenant'} (${item.payload?.snapshot?.invoice ?? 'invoice'})`;
         }
         if (modal.type === 'leasechange') {
             return `${item.type === 'delete' ? 'deletion' : 'edit'} request for lease ${item.lease?.lease_number ?? `#${item.lease_id}`}`;
@@ -1014,7 +1035,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                             const snap = change.payload?.snapshot ?? {};
                             return (
                                 <tr key={change.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('paymentchange', change)}>
-                                    <td><span className={`badge ${change.type === 'delete' ? 'overdue' : 'unpaid'}`}>{change.type === 'delete' ? 'Delete' : change.type === 'edit' ? 'Edit' : 'New'}</span></td>
+                                    <td><span className={`badge ${change.type === 'delete' ? 'overdue' : 'unpaid'}`}>{change.type === 'delete' ? 'Delete' : change.type === 'edit' ? 'Edit' : change.type === 'credit' ? 'Credit' : change.type === 'refund' ? 'Refund' : 'New'}</span></td>
                                     <td style={{ fontWeight: 600 }}>{snap.tenant ?? '—'}</td>
                                     <td><div>{change.property_name ?? '—'}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>Unit {snap.unit ?? '—'}</div></td>
                                     <td>{snap.invoice ?? '—'}</td>

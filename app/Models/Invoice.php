@@ -80,6 +80,12 @@ class Invoice extends Model
     /**
      * Calculate invoice total from line items
      */
+    /** Tenant credit (an earlier overpayment) that has been put against this invoice, in the invoice currency. */
+    public function creditApplied(): float
+    {
+        return round((float) $this->payments()->where('status', 'paid')->where('source', 'credit')->sum('amount'), 2);
+    }
+
     public function getTotal(): float
     {
         return (float) ($this->items()->sum('total') ?? 0.0);

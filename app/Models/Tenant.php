@@ -96,4 +96,15 @@ class Tenant extends Model
     {
         return $this->hasMany(Receipt::class);
     }
+
+    public function credits()
+    {
+        return $this->hasMany(TenantCredit::class);
+    }
+
+    /** What the tenant has paid in advance and not yet used or had refunded (TZS). */
+    public function creditBalance(): float
+    {
+        return round((float) $this->credits()->sum('amount'), 2);
+    }
 }

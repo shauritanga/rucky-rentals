@@ -67,7 +67,7 @@ const DEPOSIT_STATUS_META = {
   cancelled: { label: 'Cancelled', bg: 'var(--bg-elevated)', color: 'var(--text-muted)' },
 };
 
-export default function PaymentsIndex({ payments, invoices = [], tenants, units, deposits = [], depositRefunds = [], paymentRequests = [] }) {
+export default function PaymentsIndex({ payments, invoices = [], tenants, units, deposits = [], depositRefunds = [], paymentRequests = [], credits = [], creditHistory: creditEvents = [] }) {
   const { props: pageProps } = usePage();
   // A manager's payment, edit or deletion is a request a superuser approves; a superuser's applies at once.
   const needsApproval = pageProps?.auth?.user?.role !== 'superuser';
@@ -157,6 +157,34 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
       notes: p.notes || '',
     });
     setEditPayment(row);
+  };
+  // Tenant credit: apply it to an invoice, or refund it to the tenant.
+  const [refundFor, setRefundFor] = useState(null); // { tenant, amount }
+  const [refundForm, setRefundForm] = useState({ amount: '', method: 'Bank Transfer', reference: '', note: '' });
+  const applyCreditNow = () => {
+    if (paymentBusy || !selectedInvoiceId) return;
+    setPaymentBusy(true);
+    router.post('/payments/credits/apply', { invoice_id: selectedInvoiceId }, {
+      preserveScroll: true,
+      onSuccess: () => { setShowModal(false); setSelectedInvoiceId(''); },
+      onError: (errs) => failToast(errs, 'The credit could not be applied.'),
+      onFinish: () => setPaymentBusy(false),
+    });
+  };
+  const openRefund = (entry) => {
+    setRefundForm({ amount: String(entry.amount), method: 'Bank Transfer', reference: '', note: '' });
+    setRefundFor(entry);
+  };
+  const submitRefund = (e) => {
+    e.preventDefault();
+    if (paymentBusy || !refundFor) return;
+    setPaymentBusy(true);
+    router.post('/payments/credits/refund', { tenant_id: refundFor.tenant.id, ...refundForm }, {
+      preserveScroll: true,
+      onSuccess: () => setRefundFor(null),
+      onError: (errs) => failToast(errs, 'The refund could not be recorded.'),
+      onFinish: () => setPaymentBusy(false),
+    });
   };
   const failToast = (errs, fallback) => notify('error', Object.values(errs || {}).flat().find(Boolean) || fallback);
   const submitEditPayment = (e) => {
@@ -395,29 +423,17 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   );
   const overdueCt = paymentRows.filter((r) => r.status === 'overdue').length;
   const collectedTotals = toCurrencyTotals(
-    thisMonth.filter((r) => ['paid', 'overpaid', 'partially_paid'].includes(r.status)),
+    thisMonth.filter((r) => ['paid', 'overpaid', 'partially_paid'].includes(r.status) && r.payment?.source !== 'credit'),
     (r) => r.amountPaid
   );
   const paidCt = thisMonth.filter((r) => ['paid', 'overpaid'].includes(r.status)).length;
   const collectionRate = thisMonth.length ? Math.round((paidCt / thisMonth.length) * 100) : 0;
 
-  const creditsByTenant = useMemo(() => {
-    const map = new Map();
-    paymentRows.forEach((row) => {
-      if (row.variance <= 0 || !row.tenant?.id) return;
-      const key = `${row.tenant.id}:${row.currency}`;
-      const current = map.get(key) || {
-        key,
-        tenant: row.tenant,
-        unit: row.unit,
-        amount: 0,
-        currency: row.currency,
-      };
-      current.amount += row.variance;
-      map.set(key, current);
-    });
-    return Array.from(map.values());
-  }, [paymentRows]);
+  // Tenant credit comes from the server's ledger (overpayments, minus what was applied or refunded).
+  const creditsByTenant = useMemo(
+    () => credits.map((c) => ({ key: `${c.tenant?.id}:${c.currency}`, tenant: c.tenant, unit: null, amount: Number(c.amount || 0), currency: c.currency || 'TZS' })),
+    [credits]
+  );
 
   const tenantCreditForInvoice = (invoice) => {
     if (!invoice) return 0;
@@ -430,7 +446,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
   const invoiceOutstanding = (invoice) => {
     if (!invoice) return 0;
-    return Math.max(0, invoiceTotal(invoice) - invoicePaidTotal(invoice.id) - tenantCreditForInvoice(invoice));
+    return Math.max(0, invoiceTotal(invoice) - invoicePaidTotal(invoice.id));
   };
 
   const totalCreditTotals = creditsByTenant.reduce((acc, c) => {
@@ -440,20 +456,18 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
   }, { USD: 0, TZS: 0 });
   const creditCt = creditsByTenant.length;
 
-  const creditHistory = useMemo(() => {
-    return paymentRows
-      .filter((row) => row.variance > 0)
-      .map((row) => ({
-        id: row.id,
-        tenant: row.tenant,
-        unit: row.unit,
-        amount: row.variance,
-        currency: row.currency,
-        date: row.date,
-        desc: `Overpayment on ${row.invoiceNumber}`,
-        type: 'credit',
-      }));
-  }, [paymentRows]);
+  const creditHistory = useMemo(
+    () => creditEvents.map((e) => ({
+      id: `c-${e.id}`,
+      tenant: e.tenant,
+      amount: Math.abs(Number(e.amount || 0)),
+      currency: e.currency || 'TZS',
+      date: formatDisplayDate(e.date),
+      desc: e.type === 'refund' ? `Refunded${e.method ? ` (${e.method})` : ''}${e.reference ? ` · ${e.reference}` : ''}` : e.desc,
+      type: e.type === 'overpayment' ? 'credit' : e.type === 'applied' ? 'apply' : 'refund',
+    })),
+    [creditEvents]
+  );
 
   const eligibleInvoices = invoices.filter((i) =>  i.type == 'proforma' && i.approval_status === 'approved' && ['proforma', 'unpaid', 'overdue', 'partially_paid'].includes(i.status));
   const selectedInvoice = eligibleInvoices.find((inv) => String(inv.id) === String(selectedInvoiceId));
@@ -469,7 +483,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
   const selectedInvoiceNet = selectedInvoice ? invoiceTotal(selectedInvoice) : 0;
   const selectedInvoicePaid = selectedInvoice ? invoicePaidTotal(selectedInvoice.id) : 0;
-  const selectedBalanceDue = Math.max(0, selectedInvoiceNet - selectedInvoicePaid - selectedTenantCredit);
+  const selectedBalanceDue = Math.max(0, selectedInvoiceNet - selectedInvoicePaid);
   const received = Number(data.amount || 0);
   const reconcileVariance = received - selectedBalanceDue;
 
@@ -545,7 +559,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
     );
 
     const invoicePaid = invoicePaidTotal(inv.id);
-    const due = Math.max(invoiceTotal(inv) - invoicePaid - tenantCreditForInvoice(inv), 0);
+    const due = Math.max(invoiceTotal(inv) - invoicePaid, 0);
     const invUnit = unitFallback || resolveInvoiceUnit(inv);
     const invCurrency = getInvoiceCurrency(inv, invUnit);
 
@@ -993,7 +1007,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                 {paymentRequests.map((r) => (
                   <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '11px 14px', paddingLeft: 20, fontSize: 12.5 }}>
-                      <span className={`badge ${r.type === 'delete' ? 'overdue' : 'unpaid'}`}>{r.type === 'delete' ? 'Delete' : r.type === 'edit' ? 'Edit' : 'New payment'}</span>
+                      <span className={`badge ${r.type === 'delete' ? 'overdue' : 'unpaid'}`}>{r.type === 'delete' ? 'Delete' : r.type === 'edit' ? 'Edit' : r.type === 'credit' ? 'Apply credit' : r.type === 'refund' ? 'Refund' : 'New payment'}</span>
                     </td>
                     <td style={{ padding: '11px 14px', fontSize: 13.5, fontWeight: 600 }}>{r.tenant}</td>
                     <td style={{ padding: '11px 14px', fontSize: 13.5 }}>{r.unit}</td>
@@ -1020,7 +1034,7 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
 
       {activeTab === 'pay-credits' && (
         <>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>Credits are overpayments sitting on a tenant account. They are automatically applied when the next invoice is recorded.</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>Credits are overpayments sitting on a tenant account. They are never applied on their own: open the tenant's next proforma in Record Payment and choose Apply credit, or refund the tenant here.</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div className="card">
               <div className="card-header">
@@ -1049,12 +1063,15 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                       </div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 13 }}>{entry.tenant.name}</div>
-                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{entry.unit?.unit_number || '—'} · Credit from overpayment</div>
+                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Credit from overpayment</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--green)' }}>{formatAmount(entry.amount, entry.currency)}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>will apply to next invoice</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>available</div>
                       </div>
+                      <button type="button" className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => openRefund(entry)}>
+                        {needsApproval ? 'Request Refund' : 'Refund'}
+                      </button>
                     </div>
                   ))
                 )}
@@ -1158,10 +1175,15 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
                       <span style={{ fontWeight: 600 }}>{formatAmount(selectedInvoicePaid, selectedInvoiceCurrency)}</span>
                     </div>
                   )}
-                  {selectedTenantCredit > 0 && (
-                    <div style={{ background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
-                      <span style={{ color: 'var(--green)', fontWeight: 600 }}>Credit on account: </span>
-                      <span>{formatAmount(selectedTenantCredit, selectedInvoiceCurrency)} will be applied automatically</span>
+                  {selectedTenantCredit > 0 && selectedBalanceDue > 0 && (
+                    <div style={{ background: 'var(--green-dim)', border: '1px solid var(--green)', borderRadius: 8, padding: '10px 12px', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <div>
+                        <span style={{ color: 'var(--green)', fontWeight: 600 }}>Credit available: </span>
+                        <span>{formatAmount(selectedTenantCredit, selectedInvoiceCurrency)} from an earlier overpayment</span>
+                      </div>
+                      <button type="button" className="btn-secondary" disabled={paymentBusy} aria-busy={paymentBusy} onClick={applyCreditNow}>
+                        {needsApproval ? 'Request to apply credit' : 'Apply credit'}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1249,6 +1271,54 @@ export default function PaymentsIndex({ payments, invoices = [], tenants, units,
               <button type="submit" className="btn-primary" disabled={!canSubmit || processing || (data.issue_receipt && !invoiceBreakdown.isDeposit && !!receiptValidationError)}>
                 {processing ? <span className="btn-spinner" /> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>}
                 {processing ? 'Processing...' : (needsApproval ? 'Submit for Approval' : 'Confirm Payment')}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* ── Refund tenant credit ─────────────────────────────────────────── */}
+      <div className={`modal-overlay ${refundFor ? 'open' : ''}`} style={{ zIndex: 1600 }} onClick={(e) => e.target === e.currentTarget && !paymentBusy && setRefundFor(null)}>
+        <div className="modal" style={{ width: 'min(440px, calc(100vw - 24px))' }}>
+          <form onSubmit={submitRefund}>
+            <div className="modal-header">
+              <div className="modal-title">{needsApproval ? 'Request Credit Refund' : 'Refund Credit'}</div>
+              <button type="button" className="modal-close" onClick={() => setRefundFor(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {refundFor && (
+                <div style={{ fontSize: 12.5, color: 'var(--text-muted)', marginBottom: 12 }}>
+                  {refundFor.tenant?.name} · credit available {formatAmount(refundFor.amount, refundFor.currency)}{needsApproval ? ' · a superuser approves the refund.' : ''}
+                </div>
+              )}
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Amount (TZS) *</label>
+                  <MoneyInput className="form-input" value={refundForm.amount} onChange={(e) => setRefundForm((f) => ({ ...f, amount: e.target.value }))} required />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Method</label>
+                  <select className="form-input form-select" value={refundForm.method} onChange={(e) => setRefundForm((f) => ({ ...f, method: e.target.value }))}>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Mobile Money">Mobile Money</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Reference</label>
+                <input className="form-input" type="text" value={refundForm.reference} onChange={(e) => setRefundForm((f) => ({ ...f, reference: e.target.value }))} placeholder="Optional" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Note</label>
+                <input className="form-input" type="text" value={refundForm.note} onChange={(e) => setRefundForm((f) => ({ ...f, note: e.target.value }))} placeholder="Optional" />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn-ghost" onClick={() => setRefundFor(null)} disabled={paymentBusy}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={paymentBusy || !(Number(refundForm.amount) > 0)} aria-busy={paymentBusy}>
+                {paymentBusy ? 'Saving…' : (needsApproval ? 'Submit for Approval' : 'Refund')}
               </button>
             </div>
           </form>

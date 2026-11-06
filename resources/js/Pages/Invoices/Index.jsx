@@ -185,6 +185,12 @@ function InvoiceDoc({ inv, currency = 'TZS', lease = null }) {
           ? <div style={{padding:'5px 0',fontSize:12,color:'var(--text-muted)',borderTop:'1px solid var(--border-subtle)'}}>Refundable security deposit — no VAT and no receipt.</div>
           : <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)',borderTop:'1px solid var(--border-subtle)'}}><span>{vatLabel}</span><span>{formatMoney(vatAmount, currency)}</span></div>}
         <div style={{display:'flex',justifyContent:'space-between',padding:'10px 0',fontSize:16,fontWeight:700,borderTop:'2px solid var(--border)',marginTop:4}}><span>Total Due</span><span style={{color:'var(--accent)'}}>{formatMoney(grandTotal, currency)}</span></div>
+        {Number(inv.credit_applied) > 0 && (
+          <>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'5px 0',fontSize:13,color:'var(--text-secondary)'}}><span>Less: credit applied (earlier overpayment)</span><span>({formatMoney(inv.credit_applied, currency)})</span></div>
+            <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',fontSize:15,fontWeight:700,borderTop:'1px solid var(--border)'}}><span>Balance due</span><span style={{color:'var(--accent)'}}>{formatMoney(Math.max(0, grandTotal - Number(inv.credit_applied)), currency)}</span></div>
+          </>
+        )}
         {inv.usd_rate && (
           <div style={{marginTop:10,paddingTop:10,borderTop:'1px dashed var(--border)',fontSize:12.5,color:'var(--text-muted)',display:'flex',justifyContent:'space-between'}}>
             <span>Converted from USD at</span>
@@ -691,6 +697,15 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               {canEditProforma(selected) && <button className="btn-secondary" onClick={()=>openEditInvoiceModal(selected)}>Edit</button>}
               {selected.type === 'proforma' && selected.approval_status === 'rejected' && !selected.sent_to_tenant_at && (
                 <button className="btn-secondary" onClick={()=>router.post(`/invoices/${selected.id}/resubmit`,{},{preserveScroll:true})}>Resubmit</button>
+              )}
+              {selected.type === 'proforma' && selected.approval_status === 'approved' && selected.status !== 'paid' && Number(selected.tenant_credit) > 0 && (
+                <button className="btn-secondary" style={{flex:1,justifyContent:'center'}} title="Put the tenant's earlier overpayment against this proforma" onClick={()=>router.post('/payments/credits/apply', { invoice_id: selected.id }, {
+                  preserveScroll: true,
+                  onSuccess: () => setSelected(null),
+                  onError: (errs) => notify('error', Object.values(errs || {}).flat().find(Boolean) || 'The credit could not be applied.'),
+                })}>
+                  {props.auth?.user?.role === 'superuser' ? 'Apply credit' : 'Request to apply credit'} ({formatMoney(selected.tenant_credit, 'TZS')})
+                </button>
               )}
               {canSendProforma(selected)
                 ? <button className="btn-secondary" onClick={()=>router.post(`/invoices/${selected.id}/send`,{},{preserveScroll:true,onSuccess:()=>setSelected(null)})}>Email Proforma</button>

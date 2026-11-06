@@ -48,7 +48,7 @@ class InvoiceController extends Controller
             ]);
         }
 
-        $invoicesQuery = Invoice::with(['items', 'payments:id,invoice_id,status,receipt_id,wht_confirmed'])->orderByDesc('created_at');
+        $invoicesQuery = Invoice::with(['items', 'lease:id,tenant_id', 'payments:id,invoice_id,status,receipt_id,wht_confirmed,source,amount'])->orderByDesc('created_at');
         $leasesQuery = Lease::with(['tenant', 'unit', 'installments'])
             ->where('status', 'active');
         $tenantsQuery = Tenant::query()->orderBy('name');
@@ -58,7 +58,12 @@ class InvoiceController extends Controller
         $this->scopeByUserProperty($tenantsQuery, $request, 'property_id');
 
         $receiptService = app(PaymentReceiptService::class);
-        $invoices = $invoicesQuery->get()->each(function (Invoice $invoice) use ($receiptService) {
+        // What each tenant has paid in advance (overpayments not yet used or refunded), to offer on their proformas.
+        $creditQuery = \App\Models\TenantCredit::query()->selectRaw('tenant_id, SUM(amount) as balance')->groupBy('tenant_id');
+        $this->scopeByUserProperty($creditQuery, $request, 'property_id');
+        $creditBalances = $creditQuery->pluck('balance', 'tenant_id');
+
+        $invoices = $invoicesQuery->get()->each(function (Invoice $invoice) use ($receiptService, $creditBalances) {
             $paid = $invoice->payments->where('status', 'paid');
             $hasLeaseRelated = $receiptService
                 ->buildPaymentBreakdown($invoice, (float) $invoice->items->sum('total'))['has_lease_related'];
@@ -70,6 +75,8 @@ class InvoiceController extends Controller
                 $invoice->status === 'paid' => 'not_issued',
                 default => 'na',
             });
+            $invoice->setAttribute('credit_applied', round((float) $paid->where('source', 'credit')->sum('amount'), 2));
+            $invoice->setAttribute('tenant_credit', round(max(0, (float) ($creditBalances[$invoice->lease?->tenant_id] ?? 0)), 2));
             $invoice->setAttribute('wht_status', match (true) {
                 $invoice->kind === 'deposit' || !$hasLeaseRelated || $paid->isEmpty() => 'na',
                 $paid->contains(fn ($p) => $p->wht_confirmed) => 'paid',
