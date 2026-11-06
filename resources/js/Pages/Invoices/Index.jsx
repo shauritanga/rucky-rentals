@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDiscardGuard } from '@/Components/DiscardGuard';
 import { notify } from '@/Components/Toaster';
+import SearchSelect from '@/Components/SearchSelect';
 import AppLayout from '@/Layouts/AppLayout';
 import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { formatDisplayDate, formatDisplayDateRange } from '@/utils/dateFormat';
@@ -730,12 +731,18 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Lease *</label>
-                  <select className="form-input form-select" value={data.lease_id || ''} onChange={(e)=>onLeaseChange(e.target.value)} required>
-                    <option value="">Select lease…</option>
-                    {leases.map((l) => (
-                      <option key={l.id} value={l.id}>{`${getLeaseUnitRef(l) || 'Unit'} - ${getLeaseTenantName(l) || 'Tenant'} (${l.status || 'active'})`}</option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    required
+                    placeholder="Search by unit or tenant…"
+                    emptyText="No active lease found"
+                    value={data.lease_id || ''}
+                    onChange={(leaseId) => onLeaseChange(String(leaseId))}
+                    options={leases.map((l) => ({
+                      value: String(l.id),
+                      label: `${getLeaseUnitRef(l) || 'Unit'} - ${getLeaseTenantName(l) || 'Tenant'}`,
+                      hint: l.lease_number ? `Lease ${l.lease_number}` : undefined,
+                    }))}
+                  />
                 </div>
                 <div className="form-group"><label className="form-label">Issue Date *</label><input className="form-input" type="date" value={data.issued_date} onChange={e=>setData('issued_date',e.target.value)} required /></div>
               </div>
