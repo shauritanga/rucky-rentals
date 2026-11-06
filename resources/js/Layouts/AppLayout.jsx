@@ -575,6 +575,7 @@ export default function AppLayout({ children, title, subtitle }) {
             <span>Superuser · Managing</span>
             <strong style={{ color: 'var(--text)' }}>{viewingProperty.name}</strong>
             <button
+              data-no-spinner
               onClick={() => router.post('/superuser/property/exit')}
               style={{
                 marginLeft: 'auto',

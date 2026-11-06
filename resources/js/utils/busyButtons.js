@@ -15,7 +15,8 @@ export function installBusyButtons() {
 
   document.addEventListener('click', (event) => {
     const button = event.target instanceof Element ? event.target.closest('button') : null;
-    if (button && !button.disabled) {
+    // data-no-spinner: a navigation button that leaves its spinner to the page loader overlay.
+    if (button && !button.disabled && !button.hasAttribute('data-no-spinner')) {
       lastButton = button;
       lastClickAt = Date.now();
     }
