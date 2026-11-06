@@ -211,3 +211,9 @@ If `git pull` complains about untracked files in `public/build` (first pull afte
 - **Frontend**: React 19, Inertia.js v2, Vite
 - **Auth**: Session-based, role-scoped (`superuser`, `manager`, `staff`)
 - **Currency**: TZS everywhere; USD exists only as a unit's rate basis (see Billing rules)
+
+## Third-party notices
+
+- Flag emoji are drawn with the *Twemoji Country Flags* font (`resources/fonts/TwemojiCountryFlags.woff2`), packaged by TalkJS
+  (MIT) from the Twemoji art by Twitter, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Windows has no
+  flag glyphs of its own, so without it a flag shows as two letters such as "TZ".
