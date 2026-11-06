@@ -12,6 +12,7 @@ import { createInertiaApp } from '@inertiajs/react';
 import { installInputCase } from './utils/inputCase';
 import { installBusyButtons } from './utils/busyButtons';
 import { installNetworkGuard } from './utils/networkGuard';
+import PageLoader from './Components/PageLoader';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 
 installInputCase();
@@ -22,7 +23,8 @@ createInertiaApp({
     title: (title) => `${title} — Mwamba Properties`,
     resolve: (name) => resolvePageComponent(`./Pages/${name}.jsx`, import.meta.glob('./Pages/**/*.jsx')),
     setup({ el, App, props }) {
-        createRoot(el).render(<App {...props} />);
+        createRoot(el).render(<><App {...props} /><PageLoader /></>);
     },
-    progress: { color: '#3b82f6' },
+    // The thin bar under the address bar is replaced by the PageLoader overlay.
+    progress: false,
 });

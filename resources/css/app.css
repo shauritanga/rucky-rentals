@@ -1025,3 +1025,9 @@ html,body{overflow-x:hidden}
 [data-offline="true"] .modal-footer .btn-danger,
 [data-offline="true"] .drawer-footer .btn-primary,
 [data-offline="true"] .drawer-footer .btn-danger{opacity:.45;pointer-events:none}
+
+/* Page loader: dims the page and shows a ring while a page change or a save is slow. Above modals, below toasts. */
+.page-loader{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.28);backdrop-filter:blur(2px);animation:pageLoaderIn .15s ease both;cursor:progress}
+.page-loader-ring{width:44px;height:44px;border-radius:50%;border:4px solid var(--border);border-top-color:var(--accent);animation:btnSpin .8s linear infinite;box-shadow:0 0 0 1px rgba(0,0,0,.04)}
+@keyframes pageLoaderIn{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.page-loader{backdrop-filter:none}.page-loader-ring{animation-duration:2s}}
