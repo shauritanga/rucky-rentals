@@ -30,7 +30,6 @@ const TABS = [
   { key: 'overview',  label: 'Overview' },
   { key: 'ar_aging',  label: 'Unpaid Invoices' },
   { key: 'leases',    label: 'Lease Expiry' },
-  { key: 'tenants',   label: 'Tenant Summary' },
 ];
 
 const AGE_COLORS = { green: 'var(--green)', amber: 'var(--amber)', orange: 'var(--amber)', red: 'var(--red)' };
@@ -84,7 +83,7 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
     return `/reports/export?${params.toString()}`;
   }
 
-  const exportType = activeTab === 'ar_aging' ? 'ar_aging' : activeTab === 'leases' ? 'leases' : activeTab === 'tenants' ? 'tenants' : 'overview';
+  const exportType = activeTab === 'ar_aging' ? 'ar_aging' : activeTab === 'leases' ? 'leases' : 'overview';
 
   const totalExpenses     = kpis.totalExpenses ?? kpis.maintenanceCost;
   const prevTotalExpenses = kpis.prevTotalExpenses ?? kpis.prevMaintenanceCost;
@@ -104,7 +103,6 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
   const TOP_UNITS         = (report.topUnits         ?? []).map((r) => ({ ...r, amount: fmtMoney(r.amount) }));
   const AR_AGING          = (report.arAging          ?? []);
   const LEASE_EXPIRY      = (report.leaseExpiry      ?? []);
-  const TENANT_SUMMARY    = (report.tenantSummary    ?? []);
 
   // Financial obligation KPI cards
   const FIN_CARDS = [
@@ -508,59 +506,6 @@ export default function ReportsIndex({ report = {}, availablePeriods = [], prope
         </div>
       )}
 
-      {/* ── Tenant Summary Tab ── */}
-      {activeTab === 'tenants' && (
-        <div className="card">
-          <div className="card-header">
-            <div>
-              <div className="card-title">Tenant Payment Summary</div>
-              <div className="card-sub">{period.label} · invoiced vs collected per tenant</div>
-            </div>
-          </div>
-          <div style={{ padding: '0 0 8px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Tenant', 'Invoiced', 'Paid', 'Balance', 'Last Payment'].map((h) => (
-                    <th key={h} style={{ padding: '10px 20px', textAlign: h === 'Tenant' || h === 'Last Payment' ? 'left' : 'right', fontSize: 11.5, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {TENANT_SUMMARY.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border-dim)' }}>
-                    <td style={{ padding: '12px 20px', fontWeight: 500 }}>{row.tenant}</td>
-                    <td style={{ padding: '12px 20px', textAlign: 'right', color: 'var(--text-secondary)' }}>{fmtMoney(row.invoiced)}</td>
-                    <td style={{ padding: '12px 20px', textAlign: 'right', color: 'var(--green)', fontWeight: 500 }}>{fmtMoney(row.paid)}</td>
-                    <td style={{ padding: '12px 20px', textAlign: 'right', fontWeight: row.balance > 0 ? 700 : 400, color: row.balance > 0 ? 'var(--red)' : 'var(--text-muted)' }}>
-                      {row.balance > 0 ? fmtMoney(row.balance) : '—'}
-                    </td>
-                    <td style={{ padding: '12px 20px', color: 'var(--text-secondary)' }}>{row.last_payment ?? '—'}</td>
-                  </tr>
-                ))}
-                {TENANT_SUMMARY.length === 0 && (
-                  <tr>
-                    <td colSpan={5} style={{ padding: '24px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                      No tenant activity in this period
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {TENANT_SUMMARY.length > 0 && (
-                <tfoot>
-                  <tr style={{ borderTop: '2px solid var(--border)' }}>
-                    <td style={{ padding: '12px 20px', fontWeight: 600 }}>Total</td>
-                    <td style={{ padding: '12px 20px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(TENANT_SUMMARY.reduce((s, r) => s + r.invoiced, 0))}</td>
-                    <td style={{ padding: '12px 20px', textAlign: 'right', fontWeight: 600, color: 'var(--green)' }}>{fmtMoney(TENANT_SUMMARY.reduce((s, r) => s + r.paid, 0))}</td>
-                    <td style={{ padding: '12px 20px', textAlign: 'right', fontWeight: 700, color: 'var(--red)' }}>{fmtMoney(TENANT_SUMMARY.reduce((s, r) => s + r.balance, 0))}</td>
-                    <td />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </div>
-      )}
       </div>
     </AppLayout>
   );

@@ -307,47 +307,6 @@ class ReportController extends Controller
                 ];
             })->all();
 
-        // --- Tenant Payment Summary ---
-        $tenantPayments = Payment::query()
-            ->with(['tenant', 'invoice.items', 'invoice.lease:id,vat_rate'])
-            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-            ->where('status', 'paid')
-            ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
-            ->whereNotNull('tenant_id')
-            ->get()
-            ->groupBy('tenant_id');
-
-        $tenantInvoiced = Invoice::query()
-            ->with(['items', 'lease.tenant'])
-            ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-            ->where('type', 'invoice')
-            ->whereBetween('issued_date', [$start->toDateString(), $end->toDateString()])
-            ->get()
-            ->groupBy(fn($inv) => $inv->lease?->tenant_id);
-
-        $tenantIds     = $tenantPayments->keys()->merge($tenantInvoiced->keys())->unique()->filter();
-        $tenantSummary = $tenantIds->map(function ($tenantId) use ($tenantPayments, $tenantInvoiced) {
-            $payments  = $tenantPayments->get($tenantId, collect());
-            $invGroup  = $tenantInvoiced->get($tenantId, collect());
-            $tenant    = $payments->first()?->tenant ?? $invGroup->first()?->lease?->tenant;
-
-            $paid = $payments->sum(fn($p) => (float) $this->paymentNetRevenueSummary($p)['value']);
-
-            $invoiced = $invGroup->reduce(function ($sum, $inv) {
-                return $sum + $this->invoiceNetRevenueSummary($inv)['value'];
-            }, 0.0);
-
-            $lastPayment = $payments->sortByDesc('paid_date')->first();
-
-            return [
-                'tenant'       => $tenant?->name ?? 'Unknown',
-                'invoiced'     => $invoiced,
-                'paid'         => $paid,
-                'balance'      => max(0.0, $invoiced - $paid),
-                'last_payment' => $lastPayment?->paid_date ?? null,
-            ];
-        })->sortByDesc('balance')->values()->all();
-
         // --- Sidebar data ---
         $availablePeriods = $this->buildPeriodOptions();
         $properties       = $request->user()?->role === 'superuser'
@@ -386,7 +345,6 @@ class ReportController extends Controller
                 'topUnits'         => $topUnits,
                 'arAging'          => $arAging,
                 'leaseExpiry'      => $leaseExpiry,
-                'tenantSummary'    => $tenantSummary,
             ],
             'availablePeriods' => $availablePeriods,
             'properties'       => $properties,
@@ -448,46 +406,6 @@ class ReportController extends Controller
                             $lease->end_date,
                             $daysLeft,
                             $lease->status,
-                        ]);
-                    }
-
-                } elseif ($type === 'tenants') {
-                    fputcsv($out, ['Tenant Payment Summary', 'Period: ' . $periodLabel]);
-                    fputcsv($out, ['Tenant', 'Invoiced (TZS)', 'Paid (TZS)', 'Balance (TZS)', 'Last Payment Date']);
-
-                    $pmtGroups = Payment::query()
-                        ->with(['tenant', 'invoice.items', 'invoice.lease:id,vat_rate'])
-                        ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-                        ->where('status', 'paid')
-                        ->whereBetween('paid_date', [$start->toDateString(), $end->toDateString()])
-                        ->whereNotNull('tenant_id')
-                        ->get()
-                        ->groupBy('tenant_id');
-
-                    $invGroups = Invoice::query()
-                        ->with(['items', 'lease.tenant'])
-                        ->when($propertyId !== null, fn($q) => $q->where('property_id', $propertyId))
-                        ->where('type', 'invoice')
-                        ->whereBetween('issued_date', [$start->toDateString(), $end->toDateString()])
-                        ->get()
-                        ->groupBy(fn($inv) => $inv->lease?->tenant_id);
-
-                    $tenantIds = $pmtGroups->keys()->merge($invGroups->keys())->unique()->filter();
-                    foreach ($tenantIds as $tid) {
-                        $pmts     = $pmtGroups->get($tid, collect());
-                        $invs     = $invGroups->get($tid, collect());
-                        $tenant   = $pmts->first()?->tenant ?? $invs->first()?->lease?->tenant;
-                        $paid     = $pmts->sum(fn($p) => (float) $this->paymentNetRevenueSummary($p)['value']);
-                        $invoiced = $invs->reduce(function ($sum, $inv) {
-                            return $sum + $this->invoiceNetRevenueSummary($inv)['value'];
-                        }, 0.0);
-                        $last = $pmts->sortByDesc('paid_date')->first()?->paid_date ?? '';
-                        fputcsv($out, [
-                            $tenant?->name ?? 'Unknown',
-                            number_format($invoiced, 2),
-                            number_format($paid, 2),
-                            number_format(max(0, $invoiced - $paid), 2),
-                            $last,
                         ]);
                     }
 

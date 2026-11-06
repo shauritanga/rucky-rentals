@@ -121,9 +121,7 @@ class ReportVatExclusionTest extends TestCase
         $this->assertEquals(180.0, data_get($page, 'props.report.monthlyRevenue.0.service_charge'));
         $this->assertEquals(100.0, data_get($page, 'props.report.monthlyRevenue.0.electricity'));
         $this->assertEquals(1280.0, data_get($page, 'props.report.topUnits.0.amount'));
-        $this->assertEquals(1280.0, data_get($page, 'props.report.tenantSummary.0.invoiced'));
-        $this->assertEquals(1280.0, data_get($page, 'props.report.tenantSummary.0.paid'));
-        $this->assertEquals(0.0, data_get($page, 'props.report.tenantSummary.0.balance'));
+        $this->assertArrayNotHasKey('tenantSummary', data_get($page, 'props.report'));
 
         $csv = $this->actingAs($user)->get('/reports/export?type=overview&period=custom&from=2026-04-01&to=2026-06-30');
 
