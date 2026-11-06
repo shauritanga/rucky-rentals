@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
 import MoneyInput from '@/Components/MoneyInput';
 import { notify } from '@/Components/Toaster';
+import { TIN, VRN } from '@/utils/idFormats';
 
 function logoSrc(path) {
   return path ? `/storage/${path}` : '';
@@ -60,8 +61,9 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
   const [identity, setIdentity] = useState({
     company_name:         settings.company_name         ?? 'Mwamba Properties Ltd',
     company_registration: settings.company_registration ?? '',
-    vat_number:           settings.vat_number           ?? '',
-    tin_number:           settings.tin_number           ?? '',
+    // Saved without separators; a value that does not fit the pattern is kept as it was typed until it is changed.
+    vat_number:           VRN.valid(settings.vat_number) ? VRN.normalize(settings.vat_number) : (settings.vat_number ?? ''),
+    tin_number:           /^\d{9}$/.test(TIN.normalize(settings.tin_number)) ? TIN.normalize(settings.tin_number) : (settings.tin_number ?? ''),
     default_currency:     settings.default_currency     ?? 'TZS',
     default_country:      settings.default_country      ?? 'Tanzania',
     support_email:        settings.support_email        ?? '',
@@ -211,13 +213,13 @@ export default function SettingsPage({ settings = {}, properties = [] }) {
               </div>
               <div className="form-group">
                 <label className="form-label">VRN No.</label>
-                <input className="form-input" data-case="upper" value={identity.vat_number} onChange={e => setIdentity(p => ({ ...p, vat_number: e.target.value }))} />
+                <input className="form-input" data-case="upper" maxLength={11} value={VRN.format(identity.vat_number)} placeholder={VRN.placeholder} onChange={e => setIdentity(p => ({ ...p, vat_number: VRN.normalize(e.target.value) }))} />
               </div>
             </div>
             <div className="form-row">
               <div className="form-group">
                 <label className="form-label">TIN No.</label>
-                <input className="form-input" value={identity.tin_number} onChange={e => setIdentity(p => ({ ...p, tin_number: e.target.value }))} />
+                <input className="form-input" inputMode="numeric" maxLength={11} value={TIN.format(identity.tin_number)} placeholder={TIN.placeholder} onChange={e => setIdentity(p => ({ ...p, tin_number: TIN.normalize(e.target.value) }))} />
               </div>
             </div>
             <div className="form-row">

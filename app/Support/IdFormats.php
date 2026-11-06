@@ -49,6 +49,24 @@ class IdFormats
         return preg_replace('/\D/', '', (string) $value);
     }
 
+    /** 123456789 → 123-456-789; anything that is not 9 digits is shown as it was saved. */
+    public static function formatTin(?string $value): string
+    {
+        $digits = self::normalizeTin($value);
+
+        return preg_match('/^\d{9}$/', $digits)
+            ? substr($digits, 0, 3) . '-' . substr($digits, 3, 3) . '-' . substr($digits, 6, 3)
+            : (string) $value;
+    }
+
+    /** Tanzania VRN: 8 digits and a letter, 35235223P → 35-235223-P; anything else is shown as it was saved. */
+    public static function formatVrn(?string $value): string
+    {
+        $compact = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) $value));
+
+        return preg_match('/^(\d{2})(\d{6})([A-Z])$/', $compact, $m) ? "{$m[1]}-{$m[2]}-{$m[3]}" : (string) $value;
+    }
+
     public static function tinProblem(string $normalized): ?string
     {
         return preg_match('/^\d{9}$/', $normalized) ? null : 'TIN must be 9 digits (for example 123-456-789).';
