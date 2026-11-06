@@ -14,6 +14,13 @@ class LeaseObserver
 {
     public function created(Lease $lease): void
     {
+        // A historical lease (recorded as terminated) is not a tenancy: work the unit's status out from its running leases.
+        if ($lease->status === 'terminated') {
+            $this->sync($lease->unit_id);
+
+            return;
+        }
+
         Unit::where('id', $lease->unit_id)->update(['status' => 'occupied']);
     }
 

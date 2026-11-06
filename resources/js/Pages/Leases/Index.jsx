@@ -210,7 +210,9 @@ function buildPaymentSchedule(lease, isPending) {
       if (lease.status === 'overdue' && dueDate <= now && nextCursor > now) {
         status = 'overdue';
       } else if (dueDate < now) {
-        status = 'paid';
+        // No instalment record exists for this period (a historical lease, or no billing generated): the system
+        // has no payment to show, so it says so instead of guessing "paid".
+        status = 'not_recorded';
       } else if (dueDate <= upcomingLimit) {
         status = 'upcoming';
       }
@@ -930,7 +932,9 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                                       ? 'Unpaid'
                                       : row.status === 'upcoming'
                                         ? 'Due Soon'
-                                        : 'Scheduled'}
+                                        : row.status === 'not_recorded'
+                                          ? 'No record'
+                                          : 'Scheduled'}
                             </span>
                           </td>
                         </tr>
