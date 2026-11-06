@@ -130,6 +130,21 @@ function parseApprovalLog(raw) {
   return [];
 }
 
+// The Approval column: where the lease is in the approval cycle. A terminated lease shows how it got there:
+// approved earlier, or a historical lease that was only recorded (it never went through approval).
+function approvalCell(lease) {
+  const status = lease?.status;
+  if (['active', 'expiring', 'overdue'].includes(status)) return '✓ Approved';
+  if (['pending_accountant', 'pending_pm'].includes(status)) return '⏳ Pending';
+  if (status === 'rejected') return '✕ Rejected';
+  if (status === 'terminated') {
+    const log = parseApprovalLog(lease?.approval_log);
+    if (log.some((e) => e?.action === 'approved')) return '✓ Approved';
+    if (log.some((e) => e?.action === 'recorded')) return 'Recorded';
+  }
+  return '—';
+}
+
 function addMonthsDate(date, months) {
   const d = new Date(date);
   d.setMonth(d.getMonth() + Number(months || 0));
@@ -703,7 +718,7 @@ export default function LeasesIndex({ leases, tenants, units, settings = {} }) {
                 </td>
                 <td style={{fontWeight:600}}>{leaseMoney(l.monthly_service_charge ?? l.unit?.service_charge ?? 0, l)}</td>
                 <td style={{fontSize:'11.5px',color:l.status==='active'?'var(--green)':l.status==='rejected'?'var(--red)':'var(--amber)',fontWeight:600}}>
-                  {l.status==='active'||l.status==='expiring'||l.status==='overdue'?'✓ Approved':(l.status==='pending_accountant'||l.status==='pending_pm')?'⏳ Pending':l.status==='rejected'?'✕ Rejected':'—'}
+                  {approvalCell(l)}
                 </td>
                 <td><span className={`badge ${STATUS_BADGE[l.status]||'pending'}`}>{STATUS_LABEL_MAP[l.status] ?? l.status?.replace('_',' ')}</span></td>
                 <td><button className="action-dots" onClick={e=>{e.stopPropagation();setSelected(l)}}>···</button></td>
