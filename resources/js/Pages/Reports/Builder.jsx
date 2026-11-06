@@ -173,7 +173,7 @@ function FilterInput({ type, entity, field, value = {}, options = [], onChange }
   return null;
 }
 
-export default function ReportBuilder({ registry = {}, templates = [], properties = [], presets = [] }) {
+export default function ReportBuilder({ registry = {}, templates = [], properties = [] }) {
   const groups = useMemo(() => {
     const g = {};
     Object.entries(registry).forEach(([key, ent]) => {
@@ -293,21 +293,6 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
     form.remove();
   }
 
-  function loadPreset(preset) {
-    const cfg = preset.config;
-    setActiveTemplateId('');
-    setSelectedEntities(cfg.entities || []);
-    setPrimaryEntity(cfg.primary_entity || '');
-    setSelectedColumns(cfg.columns || []);
-    setFilters(cfg.filters || {});
-    setSortConfig(cfg.sort || null);
-    setTemplateName(preset.name);
-    setTemplateDescription(preset.description || '');
-    setTemplateShared(false);
-    setPreview(null);
-    setPreviewError('');
-  }
-
   function loadTemplate(id) {
     setActiveTemplateId(id);
     const template = templates.find((t) => String(t.id) === String(id));
@@ -386,20 +371,6 @@ export default function ReportBuilder({ registry = {}, templates = [], propertie
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(0, 1.6fr)', gap: 20, alignItems: 'start' }}>
         {/* ── Left: builder controls ── */}
         <div>
-          {presets.length > 0 && (
-            <div className="card" style={{ marginBottom: 16 }}>
-              <div className="card-header"><h3>Ready-made reports</h3></div>
-              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {presets.map((preset) => (
-                  <button key={preset.key} type="button" className="btn-secondary" style={{ textAlign: 'left', display: 'block' }} onClick={() => loadPreset(preset)}>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>{preset.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, whiteSpace: 'normal' }}>{preset.description}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Templates */}
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="card-header"><h3>Templates</h3></div>
