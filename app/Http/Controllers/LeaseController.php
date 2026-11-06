@@ -250,10 +250,13 @@ class LeaseController extends Controller
         // entirely, and don't mark the unit occupied for it.
         if (Carbon::parse($validated['end_date'])->startOfDay()->lt(Carbon::today())) {
             $status = 'terminated';
+            // A superuser's own lease is approved by default, history included.
+            $bySuperuser = $user->role === 'superuser' || $this->isSuperuserActing($request);
             $approvalLog = json_encode([[
-                'step' => 0, 'action' => 'recorded', 'by' => $user->name,
+                'step' => 0, 'action' => $bySuperuser ? 'approved' : 'recorded',
+                'by' => $bySuperuser ? $user->name . ' (Superuser)' : $user->name,
                 'date' => now()->toDateString(),
-                'text' => 'Historical lease recorded as terminated.',
+                'text' => $bySuperuser ? 'Historical lease recorded and approved by superuser.' : 'Historical lease recorded as terminated.',
             ]]);
         }
 

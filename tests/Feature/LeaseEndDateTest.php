@@ -61,4 +61,23 @@ class LeaseEndDateTest extends TestCase
         $this->create($manager, $unit, $tenant, '2027-04-05', '2028-04-04')->assertSessionHasErrors('unit_id');
         $this->create($manager, $unit, $tenant, '2027-04-06', '2028-04-05')->assertSessionHasNoErrors();
     }
+
+    public function test_a_historical_lease_is_approved_when_a_superuser_records_it_and_only_recorded_when_a_manager_does(): void
+    {
+        [$property, $superuser, $manager, $unit, $tenant] = $this->world();
+
+        $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id])
+            ->post('/leases', ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2024-01-01', 'end_date' => '2024-12-31',
+                'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 0])->assertSessionHasNoErrors();
+        $mine = Lease::firstOrFail();
+        $this->assertSame('terminated', $mine->status);
+        $this->assertStringContainsString('"action":"approved"', json_encode($mine->approval_log));
+
+        $mine->delete();
+        $this->actingAs($manager)->post('/leases', ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2024-01-01', 'end_date' => '2024-12-31',
+            'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 0])->assertSessionHasNoErrors();
+        $theirs = Lease::firstOrFail();
+        $this->assertSame('terminated', $theirs->status);
+        $this->assertStringContainsString('"action":"recorded"', json_encode($theirs->approval_log));
+    }
 }
