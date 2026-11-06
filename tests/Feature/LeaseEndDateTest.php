@@ -71,13 +71,13 @@ class LeaseEndDateTest extends TestCase
                 'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 0])->assertSessionHasNoErrors();
         $mine = Lease::firstOrFail();
         $this->assertSame('terminated', $mine->status);
-        $this->assertStringContainsString('"action":"approved"', json_encode($mine->approval_log));
+        $this->assertStringContainsString('"action":"approved"', (string) $mine->approval_log);
 
         $mine->delete();
         $this->actingAs($manager)->post('/leases', ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2024-01-01', 'end_date' => '2024-12-31',
             'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 0])->assertSessionHasNoErrors();
         $theirs = Lease::firstOrFail();
         $this->assertSame('terminated', $theirs->status);
-        $this->assertStringContainsString('"action":"recorded"', json_encode($theirs->approval_log));
+        $this->assertStringContainsString('"action":"recorded"', (string) $theirs->approval_log);
     }
 }
