@@ -4,8 +4,11 @@ import { router } from '@inertiajs/react';
 const SHOW_AFTER_MS = 250;   // quick actions finish before this, so they never flash
 const GIVE_UP_AFTER_MS = 60_000;
 
-/** A request worth covering the screen for: a page change or a save, not a small partial refresh. */
-const counts = (visit) => !(visit?.only?.length > 0) && !visit?.prefetch;
+/**
+ * A request worth covering the screen for: moving to another page. Saves are left to the spinner on their own button
+ * (the form stays readable and shows its errors), and small partial refreshes do not count either.
+ */
+const counts = (visit) => String(visit?.method).toLowerCase() === 'get' && !(visit?.only?.length > 0) && !visit?.prefetch;
 
 /**
  * Dims the page and shows a ring while a page change or a save is taking time.
