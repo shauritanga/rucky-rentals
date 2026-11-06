@@ -158,7 +158,7 @@ class InvoiceController extends Controller
             'type'         => 'required|in:invoice,proforma',
             'status'       => 'nullable|in:draft',
             'lease_id'     => [
-                'nullable',
+                'required',
                 Rule::exists('leases', 'id')->when(
                     true,
                     fn($rule) => $rule->where(function ($q) use ($effectivePropertyId) {
@@ -182,7 +182,7 @@ class InvoiceController extends Controller
             'items.*.description' => 'required|string',
             'items.*.quantity'    => 'required|integer|min:1',
             'items.*.unit_price'  => 'required|numeric',
-        ]);
+        ], ['lease_id.required' => 'Choose the lease this invoice is for.']);
 
         // Business rule: lease invoices are always proforma.
         // GL posts on payment when they convert to Tax Invoices, not at creation.
@@ -715,7 +715,7 @@ class InvoiceController extends Controller
 
         $data = $request->validate([
             'lease_id'     => [
-                'nullable',
+                'required',
                 Rule::exists('leases', 'id')->when(
                     true,
                     fn($rule) => $rule->where(function ($q) use ($effectivePropertyId) {
@@ -742,7 +742,7 @@ class InvoiceController extends Controller
             'items.*.unit_price'  => 'required|numeric',
             'items.*.item_type'   => 'nullable|string',
             'items.*.sub_description' => 'nullable|string',
-        ]);
+        ], ['lease_id.required' => 'Choose the lease this invoice is for.']);
 
         $propertyId = $invoice->property_id;
         $lease = null;

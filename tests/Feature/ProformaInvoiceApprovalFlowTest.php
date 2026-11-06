@@ -22,7 +22,10 @@ class ProformaInvoiceApprovalFlowTest extends TestCase
         $property = $this->createProperty();
         $manager = $this->createManager($property->id);
 
+        $lease = $this->activeLease($property->id);
+
         $response = $this->actingAs($manager)->post('/invoices', [
+            'lease_id' => $lease->id,
             'type' => 'proforma',
             'tenant_name' => 'Tenant One',
             'tenant_email' => 'tenant@example.com',
@@ -155,6 +158,17 @@ class ProformaInvoiceApprovalFlowTest extends TestCase
         $response->assertStatus(422);
         $this->assertSame('proforma', $invoice->fresh()->type);
         $this->assertSame('proforma', $invoice->fresh()->status);
+    }
+
+    private function activeLease(int $propertyId): \App\Models\Lease
+    {
+        $unit = \App\Models\Unit::create(['property_id' => $propertyId, 'unit_number' => 'A-101', 'floor' => 1, 'type' => 'Office', 'size_sqft' => 100, 'rent' => 1000, 'currency' => 'TZS', 'status' => 'occupied', 'approval_status' => 'approved', 'deposit' => 0, 'service_charge' => 0, 'electricity_type' => 'direct']);
+        $tenant = \App\Models\Tenant::create(['property_id' => $propertyId, 'name' => 'Tenant One', 'email' => 'tenant@example.com', 'phone' => '+255700000000', 'initials' => 'TO', 'tenant_type' => 'individual']);
+
+        return \App\Models\Lease::create([
+            'property_id' => $propertyId, 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2026-04-01', 'end_date' => '2027-03-31',
+            'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 0, 'status' => 'active', 'currency' => 'TZS', 'vat_rate' => 18,
+        ]);
     }
 
     private function createProperty(): Property

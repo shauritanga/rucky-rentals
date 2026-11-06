@@ -533,6 +533,7 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
   const submit = (e, action = 'send') => {
     e.preventDefault();
     setPendingAction(action);
+    if (!data.lease_id) { showError('Choose the lease this invoice is for.'); return; }
     if (!data.tenant_name?.trim()) { showError('Tenant name is required.'); return; }
     if (!data.issued_date) { showError('Issue date is required.'); return; }
     if (!data.due_date && action !== 'draft') { showError('Due date is required.'); return; }
@@ -728,9 +729,9 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
 
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Link to Lease (optional)</label>
-                  <select className="form-input form-select" value={data.lease_id || ''} onChange={(e)=>onLeaseChange(e.target.value)}>
-                    <option value="">- Manual entry -</option>
+                  <label className="form-label">Lease *</label>
+                  <select className="form-input form-select" value={data.lease_id || ''} onChange={(e)=>onLeaseChange(e.target.value)} required>
+                    <option value="">Select lease…</option>
                     {leases.map((l) => (
                       <option key={l.id} value={l.id}>{`${getLeaseUnitRef(l) || 'Unit'} - ${getLeaseTenantName(l) || 'Tenant'} (${l.status || 'active'})`}</option>
                     ))}
@@ -740,8 +741,8 @@ export default function InvoicesIndex({ invoices, leases, tenants, flash = {} })
               </div>
 
               <div className="form-row">
-                <div className="form-group"><label className="form-label">Tenant / Billed To *</label><input className="form-input" value={data.tenant_name} onChange={e=>setData('tenant_name',e.target.value)} placeholder="Full name" required /></div>
-                <div className="form-group"><label className="form-label">Unit</label><input className="form-input" value={data.unit_ref} onChange={e=>setData('unit_ref',e.target.value)} placeholder="e.g. A-101" /></div>
+                <div className="form-group"><label className="form-label">Tenant / Billed To *</label><input className="form-input" value={data.tenant_name} readOnly placeholder="Filled from the lease" required /></div>
+                <div className="form-group"><label className="form-label">Unit</label><input className="form-input" value={data.unit_ref} readOnly placeholder="Filled from the lease" /></div>
               </div>
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Due Date *</label><input className="form-input" type="date" value={data.due_date} onChange={e=>setData('due_date',e.target.value)} readOnly={!!data.lease_id && !editingInvoice} />{!!data.lease_id && !editingInvoice && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:3}}>Set automatically to the first day of the installment.</div>}</div>
