@@ -512,7 +512,10 @@ class PaymentController extends Controller
                 $payment->update(['receipt_id' => $receipt->id]);
             }
 
-            if (($data['status'] ?? 'paid') === 'paid') {
+            // A payment marks the unit occupied only while it has a live lease; paying for a lease that has ended
+            // (a historical lease being brought up to date) does not occupy the unit.
+            if (($data['status'] ?? 'paid') === 'paid'
+                && Lease::where('unit_id', $data['unit_id'])->whereIn('status', ['active', 'expiring', 'overdue', 'pending_accountant', 'pending_pm'])->exists()) {
                 Unit::find($data['unit_id'])?->update(['status' => 'occupied']);
             }
 

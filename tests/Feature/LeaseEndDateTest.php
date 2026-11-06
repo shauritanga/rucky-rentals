@@ -118,4 +118,21 @@ class LeaseEndDateTest extends TestCase
         \App\Models\Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->update(['status' => 'paid']);
         $acting()->get('/payments')->assertInertia(fn ($p) => $p->has('deposits', 1));
     }
+
+    public function test_paying_a_historical_leases_proforma_does_not_occupy_the_unit(): void
+    {
+        [$property, $superuser, $manager, $unit, $tenant] = $this->world();
+        $acting = fn () => $this->actingAs($superuser)->withSession(['superuser_viewing_property_id' => $property->id]);
+
+        $acting()->post('/leases', ['tenant_mode' => 'existing', 'tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'start_date' => '2024-01-01', 'end_date' => '2024-12-31',
+            'duration_months' => 12, 'payment_cycle' => 3, 'monthly_rent' => 1000, 'deposit' => 500]);
+        $lease = Lease::firstOrFail();
+        $deposit = \App\Models\Invoice::where('lease_id', $lease->id)->where('kind', 'deposit')->firstOrFail();
+
+        $acting()->post('/payments', ['tenant_id' => $tenant->id, 'unit_id' => $unit->id, 'invoice_id' => $deposit->id, 'amount' => 500, 'method' => 'Cash',
+            'status' => 'paid', 'month' => 'Jan 2024', 'paid_date' => now()->toDateString()])->assertSessionHasNoErrors();
+
+        $this->assertSame('paid', $deposit->fresh()->status);
+        $this->assertSame('vacant', $unit->fresh()->status);
+    }
 }
