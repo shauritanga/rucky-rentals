@@ -3,6 +3,7 @@ import { formatPhone } from '@/utils/phone';
 import { router } from '@inertiajs/react';
 import { formatDisplayDate } from '@/utils/dateFormat';
 import MoneyInput from '@/Components/MoneyInput';
+import Pagination, { usePagination } from '@/Components/Pagination';
 
 function formatDate(ts) {
     return formatDisplayDate(ts);
@@ -825,6 +826,14 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
         return 'maintenance';
     });
 
+    const teamPager = usePagination(pendingTeamMembers);
+    const unitPager = usePagination(pendingUnits);
+    const invoicePager = usePagination(pendingInvoices);
+    const paymentPager = usePagination(pendingPaymentChanges);
+    const leasePager = usePagination(pendingLeases);
+    const leaseChangePager = usePagination(pendingLeaseChanges);
+    const maintenancePager = usePagination(pendingMaintenance);
+
     const openDrawer = (type, item) => setDrawer({ type, item });
     const closeDrawer = () => { if (!submitting) setDrawer(null); };
     const openModal = (action, type, item) => setModal({ action, type, item });
@@ -910,7 +919,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         </tr>
                     </thead>
                     <tbody>
-                        {pendingTeamMembers.map((member) => (
+                        {teamPager.pageItems.map((member) => (
                             <tr key={member.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('team', member)}>
                                 <td>
                                     <div style={{ fontWeight: 500 }}>{member.name}</div>
@@ -925,6 +934,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         ))}
                     </tbody>
                 </table>
+<Pagination pager={teamPager} label="team requests" />
             </div>
         );
     };
@@ -950,7 +960,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         </tr>
                     </thead>
                     <tbody>
-                        {pendingUnits.map((unit) => (
+                        {unitPager.pageItems.map((unit) => (
                             <tr key={unit.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('unit', unit)}>
                                 <td><div style={{ fontWeight: 600 }}>{unit.unit_number}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{unit.floor}</div></td>
                                 <td>{unit.type}</td>
@@ -964,6 +974,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         ))}
                     </tbody>
                 </table>
+<Pagination pager={unitPager} label="unit requests" />
             </div>
         );
     };
@@ -988,7 +999,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         </tr>
                     </thead>
                     <tbody>
-                        {pendingInvoices.map((invoice) => (
+                        {invoicePager.pageItems.map((invoice) => (
                             <tr key={invoice.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('invoice', invoice)}>
                                 <td>
                                     <div style={{ fontWeight: 600 }}>{invoice.invoice_number}</div>
@@ -1013,6 +1024,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         ))}
                     </tbody>
                 </table>
+<Pagination pager={invoicePager} label="invoices" />
             </div>
         );
     };
@@ -1038,7 +1050,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         </tr>
                     </thead>
                     <tbody>
-                        {pendingPaymentChanges.map((change) => {
+                        {paymentPager.pageItems.map((change) => {
                             const snap = change.payload?.snapshot ?? {};
                             return (
                                 <tr key={change.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('paymentchange', change)}>
@@ -1055,6 +1067,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         })}
                     </tbody>
                 </table>
+<Pagination pager={paymentPager} label="payment requests" />
             </div>
         );
     };
@@ -1081,7 +1094,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         </tr>
                     </thead>
                     <tbody>
-                        {pendingLeases.map((lease) => {
+                        {leasePager.pageItems.map((lease) => {
                             const unit = lease.unit?.unit_number ?? '—';
                             const property = lease.unit?.property?.name ?? '—';
                             return (
@@ -1098,6 +1111,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         })}
                     </tbody>
                 </table>
+<Pagination pager={leasePager} label="leases" />
             </div>
             )}
             {pendingLeaseChanges.length > 0 && (
@@ -1116,7 +1130,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                             </tr>
                         </thead>
                         <tbody>
-                            {pendingLeaseChanges.map((change) => (
+                            {leaseChangePager.pageItems.map((change) => (
                                 <tr key={change.id} style={{ cursor: 'pointer' }} onClick={() => openDrawer('leasechange', change)}>
                                     <td><span className={`badge ${change.type === 'delete' ? 'overdue' : 'unpaid'}`}>{change.type === 'delete' ? 'Delete' : 'Edit'}</span></td>
                                     <td style={{ fontWeight: 600 }}>{change.lease?.lease_number ?? `Lease #${change.lease_id}`}</td>
@@ -1129,6 +1143,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                             ))}
                         </tbody>
                     </table>
+<Pagination pager={leaseChangePager} label="lease changes" />
                 </div>
             )}
             </>
@@ -1155,7 +1170,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         </tr>
                     </thead>
                     <tbody>
-                        {pendingMaintenance.map((ticket) => {
+                        {maintenancePager.pageItems.map((ticket) => {
                             const unit = ticket.unit?.unit_number ?? ticket.unit_ref ?? '—';
                             const property = ticket.unit?.property?.name ?? ticket.property?.name ?? '—';
                             return (
@@ -1172,6 +1187,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                         })}
                     </tbody>
                 </table>
+<Pagination pager={maintenancePager} label="tickets" />
             </div>
         );
     };
