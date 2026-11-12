@@ -21,6 +21,8 @@ function fmt(amount, currency = 'TZS') {
     return currency + ' ' + Number(amount).toLocaleString();
 }
 
+const fmtSqm = (v) => (v === null || v === undefined || v === '' ? '—' : `${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })} m²`);
+
 // A lease is shown in its unit's own currency; conversion to TZS happens only on invoices.
 function fmtLease(amount, lease) {
     if (amount == null) return '—';
@@ -567,6 +569,9 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                 <Detail label="Unit" value={item.unit_number ?? '—'} sub={item.property?.name ?? '—'} />
                                 <Detail label="Type" value={item.type ?? '—'} />
                                 <Detail label="Floor" value={item.floor ?? '—'} />
+                                <Detail label="Size" value={fmtSqm(item.size_sqm)} sub={item.size_sqm ? `${Math.round(Number(item.size_sqm) * 10.7639).toLocaleString()} sq ft` : null} />
+                                <Detail label="Rate / m²" value={fmt(item.rate_per_sqm, item.currency)} sub="Per month" />
+                                <Detail label="Service Charge / m²" value={fmt(item.service_charge_per_sqm, item.currency)} sub="Per month" />
                                 <Detail label="Monthly Rent" value={fmt(item.rent, item.currency)} />
                                 <Detail label="Service Charge" value={fmt(item.service_charge, item.currency)} />
                                 <Detail label="Deposit" value={fmt(item.deposit, item.currency)} />
@@ -937,6 +942,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                             <th>Unit</th>
                             <th>Type</th>
                             <th>Property</th>
+                            <th>Size</th>
                             <th>Rent</th>
                             <th>Requested By</th>
                             <th>Submitted</th>
@@ -949,6 +955,7 @@ export default function ApprovalsPage({ pendingLeases = [], pendingLeaseChanges 
                                 <td><div style={{ fontWeight: 600 }}>{unit.unit_number}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{unit.floor}</div></td>
                                 <td>{unit.type}</td>
                                 <td>{unit.property?.name ?? '—'}</td>
+                                <td>{fmtSqm(unit.size_sqm)}</td>
                                 <td>{fmt(unit.rent, unit.currency)}</td>
                                 <td><div style={{ fontWeight: 500 }}>{unit.requested_by?.name ?? '—'}</div><div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{unit.requested_by?.email}</div></td>
                                 <td style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>{daysAgo(unit.approval_requested_at ?? unit.created_at) ?? '—'}</td>
