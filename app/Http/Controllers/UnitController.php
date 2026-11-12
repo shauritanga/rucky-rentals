@@ -103,6 +103,7 @@ class UnitController extends Controller
             'service_charge_per_sqm' => 'nullable|numeric|min:0',
             'currency'               => 'required|in:TZS,USD',
             'electricity_type'       => 'nullable|in:direct,submeter',
+            'meter_count'            => 'nullable|integer|min:1|max:20',
             'allows_co_tenants'      => 'nullable|boolean',
             'co_tenant_count'        => 'nullable|required_if:allows_co_tenants,true,1|integer|min:2|max:10',
             'notes'                  => 'nullable|string',
@@ -114,6 +115,7 @@ class UnitController extends Controller
         $data['service_charge_per_sqm'] = (float) ($data['service_charge_per_sqm'] ?? 0);
         $data['service_charge']         = round($data['size_sqm'] * $data['service_charge_per_sqm'], 2);
         $data['electricity_type']       = $data['electricity_type'] ?? 'direct';
+        $data['meter_count']            = $data['electricity_type'] === 'direct' ? max(1, (int) ($data['meter_count'] ?? 1)) : 1;
         $data['allows_co_tenants']      = (bool) ($data['allows_co_tenants'] ?? false);
         $data['co_tenant_count']        = $data['allows_co_tenants'] ? (int) $data['co_tenant_count'] : null;
         $data['status']                 = 'vacant';
@@ -210,6 +212,7 @@ class UnitController extends Controller
             'currency'               => 'required|in:TZS,USD',
             'status'                 => 'required|in:occupied,vacant,overdue,maintenance',
             'electricity_type'       => 'nullable|in:direct,submeter',
+            'meter_count'            => 'nullable|integer|min:1|max:20',
             'allows_co_tenants'      => 'nullable|boolean',
             'co_tenant_count'        => 'nullable|required_if:allows_co_tenants,true,1|integer|min:2|max:10',
             'notes'                  => 'nullable|string',
@@ -221,6 +224,7 @@ class UnitController extends Controller
         $data['service_charge_per_sqm'] = (float) ($data['service_charge_per_sqm'] ?? 0);
         $data['service_charge']         = round($data['size_sqm'] * $data['service_charge_per_sqm'], 2);
         $data['electricity_type']       = $data['electricity_type'] ?? 'direct';
+        $data['meter_count']            = $data['electricity_type'] === 'direct' ? max(1, (int) ($data['meter_count'] ?? 1)) : 1;
         $data['allows_co_tenants']      = (bool) ($data['allows_co_tenants'] ?? false);
         $data['co_tenant_count']        = $data['allows_co_tenants'] ? (int) $data['co_tenant_count'] : null;
         $rentMonths                     = (float) SystemSetting::get('deposit_rent_months', 1);

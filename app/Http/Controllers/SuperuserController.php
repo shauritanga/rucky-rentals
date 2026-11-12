@@ -92,7 +92,7 @@ class SuperuserController extends Controller
 
         $pendingLeases = Lease::with([
                 'tenant:id,name,email,phone,initials,color,text_color',
-                'unit:id,unit_number,floor,property_id,type,size_sqm,rate_per_sqm,service_charge_per_sqm,currency,rent,deposit,service_charge,electricity_type',
+                'unit:id,unit_number,floor,property_id,type,size_sqm,rate_per_sqm,service_charge_per_sqm,currency,rent,deposit,service_charge,electricity_type,meter_count',
                 'unit.property:id,name,manager_user_id',
                 'unit.property.manager:id,name,email',
                 'installments' => fn($q) => $q->orderBy('sequence'),
@@ -156,7 +156,7 @@ class SuperuserController extends Controller
                 ->get([
                     'id', 'property_id', 'requested_by_user_id', 'unit_number', 'floor', 'type',
                     'size_sqm', 'rate_per_sqm', 'service_charge_per_sqm', 'currency', 'rent',
-                    'status', 'deposit', 'service_charge', 'electricity_type', 'notes',
+                    'status', 'deposit', 'service_charge', 'electricity_type', 'meter_count', 'notes',
                     'approval_status', 'approval_requested_at', 'approval_decided_at', 'approval_note', 'created_at',
                 ]);
 

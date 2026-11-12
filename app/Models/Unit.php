@@ -23,6 +23,7 @@ class Unit extends Model
         'deposit',
         'service_charge',
         'electricity_type',
+        'meter_count',
         'allows_co_tenants',
         'co_tenant_count',
         'notes',

@@ -177,12 +177,12 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
 
   // ── Create form ──────────────────────────────────────────────────────────
   const { data, setData, post, processing, reset, errors } = useForm({
-    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', electricity_type:'direct', allows_co_tenants:false, co_tenant_count:'', notes:''
+    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', electricity_type:'direct', meter_count:1, allows_co_tenants:false, co_tenant_count:'', notes:''
   });
 
   // ── Edit form ─────────────────────────────────────────────────────────────
   const { data: editData, setData: setEditData, patch: patchUnit, processing: editProcessing, reset: resetEdit, errors: editErrors } = useForm({
-    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', allows_co_tenants:false, co_tenant_count:'', notes:''
+    unit_number:'', floor:'', type:'Office Suite', size_sqm:'', rate_per_sqm:'', service_charge_per_sqm:'', currency:'TZS', status:'vacant', electricity_type:'direct', meter_count:1, allows_co_tenants:false, co_tenant_count:'', notes:''
   });
 
   useEffect(() => {
@@ -263,6 +263,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
       currency:               unit.currency ?? 'TZS',
       status:                 unit.status ?? 'vacant',
       electricity_type:       unit.electricity_type ?? 'direct',
+      meter_count:            unit.meter_count ?? 1,
       allows_co_tenants:      !!unit.allows_co_tenants,
       co_tenant_count:        unit.co_tenant_count ?? '',
       notes:                  unit.notes ?? '',
@@ -428,7 +429,7 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                   <div className="drawer-kv"><div className="drawer-kv-label">Security Deposit</div><div className="drawer-kv-value">{money(selected.deposit, unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Service Charge / mo</div><div className="drawer-kv-value">{money(selected.service_charge ?? 0, unitCurrency(selected))}</div></div>
                   <div className="drawer-kv"><div className="drawer-kv-label">Tenants</div><div className="drawer-kv-value">{selected.allows_co_tenants ? `Co-tenants (${selected.co_tenant_count})` : 'Single tenant'}</div></div>
-                  <div className="drawer-kv"><div className="drawer-kv-label">Electricity</div><div className="drawer-kv-value">{selected.electricity_type === 'submeter' ? 'Submeter' : 'Direct (Own Meter)'}</div></div>
+                  <div className="drawer-kv"><div className="drawer-kv-label">Electricity</div><div className="drawer-kv-value">{selected.electricity_type === 'submeter' ? 'Submeter' : `Direct (Own Meter) · ${selected.meter_count ?? 1} ${Number(selected.meter_count ?? 1) === 1 ? 'meter' : 'meters'}`}</div></div>
                   {selected.requested_by && <div className="drawer-kv"><div className="drawer-kv-label">Requested By</div><div className="drawer-kv-value">{selected.requested_by.name}</div></div>}
                 </div>
               </div>
@@ -582,6 +583,13 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                   </select>
                 </div>
               </div>
+              {editData.electricity_type === 'direct' && (
+                <div className="form-group">
+                  <label className="form-label">Number of meters</label>
+                  <input className="form-input" type="number" min="1" max="20" value={editData.meter_count ?? 1} onChange={e => setEditData('meter_count', e.target.value)} />
+                  {editErrors?.meter_count && <div className="form-error">{editErrors?.meter_count}</div>}
+                </div>
+              )}
               <CoTenantFields values={editData} set={setEditData} error={editErrors?.allows_co_tenants || editErrors?.co_tenant_count} />
               <div className="form-row">
                 <div className="form-group">
@@ -742,6 +750,13 @@ export default function UnitsIndex({ units, floorOptions = [], unitTypes = [], c
                   <select className="form-input form-select" value={data.electricity_type} onChange={e=>setData('electricity_type',e.target.value)}><option value="direct">Direct (Own Meter)</option><option value="submeter">Submeter</option></select>
                 </div>
               </div>
+              {data.electricity_type === 'direct' && (
+                <div className="form-group">
+                  <label className="form-label">Number of meters</label>
+                  <input className="form-input" type="number" min="1" max="20" value={data.meter_count ?? 1} onChange={e => setData('meter_count', e.target.value)} />
+                  {errors.meter_count && <div className="form-error">{errors.meter_count}</div>}
+                </div>
+              )}
               <CoTenantFields values={data} set={setData} error={errors.allows_co_tenants || errors.co_tenant_count} />
               <div className="form-row">
                 <div className="form-group"><label className="form-label">Computed Monthly Rent</label><input className="form-input" type="text" value={computedMonthlyRent > 0 ? money(computedMonthlyRent.toFixed(2), data.currency) : '—'} readOnly style={{opacity:.8,cursor:'default'}} /></div>

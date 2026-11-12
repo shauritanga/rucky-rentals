@@ -576,7 +576,7 @@ function DetailDrawer({ drawer, onClose, onApprove, onReject, submitting }) {
                                 <Detail label="Monthly Rent" value={fmt(item.rent, item.currency)} />
                                 <Detail label="Service Charge" value={fmt(item.service_charge, item.currency)} />
                                 <Detail label="Deposit" value={fmt(item.deposit, item.currency)} />
-                                <Detail label="Electricity" value={item.electricity_type === 'submeter' ? 'Submeter' : 'Direct'} />
+                                <Detail label="Electricity" value={item.electricity_type === 'submeter' ? 'Submeter' : `Direct · ${item.meter_count ?? 1} ${Number(item.meter_count ?? 1) === 1 ? 'meter' : 'meters'}`} />
                                 <Detail label="Requested By" value={item.requested_by?.name ?? '—'} sub={item.requested_by?.email} />
                                 <Detail label="Submitted" value={formatDate(item.approval_requested_at ?? item.created_at)} />
                             </div>
